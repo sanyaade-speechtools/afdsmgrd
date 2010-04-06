@@ -17,7 +17,7 @@
 #define AfLogOk(...)      fputs("** OK! ** ", logFp); AfLog(__VA_ARGS__)
 #define AfLogWarning(...) fputs("** WRN ** ", logFp); AfLog(__VA_ARGS__)
 #define AfLogError(...)   fputs("** ERR ** ", logFp); AfLog(__VA_ARGS__)
-#define AfLogFatal(...)   fputs("** FAT ** ", logFp); AfLog(__VA_ARGS__)
+#define AfLogFatal(...)   fputs("** FTL ** ", logFp); AfLog(__VA_ARGS__)
 
 #define AfLog(...) fprintf(logFp, __VA_ARGS__); fputc('\n', logFp); \
   fflush(logFp)

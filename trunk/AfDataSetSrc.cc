@@ -23,7 +23,8 @@ AfDataSetSrc::AfDataSetSrc(string &url, string &mss, string &opts, bool suid,
   fRedirPort = redirPort;
   //AfLogInfo("Created a new dataset source: dir:%s mss:%s opt:%s", ds.c_str(),
   //  mss.c_str(), opts.c_str());
-  fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s", fUrl.c_str()) );
+  fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
+    fUrl.c_str(), fOpts.c_str()) );
 }
 
 AfDataSetSrc::~AfDataSetSrc() {
@@ -31,7 +32,7 @@ AfDataSetSrc::~AfDataSetSrc() {
 }
 
 // Processes all the datasets in this dataset source
-void AfDataSetSrc::process() {
+void AfDataSetSrc::process(bool resetBits) {
   
   // Creates a flattened list of ds uris
   flattenDsList();
@@ -41,11 +42,16 @@ void AfDataSetSrc::process() {
 
   vector<string>::iterator i;
   for (i=fDsUris.begin(); i!=fDsUris.end(); i++) {
-    processDs( i->c_str() );
+    if (resetBits) {
+      resetDs( i->c_str() );
+    }
+    else {
+      processDs( i->c_str() );
+    }
   }
 
   // Processes the staging queue by using the appropriate method (AsyncOpen or
-  // simply Stage) <-- TODO || only stage works now
+  // simply Stage) <-- TODO!! Only stage works for now
   int nQueued = putIntoStageQueue();
   AfLogInfo("%d file(s) put into stage queue", nQueued);
 
@@ -57,7 +63,7 @@ int AfDataSetSrc::putIntoStageQueue() {
     fRedirHost.c_str(), fRedirPort));
 
   if (fToStage.size() == 0) {
-    AfLogInfo("No files need to be staged");
+    //AfLogInfo("No files need to be staged");
     return 0;
   }
 
@@ -86,6 +92,49 @@ int AfDataSetSrc::putIntoStageQueue() {
   return nQueued;
 }
 
+void AfDataSetSrc::resetDs(const char *uri) {
+  TFileCollection *fc = fManager->GetDataSet(uri);
+
+  AfLogOk("Resetting dataset %s...", uri);
+
+  // Reset "staged" and "corrupted" bits
+  fc->ResetBitAll( TFileInfo::kStaged );
+  fc->ResetBitAll( TFileInfo::kCorrupted );
+  fc->Update();
+
+  // Loop to restore only root:// URIs
+  TFileInfo *fi;
+  TIter i( fc->GetList() );
+
+  int countChanged = 0;
+
+  while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
+    bool isStaged = fi->TestBit(TFileInfo::kStaged);
+    bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
+    AfLogInfo(">> %c%c | %s",
+      (isStaged ? 'S' : 's'),
+      (isCorrupted ? 'C' : 'c'),
+      fi->GetCurrentUrl()->GetUrl()
+    );
+    countChanged += translateUrl( fi, AfDataSetSrc::kTranslateROOT );
+  }
+
+  // Save the modified dataset
+  TString group, user, dsName;
+  fManager->ParseUri(uri, &group, &user, &dsName);
+  doSuid();
+  int r = fManager->WriteDataSet(group, user, dsName, fc, \
+    TDataSetManager::kFileMustExist);
+  undoSuid();
+  if (r == 0) {
+    AfLogError("Can't save resetted dataset %s, check permissions!", uri);
+  }
+  else {
+    AfLogOk("Resetted dataset %s saved", uri);
+  }
+
+}
+
 void AfDataSetSrc::processDs(const char *uri) {
 
   AfLogInfo("Processing dataset %s...", uri);
@@ -94,7 +143,22 @@ void AfDataSetSrc::processDs(const char *uri) {
 
   // Preliminar verification of dataset: for marking as staged files that
   // already are
-  fManager->ScanDataSet(fc, TDataSetManager::kReopen);
+
+  // Return code of ScanDataSet:
+  //
+  // Error conditions:
+  //  * -1 : dataset not found
+  //  * -2 : dataset can not be written after verification
+  //
+  // Success conditions:
+  //  *  1 : dataset was not changed
+  //  *  2 : dataset was changed
+  // 
+  // Please note that ScanDataSet has two overloaded methods: this one does not
+  // write automatically the dataset upon verification, while the other one does
+  bool newVerified = (fManager->ScanDataSet(fc, TDataSetManager::kReopen) == 2);
+  // TODO: remove kReopen to speedup, it is not useful; if problems, use '-r'
+  // for reset
 
   // ScanDataSet actually modifies the list
   TFileInfo *fi;
@@ -127,7 +191,7 @@ void AfDataSetSrc::processDs(const char *uri) {
   }
 
   // Save the modified dataset
-  if (countChanged) {
+  if ((countChanged) || (newVerified)) {
     TString group, user, dsName;
     fManager->ParseUri(uri, &group, &user, &dsName);
     doSuid();
@@ -148,7 +212,9 @@ void AfDataSetSrc::processDs(const char *uri) {
 
 }
 
-int AfDataSetSrc::translateUrl(TFileInfo *fi) {
+int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
+
+  // TODO: whichUrls not implemented yet
 
   fi->ResetUrl();
   TUrl *url;

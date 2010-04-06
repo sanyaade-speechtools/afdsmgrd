@@ -18,7 +18,7 @@ class AfDataSetSrc {
       string &redirHost, unsigned short redirPort);
     string &getDsUrl() { return fUrl; }
     string &getMssUrl() { return fMss; }
-    void process();
+    void process(bool resetBits = false);
     ~AfDataSetSrc();
 
   private:
@@ -26,7 +26,9 @@ class AfDataSetSrc {
     // Private methods
     void flattenDsList();
     void processDs(const char *uri);
-    int  translateUrl(TFileInfo *ti);
+    void resetDs(const char *uri);
+    int  translateUrl(TFileInfo *ti,
+      int whichUrls = kTranslateROOT | kTranslateAliEn);
     int  putIntoStageQueue();
     void fixDsDirPerms();
     void doSuid();
@@ -44,6 +46,10 @@ class AfDataSetSrc {
     gid_t                fUnpGid;
     string               fRedirHost;
     unsigned short       fRedirPort;
+
+    // Some constants
+    static const int     kTranslateROOT = 1;
+    static const int     kTranslateAliEn = 2;
 };
 
 #endif // AFDATASETSRC_H

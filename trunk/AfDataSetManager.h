@@ -15,9 +15,10 @@ class AfDataSetManager {
 
     AfDataSetManager();
     ~AfDataSetManager();
-    void loop();
+    void loop(unsigned int nLoops = 0);
     bool readCf(const char *cf);
     void setSuid(bool suid = true) { fSuid = suid; }
+    void setResetDataSets(bool suid = true) { fReset = suid; }
 
   private:
 
@@ -26,6 +27,7 @@ class AfDataSetManager {
     // Private variables
     vector<AfDataSetSrc *> fSrcList;
     bool                   fSuid;
+    bool                   fReset;
     string                 fRedirHost;
     unsigned short         fRedirPort;
     int                    fLoopSleep_s;
