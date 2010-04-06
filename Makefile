@@ -10,6 +10,9 @@ all: afdsmgrd
 clean:
 	rm -f *.o *.d afdsmgrd
 
+install: all
+	cp afdsmgrd $(ROOTSYS)/bin
+
 afdsmgrd: main.o AfConfReader.o AfDataSetManager.o AfDataSetSrc.o
 	$(LD) -o afdsmgrd main.o AfConfReader.o AfDataSetManager.o AfDataSetSrc.o $(ROOTLIBS)
 

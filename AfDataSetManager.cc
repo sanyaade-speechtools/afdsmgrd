@@ -44,7 +44,7 @@ bool AfDataSetManager::readCf(const char *cf) {
     fLoopSleep_s = fDefaultLoopSleep_s;
   }
   else {
-    AfLogInfo("Sleep between scans: %d seconds", fLoopSleep_s);
+    AfLogInfo("Sleep between scans set to %d seconds", fLoopSleep_s);
   }
 
   // Parse redirector (which is supposed to be the same hostname as all.manager)
@@ -171,7 +171,7 @@ bool AfDataSetManager::readCf(const char *cf) {
   return true;
 }
 
-void AfDataSetManager::loop() {
+void AfDataSetManager::loop(unsigned int nLoops) {
 
   vector<AfDataSetSrc *>::iterator i;
   unsigned int countLoops = 0;
@@ -180,11 +180,16 @@ void AfDataSetManager::loop() {
     AfLogInfo("++++ Started processing loop over all dataset sources ++++");
 
     for (i=fSrcList.begin(); i!=fSrcList.end(); i++) {
-      (*i)->process();
+      (*i)->process(fReset);
     }
 
-    AfLogInfo("Loop %d completed, sleeping %d seconds before new loop",
-      countLoops++, fLoopSleep_s);
+    AfLogInfo("++++ Loop %d completed ++++", countLoops++);
+
+    if ((nLoops > 0) && (countLoops == nLoops)) {
+      break;
+    }
+
+    AfLogInfo("Sleeping %d seconds before new loop", fLoopSleep_s),
 
     sleep(fLoopSleep_s);
   }

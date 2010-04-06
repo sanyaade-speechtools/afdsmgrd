@@ -10,9 +10,13 @@
 #include "AfConfReader.h"
 #include "AfDataSetManager.h"
 
+#include <TError.h>
+
 FILE *logFp;
 
 int main(int argc, char *argv[]) {
+
+  gErrorIgnoreLevel = kWarning+1;
 
   int c;
 
@@ -25,11 +29,13 @@ int main(int argc, char *argv[]) {
   char *dropUser = NULL;
   char *dropGroup = NULL;
   bool bkg = false;
+  bool runOnce = false;
+  bool resetDs = false;
 
   uid_t uidDrop = 0;
   gid_t gidDrop = 0;
 
-  while ((c = getopt(argc, argv, "bl:c:R:G:")) != -1) {
+  while ((c = getopt(argc, argv, "bl:c:R:or")) != -1) {
     switch (c) {
       case 'b':
         bkg = true;
@@ -45,6 +51,15 @@ int main(int argc, char *argv[]) {
 
       case 'R':
         dropUser = optarg;
+      break;
+
+      case 'r':
+        resetDs = true;
+        runOnce = true;  // implied
+      break;
+
+      case 'o':
+        runOnce = true;
       break;
 
       case '?':
@@ -163,12 +178,16 @@ int main(int argc, char *argv[]) {
       "dataset writing");
   }
 
-  AfLogOk("If you are here, everything went fine");
+  //AfLogOk("If you are here, everything went fine");
 
   AfDataSetManager *dsm = new AfDataSetManager();
 
   if (dropUser) {
     dsm->setSuid(true);
+  }
+
+  if (resetDs) {
+    dsm->setResetDataSets(true);
   }
 
   if ( !dsm->readCf(confFile) ) {
@@ -178,7 +197,12 @@ int main(int argc, char *argv[]) {
     //exit(1);
   }
 
-  dsm->loop();
+  if (runOnce) {
+    dsm->loop(1);
+  }
+  else {
+    dsm->loop();
+  }
 
   delete dsm;
 
