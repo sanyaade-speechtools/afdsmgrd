@@ -54,7 +54,7 @@ bool AfDataSetManager::readCf(const char *cf) {
 
   const char *redir = cfr->getDir("all.manager");
 
-  if (regexec(&reAdm, redir, 1, reMatch, 0) == 0) {
+  if ((redir) && (regexec(&reAdm, redir, 1, reMatch, 0) == 0)) {
     int len = reMatch->rm_eo - reMatch->rm_so;
     char *buf = new char[len+1];
     memcpy(buf, &redir[ reMatch->rm_so ], len);

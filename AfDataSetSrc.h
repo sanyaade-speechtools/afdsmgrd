@@ -27,12 +27,14 @@ class AfDataSetSrc {
     void flattenDsList();
     void processDs(const char *uri);
     void resetDs(const char *uri);
+    void listDs(const char *uri);
     int  translateUrl(TFileInfo *ti,
       int whichUrls = kTranslateROOT | kTranslateAliEn);
     int  putIntoStageQueue();
     void fixDsDirPerms();
     void doSuid();
     void undoSuid();
+    int keepOnlyFirstUrl(TFileInfo *fi);
 
     // Private variables
     TDataSetManagerFile *fManager;

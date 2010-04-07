@@ -16,8 +16,6 @@ FILE *logFp;
 
 int main(int argc, char *argv[]) {
 
-  gErrorIgnoreLevel = kWarning+1;
-
   int c;
 
   opterr = 0;  // getopt lib: do not show standard errors
@@ -31,11 +29,12 @@ int main(int argc, char *argv[]) {
   bool bkg = false;
   bool runOnce = false;
   bool resetDs = false;
+  bool showRootMsg = false;
 
   uid_t uidDrop = 0;
   gid_t gidDrop = 0;
 
-  while ((c = getopt(argc, argv, "bl:c:R:or")) != -1) {
+  while ((c = getopt(argc, argv, "bl:c:R:ort")) != -1) {
     switch (c) {
       case 'b':
         bkg = true;
@@ -56,6 +55,10 @@ int main(int argc, char *argv[]) {
       case 'r':
         resetDs = true;
         runOnce = true;  // implied
+      break;
+
+      case 't':
+        showRootMsg = true;
       break;
 
       case 'o':
@@ -176,6 +179,14 @@ int main(int argc, char *argv[]) {
     // We are not root
     AfLogWarning("Running as an unprivileged user: this may impair " \
       "dataset writing");
+  }
+
+  // ROOT messages above the threshold are shown
+  if (showRootMsg) {
+    gErrorIgnoreLevel = 0;
+  }
+  else {
+    gErrorIgnoreLevel = 10000;
   }
 
   //AfLogOk("If you are here, everything went fine");
