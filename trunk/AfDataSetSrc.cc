@@ -92,10 +92,28 @@ int AfDataSetSrc::putIntoStageQueue() {
   return nQueued;
 }
 
-void AfDataSetSrc::resetDs(const char *uri) {
+void AfDataSetSrc::listDs(const char *uri) {
   TFileCollection *fc = fManager->GetDataSet(uri);
+  TFileInfo *fi;
+  TIter i( fc->GetList() );
 
-  AfLogOk("Resetting dataset %s...", uri);
+  while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
+    bool isStaged = fi->TestBit(TFileInfo::kStaged);
+    bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
+    AfLogInfo(">> %c%c | %s",
+      (isStaged ? 'S' : 's'),
+      (isCorrupted ? 'C' : 'c'),
+      fi->GetCurrentUrl()->GetUrl()
+    );
+  }
+}
+
+void AfDataSetSrc::resetDs(const char *uri) {
+
+  AfLogInfo("Dataset %s before reset:", uri);
+  listDs(uri);
+
+  TFileCollection *fc = fManager->GetDataSet(uri);
 
   // Reset "staged" and "corrupted" bits
   fc->ResetBitAll( TFileInfo::kStaged );
@@ -109,13 +127,7 @@ void AfDataSetSrc::resetDs(const char *uri) {
   int countChanged = 0;
 
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
-    bool isStaged = fi->TestBit(TFileInfo::kStaged);
-    bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
-    AfLogInfo(">> %c%c | %s",
-      (isStaged ? 'S' : 's'),
-      (isCorrupted ? 'C' : 'c'),
-      fi->GetCurrentUrl()->GetUrl()
-    );
+    keepOnlyFirstUrl( fi );
     countChanged += translateUrl( fi, AfDataSetSrc::kTranslateROOT );
   }
 
@@ -133,16 +145,19 @@ void AfDataSetSrc::resetDs(const char *uri) {
     AfLogOk("Resetted dataset %s saved", uri);
   }
 
+  AfLogInfo("Dataset %s after reset:", uri);
+  listDs(uri);
 }
 
 void AfDataSetSrc::processDs(const char *uri) {
 
-  AfLogInfo("Processing dataset %s...", uri);
+  AfLogInfo("Dataset %s before processing:", uri);
+  listDs(uri);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
 
   // Preliminar verification of dataset: for marking as staged files that
-  // already are
+  // already are <-- Does not work on SAF?! Why?!
 
   // Return code of ScanDataSet:
   //
@@ -153,10 +168,12 @@ void AfDataSetSrc::processDs(const char *uri) {
   // Success conditions:
   //  *  1 : dataset was not changed
   //  *  2 : dataset was changed
-  // 
+
   // Please note that ScanDataSet has two overloaded methods: this one does not
   // write automatically the dataset upon verification, while the other one does
+
   bool newVerified = (fManager->ScanDataSet(fc, TDataSetManager::kReopen) == 2);
+
   // TODO: remove kReopen to speedup, it is not useful; if problems, use '-r'
   // for reset
 
@@ -169,11 +186,6 @@ void AfDataSetSrc::processDs(const char *uri) {
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
     bool isStaged = fi->TestBit(TFileInfo::kStaged);
     bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
-    AfLogInfo(">> %c%c | %s",
-      (isStaged ? 'S' : 's'),
-      (isCorrupted ? 'C' : 'c'),
-      fi->GetCurrentUrl()->GetUrl()
-    );
     if (!isStaged) {
       int ch = translateUrl( fi );  // ch is nonzero if the object contains one
                                     // or more files that can be staged, this
@@ -194,11 +206,13 @@ void AfDataSetSrc::processDs(const char *uri) {
   if ((countChanged) || (newVerified)) {
     TString group, user, dsName;
     fManager->ParseUri(uri, &group, &user, &dsName);
+
     doSuid();
     // kFileMustExist saves ds only if it already exists: it updates it
     int r = fManager->WriteDataSet(group, user, dsName, fc, \
       TDataSetManager::kFileMustExist);
     undoSuid();
+
     if (r == 0) {
       AfLogError("Can't save modified dataset %s, check permissions!", uri);
     }
@@ -210,6 +224,32 @@ void AfDataSetSrc::processDs(const char *uri) {
     AfLogInfo("Dataset %s left unchanged", uri);
   }
 
+  AfLogInfo("Dataset %s after processing:", uri);
+  listDs(uri);
+
+}
+
+// Returns number of urls removed
+int AfDataSetSrc::keepOnlyFirstUrl(TFileInfo *fi) {
+
+  vector<string> urlList;
+  int count = 0;
+  TUrl *url;
+
+  fi->ResetUrl();
+
+  while (url = fi->NextUrl()) {
+    if (count++ > 0) {
+      urlList.push_back( url->GetUrl() );
+    }
+  }
+
+  vector<string>::iterator i;
+  for (i=urlList.begin(); i!=urlList.end(); i++) {
+    fi->RemoveUrl( i->c_str() );
+  }
+
+  fi->ResetUrl();
 }
 
 int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
@@ -220,16 +260,20 @@ int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
   TUrl *url;
   int countChanged = 0;
 
+  bool doAliEn = kTranslateAliEn & whichUrls;
+  bool doROOT = kTranslateROOT & whichUrls;
+
   while (url = fi->NextUrl()) {
-    if ( strcmp(url->GetProtocol(), "alien") == 0 ) {
+
+    if (( strcmp(url->GetProtocol(), "alien") == 0 ) && (doAliEn)) {
       url->SetProtocol("root");
-      url->SetFile( Form("/alien%s", url->GetFile()) );
+      url->SetFile( Form("/pool/alien%s", url->GetFile()) );  // TODO: conf
       url->SetHost(fRedirHost.c_str());
       url->SetPort(fRedirPort);
       //AfLogInfo(">>>> Changed: %s", url->GetUrl());
       countChanged++;
     }
-    else if ( strcmp(url->GetProtocol(), "root") == 0 ) {
+    else if (( strcmp(url->GetProtocol(), "root") == 0 ) && (doROOT)) {
       url->SetHost(fRedirHost.c_str());
       url->SetPort(fRedirPort);
       //AfLogInfo(">>>> Changed: %s", url->GetUrl());
