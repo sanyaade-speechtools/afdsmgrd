@@ -172,7 +172,10 @@ void AfDataSetSrc::processDs(const char *uri) {
   // Please note that ScanDataSet has two overloaded methods: this one does not
   // write automatically the dataset upon verification, while the other one does
 
+  // ScanDataSet needs to write the results, so elevate permissions here (XXX)
+  doSuid();
   bool newVerified = (fManager->ScanDataSet(fc, TDataSetManager::kReopen) == 2);
+  undoSuid();
 
   // TODO: remove kReopen to speedup, it is not useful; if problems, use '-r'
   // for reset
@@ -267,7 +270,7 @@ int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
 
     if (( strcmp(url->GetProtocol(), "alien") == 0 ) && (doAliEn)) {
       url->SetProtocol("root");
-      url->SetFile( Form("/pool/alien%s", url->GetFile()) );  // TODO: conf
+      url->SetFile( Form("/alien%s", url->GetFile()) );  // TODO: conf
       url->SetHost(fRedirHost.c_str());
       url->SetPort(fRedirPort);
       //AfLogInfo(">>>> Changed: %s", url->GetUrl());

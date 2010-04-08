@@ -7,8 +7,6 @@
 
 using namespace std;
 
-extern FILE *logFp;
-
 class AfDataSetManager {
 
   public:

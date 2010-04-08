@@ -8,8 +8,6 @@ using namespace std;
 #include <TDataSetManagerFile.h>
 #include <TFileInfo.h>
 
-extern FILE *logFp;
-
 class AfDataSetSrc {
 
   public:

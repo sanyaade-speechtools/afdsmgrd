@@ -1,18 +1,21 @@
+// System-wide includes
 #include <iostream>
 #include <fstream>
-#include <stdlib.h>
+#include <cstdlib>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
 
+// This project's includes
 #include "AfLog.h"
 #include "AfConfReader.h"
 #include "AfDataSetManager.h"
 
+// ROOT includes
 #include <TError.h>
 
-FILE *logFp;
+AfLog *gLog = NULL;
 
 int main(int argc, char *argv[]) {
 
@@ -20,7 +23,7 @@ int main(int argc, char *argv[]) {
 
   opterr = 0;  // getopt lib: do not show standard errors
 
-  logFp = stderr;
+  AfLog::Init();
 
   char *logFile = NULL;
   char *confFile = NULL;
@@ -92,7 +95,7 @@ int main(int argc, char *argv[]) {
   // Open logfile just to check if it can be opened
   if (logFile) {
     FILE *tmpLogFp = fopen(logFile, "a");
-    if (!logFp) {
+    if (!tmpLogFp) {
       AfLogFatal("Can't open logfile \"%s\" for writing", logFile);
       exit(1);
     }
@@ -133,8 +136,7 @@ int main(int argc, char *argv[]) {
   // Files should be opened after fork() (because terminating the parent
   // would close the fd of the child too)
   if (logFile) {
-    logFp = fopen(logFile, "a");
-    if (!logFp) {
+    if (!gLog->SetFile(logFile)) {
       exit(2);  // no error message can be seen at this point, useless to print
     }
   }
