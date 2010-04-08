@@ -1,29 +1,48 @@
-CXX = $(shell root-config --cxx)
-LD = $(shell root-config --ld)
+# Makefile for afdsmgrd
 
-CXXFLAGS = $(shell root-config --cflags) -g
+# Note: making this program requires the ROOTSYS environment variable to be set
 
-ROOTLIBS = $(shell root-config --libs) -lProof
+### BEGIN OF CUSTOMIZABLE PART ###
 
-all: afdsmgrd
+ROOTCFG = $(ROOTSYS)/bin/root-config
 
-clean:
-	rm -f *.o *.d afdsmgrd
+CXX = $(shell $(ROOTCFG) --cxx)
+LD = $(shell $(ROOTCFG) --ld)
+OBJEXT = .o
 
-install: all
-	cp afdsmgrd $(ROOTSYS)/bin
+CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g
 
-afdsmgrd: main.o AfConfReader.o AfDataSetManager.o AfDataSetSrc.o
-	$(LD) -o afdsmgrd main.o AfConfReader.o AfDataSetManager.o AfDataSetSrc.o $(ROOTLIBS)
+ROOTLIBS = $(shell $(ROOTCFG) --libs)
+EXTRALIBS = Proof
+
+PROG = afdsmgrd
+MODS = AfConfReader AfDataSetManager AfDataSetSrc AfLog
+
+### END OF CUSTOMIZABLE PART ###
+
+.PHONY: all clean
+
+LIBS = $(ROOTLIBS) $(addprefix -l,$(EXTRALIBS))
+OBJS = $(addsuffix $(OBJEXT),$(MODS))
+
+all: $(PROG)
+
+$(PROG): $(OBJS) main$(OBJEXT)
+	@echo "Linking to $@..."
+	@$(LD) -o $@ $(OBJS) main$(OBJEXT) $(LIBS)
+
+%.o: %.cc %.h
+	@echo "Compiling $@..."
+	@$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 main.o: main.cc
-	$(CXX) $(CXXFLAGS) -c -o main.o main.cc
+	@echo "Compiling $@..."
+	@$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-AfConfReader.o: AfConfReader.cc AfConfReader.h
-	$(CXX) $(CXXFLAGS) -c -o AfConfReader.o AfConfReader.cc
+clean:
+	@echo "Cleaning up..."
+	@rm -rf *.o $(PROG)
 
-AfDataSetManager.o: AfDataSetManager.cc AfDataSetManager.h
-	$(CXX) $(CXXFLAGS) -c -o AfDataSetManager.o AfDataSetManager.cc
-
-AfDataSetSrc.o: AfDataSetSrc.cc AfDataSetSrc.h
-	$(CXX) $(CXXFLAGS) -c -o AfDataSetSrc.o AfDataSetSrc.cc
+install: all
+	@echo "Copying $(PROG) to $(ROOTSYS)/bin..."
+	@cp $(PROG) $(ROOTSYS)/bin

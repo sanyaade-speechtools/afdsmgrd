@@ -8,8 +8,6 @@
 
 using namespace std;
 
-extern FILE *logFp;
-
 class AfConfReader {
 
   public:

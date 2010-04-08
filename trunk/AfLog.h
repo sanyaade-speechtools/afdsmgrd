@@ -1,28 +1,50 @@
 #ifndef AFLOG_H
 #define AFLOG_H
 
-// Global log file pointer
-//FILE *logFp;
+#define AfLogInfo(...) gLog->Info(__VA_ARGS__)
+#define AfLogOk(...) gLog->Ok(__VA_ARGS__)
+#define AfLogWarning(...) gLog->Warning(__VA_ARGS__)
+#define AfLogError(...) gLog->Error(__VA_ARGS__)
+#define AfLogFatal(...) gLog->Fatal(__VA_ARGS__)
 
-// Macro for logging
-#if defined(__GNUC__) || defined(__ICC) || defined(__ECC) || defined(__APPLE__)
-#define THISFUNC() __FUNCTION__
-#elif defined(__HP_aCC) || defined(__alpha) || defined(__DECCXX)
-#define FUNCTIONNAME() __FUNC__
-#else
-#define THISFUNC() "???"
-#endif
+enum msgType { kAfOk, kAfInfo, kAfWarning, kAfError, kAfFatal };
 
-#define AfLogInfo(...)    fputs("** INF ** ", logFp); AfLog(__VA_ARGS__)
-#define AfLogOk(...)      fputs("** OK! ** ", logFp); AfLog(__VA_ARGS__)
-#define AfLogWarning(...) fputs("** WRN ** ", logFp); AfLog(__VA_ARGS__)
-#define AfLogError(...)   fputs("** ERR ** ", logFp); AfLog(__VA_ARGS__)
-#define AfLogFatal(...)   fputs("** FTL ** ", logFp); AfLog(__VA_ARGS__)
+#include <TDatime.h>
 
-#define AfLog(...) fprintf(logFp, __VA_ARGS__); fputc('\n', logFp); \
-  fflush(logFp)
+class AfLog {
 
-//#define FullLog(STR) if (fDebugLevel >= kFull) std::cout \
-//  << "XrdDownloadManager::" << THISFUNC() << "() " << (STR) << std::endl
+  public:
+    static void Init();
+    bool SetFile(const char *fn);
+    void SetStdErr();
+    void Info(const char *fmt, ...);
+    void Ok(const char *fmt, ...);
+    void Warning(const char *fmt, ...);
+    void Error(const char *fmt, ...);
+    void Fatal(const char *fmt, ...);
+
+  private:
+
+    // Methods
+    void Message(msgType type, const char *fmt, va_list args);
+    void Format(msgType type, const char *fmt, va_list args);
+    int CheckRotate();
+    AfLog();
+	~AfLog();
+
+    // Constants
+    FILE *kFallbackLogFile;
+    static const int kRotateEvery_s = 20; //86400;
+
+    // Variables
+    FILE       *fLogFile;
+    TDatime    *fDatime;
+    TDatime    *fLastRotated;
+    const char *fLogFileName;
+    bool        fRotateable;
+
+};
+
+extern AfLog *gLog;
 
 #endif // AFLOG_H
