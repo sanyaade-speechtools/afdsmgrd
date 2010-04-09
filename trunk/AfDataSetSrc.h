@@ -7,15 +7,15 @@ using namespace std;
 #include <string>
 #include <TDataSetManagerFile.h>
 #include <TFileInfo.h>
+#include <TUrl.h>
 
 class AfDataSetSrc {
 
   public:
 
-    AfDataSetSrc(string &ds, string &mss, string &o, bool canSuid,
-      string &redirHost, unsigned short redirPort);
+    AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
+      bool suid);
     string &getDsUrl() { return fUrl; }
-    string &getMssUrl() { return fMss; }
     void process(bool resetBits = false);
     ~AfDataSetSrc();
 
@@ -37,15 +37,13 @@ class AfDataSetSrc {
     // Private variables
     TDataSetManagerFile *fManager;
     vector<string>       fDsUris;
+    TUrl                *fRedirUrl;
     vector<TFileInfo *>  fToStage;
     string               fUrl;
-    string               fMss;
     string               fOpts;
     bool                 fSuid;
     uid_t                fUnpUid;
     gid_t                fUnpGid;
-    string               fRedirHost;
-    unsigned short       fRedirPort;
 
     // Some constants
     static const int     kTranslateROOT = 1;

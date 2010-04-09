@@ -10,25 +10,25 @@
 #include <THashList.h>
 #include <TObjString.h>
 #include <TFileStager.h>
+#include <TUrl.h>
 
-AfDataSetSrc::AfDataSetSrc(string &url, string &mss, string &opts, bool suid,
-  string &redirHost, unsigned short redirPort) {
+AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
+  bool suid) {
+
   fUrl  = url;
-  fMss  = mss;
   fOpts = opts;
   fSuid = suid;
   fUnpUid = 0;
   fUnpGid = 0;
-  fRedirHost = redirHost;
-  fRedirPort = redirPort;
-  //AfLogInfo("Created a new dataset source: dir:%s mss:%s opt:%s", ds.c_str(),
-  //  mss.c_str(), opts.c_str());
+  fRedirUrl = redirUrl;
+
   fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
     fUrl.c_str(), fOpts.c_str()) );
 }
 
 AfDataSetSrc::~AfDataSetSrc() {
   delete fManager;
+  delete fRedirUrl;
 }
 
 // Processes all the datasets in this dataset source
@@ -59,8 +59,10 @@ void AfDataSetSrc::process(bool resetBits) {
 
 int AfDataSetSrc::putIntoStageQueue() {
 
-  TFileStager *stager = TFileStager::Open(Form("root://%s:%d",
-    fRedirHost.c_str(), fRedirPort));
+  TUrl stagerUrl( Form("%s://%s:%d",
+    fRedirUrl->GetProtocol(), fRedirUrl->GetHost(), fRedirUrl->GetPort()) );
+
+  TFileStager *stager = TFileStager::Open( stagerUrl.GetUrl() );
 
   if (fToStage.size() == 0) {
     //AfLogInfo("No files need to be staged");
@@ -68,8 +70,8 @@ int AfDataSetSrc::putIntoStageQueue() {
   }
 
   if (!stager) {
-    AfLogError("Can't open the data stager for redirector root://%s:%d",
-      fRedirHost.c_str(), fRedirPort);
+    AfLogError("Can't open the data stager for redirector %s",
+      stagerUrl.GetUrl());
     return -1;
   }
   //else {
@@ -268,23 +270,31 @@ int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
 
   while (url = fi->NextUrl()) {
 
-    if (( strcmp(url->GetProtocol(), "alien") == 0 ) && (doAliEn)) {
-      url->SetProtocol("root");
-      url->SetFile( Form("/alien%s", url->GetFile()) );  // TODO: conf
-      url->SetHost(fRedirHost.c_str());
-      url->SetPort(fRedirPort);
-      //AfLogInfo(">>>> Changed: %s", url->GetUrl());
-      countChanged++;
+    // We are staging on a xrootd pool
+    if ( strcmp(fRedirUrl->GetProtocol(), "root") == 0 ) {
+
+      if (( strcmp(url->GetProtocol(), "alien") == 0 ) && (doAliEn)) {
+        url->SetProtocol( fRedirUrl->GetProtocol() );
+        url->SetFile( Form("%s%s", fRedirUrl->GetFile(), url->GetFile()) );
+        url->SetHost( fRedirUrl->GetHost() );
+        url->SetPort( fRedirUrl->GetPort() );
+        //AfLogInfo(">>>> [A] Changed: %s", url->GetUrl());
+        countChanged++;
+      }
+      else if (( strcmp(url->GetProtocol(), "root") == 0 ) && (doROOT)) {
+        url->SetHost( fRedirUrl->GetHost() );
+        url->SetPort( fRedirUrl->GetPort() );
+        //AfLogInfo(">>>> [R] Changed: %s", url->GetUrl());
+        countChanged++;
+      }
+
     }
-    else if (( strcmp(url->GetProtocol(), "root") == 0 ) && (doROOT)) {
-      url->SetHost(fRedirHost.c_str());
-      url->SetPort(fRedirPort);
-      //AfLogInfo(">>>> Changed: %s", url->GetUrl());
-      countChanged++;
+    else {
+      AfLogWarning("Can't change URL %s: redirector protocol \"%s\" is not" \
+        "supported, only xrootd protocol is", url->GetUrl(),
+        fRedirUrl->GetProtocol());
     }
-    //else {
-    //  AfLogInfo("No need to change: %s", url->GetUrl());
-    //}
+
   }
 
   fi->ResetUrl();

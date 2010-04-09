@@ -74,8 +74,8 @@ int AfLog::CheckRotate() {
   //if ( fDatime->GetTime() > fLastRotated->GetTime() ) {
     char buf[200];
     fDatime->Set( fDatime->Convert() - 1 );
-    snprintf(buf, 200, "%s.%04u%02u%02u", fLogFileName,
-      fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay());
+    snprintf(buf, 200, "%s.%04u%02u%02u", fLogFileName, fDatime->GetYear(),
+      fDatime->GetMonth(), fDatime->GetDay());
 
     //snprintf(buf, 200, "%s.%04u%02u%02u-%02u%02u%02u", fLogFileName,
     //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
