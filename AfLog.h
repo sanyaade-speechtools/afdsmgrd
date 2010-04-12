@@ -6,17 +6,20 @@
 #define AfLogWarning(...) gLog->Warning(__VA_ARGS__)
 #define AfLogError(...) gLog->Error(__VA_ARGS__)
 #define AfLogFatal(...) gLog->Fatal(__VA_ARGS__)
+#define AfLogDebug(...) gLog->Debug(__VA_ARGS__)
 
-enum msgType { kAfOk, kAfInfo, kAfWarning, kAfError, kAfFatal };
+enum msgType { kAfOk, kAfInfo, kAfWarning, kAfError, kAfFatal, kAfDebug };
 
 #include <TDatime.h>
 
 class AfLog {
 
   public:
-    static void Init();
+    static void Init(bool debug = false);
+    void SetDebug(bool debug);
     bool SetFile(const char *fn);
     void SetStdErr();
+    void Debug(const char *fmt, ...);
     void Info(const char *fmt, ...);
     void Ok(const char *fmt, ...);
     void Warning(const char *fmt, ...);
@@ -29,11 +32,11 @@ class AfLog {
     void Message(msgType type, const char *fmt, va_list args);
     void Format(msgType type, const char *fmt, va_list args);
     int CheckRotate();
-    AfLog();
+    AfLog(bool debug = false);
 	~AfLog();
 
     // Constants
-    FILE *kFallbackLogFile;
+    FILE *kStdErr;
     static const int kRotateEvery_s = 20; //86400;
 
     // Variables
@@ -42,6 +45,7 @@ class AfLog {
     TDatime    *fLastRotated;
     const char *fLogFileName;
     bool        fRotateable;
+    bool        fDebug;
 
 };
 

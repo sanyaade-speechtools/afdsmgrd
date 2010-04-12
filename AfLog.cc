@@ -9,10 +9,11 @@
 
 #include "AfLog.h"
 
-AfLog::AfLog() {
-  kFallbackLogFile = stderr;
+AfLog::AfLog(bool debug) {
+  kStdErr = stderr;
   fDatime = new TDatime();
   fLastRotated = NULL;
+  fDebug = debug;
   SetStdErr();
 }
 
@@ -23,10 +24,9 @@ AfLog::~AfLog() {
   delete fDatime;
 }
 
-void AfLog::Init() {
+void AfLog::Init(bool debug) {
   if (!gLog) {
-    gLog = new AfLog();
-    gLog->fLogFile = gLog->kFallbackLogFile;
+    gLog = new AfLog(debug);
   }
   else {
     gLog->Warning("Log facility already initialized!");
@@ -53,7 +53,7 @@ bool AfLog::SetFile(const char *fn) {
 }
 
 void AfLog::SetStdErr() {
-  fLogFile = kFallbackLogFile;
+  fLogFile = kStdErr;
   fLogFileName = NULL;
   fRotateable = false;
   if (fLastRotated) {
@@ -71,15 +71,12 @@ int AfLog::CheckRotate() {
   fDatime->Set();
 
   if ( fDatime->GetDate() > fLastRotated->GetDate() ) {
-  //if ( fDatime->GetTime() > fLastRotated->GetTime() ) {
     char buf[200];
-    fDatime->Set( fDatime->Convert() - 1 );
+
+    // Archived logfile has yesterday's date
+    fDatime->Set( fDatime->Convert() - 86400 );
     snprintf(buf, 200, "%s.%04u%02u%02u", fLogFileName, fDatime->GetYear(),
       fDatime->GetMonth(), fDatime->GetDay());
-
-    //snprintf(buf, 200, "%s.%04u%02u%02u-%02u%02u%02u", fLogFileName,
-    //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
-    //  fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
 
     fclose(fLogFile);
     int rRen = gSystem->Rename( fLogFileName, buf );
@@ -129,12 +126,28 @@ void AfLog::Format(msgType type, const char *fmt, va_list args) {
     case kAfFatal:
       strcpy(prefix, "FTL");
     break;
+    case kAfDebug:
+      strcpy(prefix, "DBG");
+    break;
   }
   fDatime->Set();
   fprintf(fLogFile, "[%s] *** %s *** ", fDatime->AsSQLString(), prefix);
   vfprintf(fLogFile, fmt, args);
   fputc('\n', fLogFile);
   fflush(fLogFile);
+}
+
+void AfLog::SetDebug(bool debug) {
+  fDebug = debug;
+}
+
+void AfLog::Debug(const char *fmt, ...) {
+  if (fDebug) {
+    va_list args;
+    va_start(args, fmt);
+    Message(kAfDebug, fmt, args);
+    va_end(args);
+  }
 }
 
 void AfLog::Info(const char *fmt, ...) {
