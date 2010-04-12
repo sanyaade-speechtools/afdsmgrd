@@ -25,7 +25,7 @@ class AfDataSetSrc {
     void flattenDsList();
     void processDs(const char *uri);
     void resetDs(const char *uri);
-    void listDs(const char *uri);
+    void listDs(const char *uri, bool debug = false);
     int  translateUrl(TFileInfo *ti,
       int whichUrls = kTranslateROOT | kTranslateAliEn);
     int  putIntoStageQueue();

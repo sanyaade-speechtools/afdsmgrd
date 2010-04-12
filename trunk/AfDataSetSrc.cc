@@ -22,6 +22,8 @@ AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
   fUnpGid = 0;
   fRedirUrl = redirUrl;
 
+  // TODO: maybe it needs to be created each time you scan the dataset, we need
+  // to investigate this
   fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
     fUrl.c_str(), fOpts.c_str()) );
 }
@@ -94,7 +96,7 @@ int AfDataSetSrc::putIntoStageQueue() {
   return nQueued;
 }
 
-void AfDataSetSrc::listDs(const char *uri) {
+void AfDataSetSrc::listDs(const char *uri, bool debug) {
   TFileCollection *fc = fManager->GetDataSet(uri);
   TFileInfo *fi;
   TIter i( fc->GetList() );
@@ -102,18 +104,27 @@ void AfDataSetSrc::listDs(const char *uri) {
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
     bool isStaged = fi->TestBit(TFileInfo::kStaged);
     bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
-    AfLogInfo(">> %c%c | %s",
-      (isStaged ? 'S' : 's'),
-      (isCorrupted ? 'C' : 'c'),
-      fi->GetCurrentUrl()->GetUrl()
-    );
+    if (debug) {
+      AfLogDebug(">> %c%c | %s",
+        (isStaged ? 'S' : 's'),
+        (isCorrupted ? 'C' : 'c'),
+        fi->GetCurrentUrl()->GetUrl()
+      );
+    }
+    else {
+      AfLogInfo(">> %c%c | %s",
+        (isStaged ? 'S' : 's'),
+        (isCorrupted ? 'C' : 'c'),
+        fi->GetCurrentUrl()->GetUrl()
+      );
+    }
   }
 }
 
 void AfDataSetSrc::resetDs(const char *uri) {
 
-  AfLogInfo("Dataset %s before reset:", uri);
-  listDs(uri);
+  AfLogDebug("Dataset %s before reset:", uri);
+  listDs(uri, true);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
 
@@ -147,14 +158,14 @@ void AfDataSetSrc::resetDs(const char *uri) {
     AfLogOk("Resetted dataset %s saved", uri);
   }
 
-  AfLogInfo("Dataset %s after reset:", uri);
-  listDs(uri);
+  AfLogDebug("Dataset %s after reset:", uri);
+  listDs(uri, true);
 }
 
 void AfDataSetSrc::processDs(const char *uri) {
 
-  AfLogInfo("Dataset %s before processing:", uri);
-  listDs(uri);
+  AfLogDebug("Dataset %s before processing:", uri);
+  listDs(uri, true);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
 
@@ -229,9 +240,8 @@ void AfDataSetSrc::processDs(const char *uri) {
     AfLogInfo("Dataset %s left unchanged", uri);
   }
 
-  AfLogInfo("Dataset %s after processing:", uri);
-  listDs(uri);
-
+  AfLogDebug("Dataset %s after processing:", uri);
+  listDs(uri, true);
 }
 
 // Returns number of urls removed

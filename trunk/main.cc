@@ -1,3 +1,14 @@
+/* Exit codes
+ * 
+ * Ok          :  0
+ * ----------------
+ * Arguments   : 1?
+ * Files       : 2?
+ * Fork        : 3?
+ * Permissions : 4?
+ *
+ */
+
 // System-wide includes
 #include <iostream>
 #include <fstream>
@@ -13,6 +24,8 @@
 #include "AfDataSetManager.h"
 
 // ROOT includes
+#include <TSystem.h>
+#include <TString.h>
 #include <TError.h>
 
 AfLog *gLog = NULL;
@@ -25,19 +38,20 @@ int main(int argc, char *argv[]) {
 
   AfLog::Init();
 
-  char *logFile = NULL;
-  char *confFile = NULL;
+  TString logFile;
+  TString confFile;
   char *dropUser = NULL;
   char *dropGroup = NULL;
   bool bkg = false;
   bool runOnce = false;
   bool resetDs = false;
   bool showRootMsg = false;
+  bool debugMsg = false;
 
   uid_t uidDrop = 0;
   gid_t gidDrop = 0;
 
-  while ((c = getopt(argc, argv, "bl:c:R:ort")) != -1) {
+  while ((c = getopt(argc, argv, "bl:c:R:ortd")) != -1) {
     switch (c) {
       case 'b':
         bkg = true;
@@ -64,6 +78,10 @@ int main(int argc, char *argv[]) {
         showRootMsg = true;
       break;
 
+      case 'd':
+        debugMsg = true;
+      break;
+
       case 'o':
         runOnce = true;
       break;
@@ -74,38 +92,40 @@ int main(int argc, char *argv[]) {
           case 'c':
           case 'R':
             AfLogFatal("Option '-%c' requires an argument", optopt);
-            exit(1);
+            return 11;
           break;
 
           default:
             AfLogFatal("Unknown option: '-%c'", optopt);
-            exit(1);
+            return 12;
           break;
         }
       break;
     } // switch
   } // while
 
-  // Check if filenames are absolute
-  if ((logFile) && (*logFile != '/')) {
-    AfLogFatal("Log file name must be an absolute path");
-    exit(1);
+  // Show debug messages?
+  gLog->SetDebug(debugMsg);
+
+  // Check if log filename is absolute
+  if ((!logFile.IsNull()) && (!logFile.BeginsWith("/"))) {
+    logFile = Form("%s/%s", gSystem->WorkingDirectory(), logFile.Data());
   }
 
   // Open logfile just to check if it can be opened
-  if (logFile) {
-    FILE *tmpLogFp = fopen(logFile, "a");
+  if (!logFile.IsNull()) {
+    /*FILE *tmpLogFp = fopen(logFile, "a");
     if (!tmpLogFp) {
       AfLogFatal("Can't open logfile \"%s\" for writing", logFile);
       exit(1);
     }
     else {
       fclose(tmpLogFp);
-    }
+    }*/ // TODO
   }
   else if (bkg) {
     AfLogFatal("Logfile is compulsory if daemonizing");
-    exit(1);
+    return 13;
   }
 
   // Eventually forking
@@ -113,7 +133,7 @@ int main(int argc, char *argv[]) {
     pid_t pid = fork();
 
     if (pid < 0) { // Cannot fork
-      exit(1);
+      exit(31);
     }
 
     if (pid > 0) { // This is the parent process, and pid is the child's pid
@@ -122,7 +142,7 @@ int main(int argc, char *argv[]) {
 
     pid_t sid = setsid();
     if (sid < 0) {
-      exit(1);
+      exit(32);
     }
 
     //umask(0);
@@ -135,22 +155,29 @@ int main(int argc, char *argv[]) {
 
   // Files should be opened after fork() (because terminating the parent
   // would close the fd of the child too)
-  if (logFile) {
-    if (!gLog->SetFile(logFile)) {
-      exit(2);  // no error message can be seen at this point, useless to print
+  if (!logFile.IsNull()) {
+    if (!gLog->SetFile(logFile.Data())) {
+      return 21;  // no error message can be seen at this point, useless to print
     }
   }
 
   // After having the logfile, we should check the rest!
 
   // Configuration file checks
-  if (!confFile) {
+  if (confFile.IsNull()) {
     AfLogFatal("Configuration file is compulsory");
-    exit(1);
+    return 14;
   }
-  else if (*confFile != '/') {
-    AfLogFatal("Configuration file name must be an absolute path");
-    exit(1);
+  else if (!confFile.BeginsWith("/")) {
+    confFile = Form("%s/%s", gSystem->WorkingDirectory(), confFile.Data());
+    char *buf = realpath(confFile.Data(), NULL);
+    if (buf) {
+      confFile = buf;
+      free(buf);
+    }
+    else {
+      AfLogWarning("Cannot get real path for %s", confFile.Data());
+    }
   }
 
   // Drop current effective user: it can revert back to the former at any time,
@@ -165,12 +192,12 @@ int main(int argc, char *argv[]) {
       }
       else {
         AfLogFatal("Can't drop privileges to user %s", dropUser);
-        exit(1);
+        return 41;
       }
     }
     else {
       AfLogFatal("Can't become user %s because it does not exist", dropUser);
-      exit(1);
+      return 42;
     }
   }
   else if (geteuid() == 0) {
@@ -203,11 +230,9 @@ int main(int argc, char *argv[]) {
     dsm->setResetDataSets(true);
   }
 
-  if ( !dsm->readCf(confFile) ) {
-    //AfLogFatal("Cannot read configuration file: %s", confFile);
+  if ( !dsm->readCf(confFile.Data()) ) {
     delete dsm;
-    return 1;
-    //exit(1);
+    return 22;
   }
 
   if (runOnce) {
