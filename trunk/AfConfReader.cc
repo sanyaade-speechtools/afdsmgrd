@@ -1,63 +1,78 @@
 #include "AfConfReader.h"
-#include "AfLog.h"
 
-#include <fstream>
-#include <utility>
-#include <cstring>
-#include <map>
-#include <regex.h>
-#include <vector>
-#include <cstdlib>
+AfConfReader::AfConfReader() {
+  fVars = new TMap();
+  fVars->SetOwner();
+  fDirs = new TList();
+  fDirs->SetOwner();
+}
 
-AfConfReader::AfConfReader() {}
+AfConfReader::~AfConfReader() {
+  delete fVars;
+  delete fDirs;
+}
 
-void AfConfReader::printVarsAndDirs() {
-  map<string, string>::iterator i;
-  for (i=vars.begin(); i != vars.end(); i++) {
-    AfLogInfo("Variable: %s = %s", (i->first).c_str(), (i->second).c_str());
+void AfConfReader::PrintVarsAndDirs() {
+  TIter i(fVars);
+  TObjString *key;
+  TObjString *val;
+  while (key = dynamic_cast<TObjString *>(i.Next())) {
+    val = dynamic_cast<TObjString *>( fVars->GetValue(key) );
+    AfLogInfo("Variable: %s = %s", key->GetString().Data(),
+      val->GetString().Data());
   }
 
-  vector< pair<string, string> >::iterator j;
-  for (j=dirs.begin(); j != dirs.end(); j++) {
-    AfLogInfo("Directive: %s = %s", (j->first).c_str(), (j->second).c_str());
+  TIter j(fDirs);
+  TPair *pair;
+  while (pair = dynamic_cast<TPair *>(j.Next())) {
+    AfLogInfo("Directive: %s = %s",
+      dynamic_cast<TObjString *>(pair->Key())->GetString().Data(),
+      dynamic_cast<TObjString *>(pair->Value())->GetString().Data());
   }
 }
 
-const char *AfConfReader::getVar(const char *vn) {
-  map<string, string>::iterator i;
-  for (i=vars.begin(); i != vars.end(); i++) {
-    if (strcmp((i->first).c_str(), vn) == 0) {
-      return (i->second).c_str();
+TString *AfConfReader::GetVar(const char *vn) {
+  TPair *p = dynamic_cast<TPair *>( fVars->FindObject( vn ) );
+  if (p) {
+    TString *s =
+      new TString( dynamic_cast<TObjString *>(p->Value())->GetString() );
+    return s;
+  }
+  return NULL;
+}
+
+TString *AfConfReader::GetDir(const char *dn) {
+  TIter j(fDirs);
+  TPair *pair;
+  while (pair = dynamic_cast<TPair *>(j.Next())) {
+    TObjString *key = dynamic_cast<TObjString *>(pair->Key());
+    TObjString *value = dynamic_cast<TObjString *>(pair->Value());
+    if ( key->GetString() == dn ) { // == overloaded
+      return new TString( value->GetString() );
     }
   }
   return NULL;
 }
 
-const char *AfConfReader::getDir(const char *dn) {
-  vector< pair<string, string> >::iterator i;
-  for (i=dirs.begin(); i != dirs.end(); i++) {
-    if (strcmp((i->first).c_str(), dn) == 0) {
-      return (i->second).c_str();
-    }
-  }
-  return NULL;
-}
-
-vector<const char *> *AfConfReader::getDirs(const char *dn) {
-  vector< pair<string, string> >::iterator i;
-  vector<const char *> *res = new vector<const char *>();
-  for (i=dirs.begin(); i != dirs.end(); i++) {
-    if (strcmp((i->first).c_str(), dn) == 0) {
-      res->push_back( (i->second).c_str() );
+TList *AfConfReader::GetDirs(const char *dn) {
+  TIter j(fDirs);
+  TPair *pair;
+  TList *res = new TList();
+  res->SetOwner();
+  while (pair = dynamic_cast<TPair *>(j.Next())) {
+    TObjString *key = dynamic_cast<TObjString *>(pair->Key());
+    TObjString *value = dynamic_cast<TObjString *>(pair->Value());
+    if ( key->GetString() == dn ) { // == overloaded
+      res->Add( new TObjString(*value) );
     }
   }
   return res;
 }
 
-void AfConfReader::readCf() {
+void AfConfReader::ReadConf() {
 
-  fp.clear();
-  fp.seekg(0, ios::beg);
+  fFp.clear();
+  fFp.seekg(0, ios::beg);
 
   char *buf = new char[400];
 
@@ -72,7 +87,7 @@ void AfConfReader::readCf() {
 
   regmatch_t reMatch[3];
 
-  while (fp.getline(buf, 400)) {
+  while (fFp.getline(buf, 400)) {
 
     if ( regexec(&reCom, buf, 0, NULL, 0) != 0 ) {
 
@@ -82,9 +97,7 @@ void AfConfReader::readCf() {
         buf[reMatch[1].rm_eo] = '\0';
         char *vv = &buf[reMatch[2].rm_so];
         buf[reMatch[2].rm_eo] = '\0';
-        vars.insert( make_pair(vn, vv) ); // <-- XXX
-        //AfLogInfo("[V] {%s} {%s}", vn, vv);
-        //vars.push_back( make_pair(vn, vv) ); // <-- XXX
+        fVars->Add( new TObjString(vn), new TObjString(vv) );
       }
       else if ( regexec(&reDir, buf, 3, reMatch, 0) == 0 ) {
         // We've got a directive here
@@ -92,9 +105,7 @@ void AfConfReader::readCf() {
         buf[reMatch[1].rm_eo] = '\0';
         char *dv = &buf[reMatch[2].rm_so];
         buf[reMatch[2].rm_eo] = '\0';
-        //dirs.insert( make_pair(dn, dv) ); // <-- XXX
-        //AfLogInfo("[D] {%s} {%s}", dn, dv);
-        dirs.push_back( make_pair(dn, dv) );
+        fDirs->Add( new TPair( new TObjString(dn), new TObjString(dv) ) );
       }
       //else {}
 
@@ -109,48 +120,65 @@ void AfConfReader::readCf() {
   delete[] buf;
 }
 
-void AfConfReader::substVar() {
-
-  //map<string,string>::iterator i;
-  vector< pair<string, string> >::iterator i;
+void AfConfReader::SubstVar() {
 
   regex_t reSub;
   regcomp(&reSub, "(\\$[A-Za-z0-9]+)", REG_EXTENDED);
   regmatch_t reMatch;
 
-  for (i=dirs.begin(); i != dirs.end(); i++) {
+  TIter i(fDirs);  // fDirs is a TList of TPair
+  TPair *elm;
 
-    char *ptr = const_cast<char *>( (i->second).c_str() );
-    int off = 0;
-    vector< pair<int,int> > v;
+  while ( elm = dynamic_cast<TPair *>(i.Next()) ) {
 
-    // Finds all variables and put match results into a vector
+    TString val = dynamic_cast<TObjString *>(elm->Value())->GetString();
+    char *ptr = const_cast<char *>( val.Data() );  // I promise not to modify it
+
+    Int_t off = 0;
+    const Int_t maxVar = 20;
+    Int_t v1[maxVar];
+    Int_t v2[maxVar];
+    Int_t nVars = 0;
+
+    // Finds all variables and put match results into an array
     while (regexec(&reSub, ptr, 1, &reMatch, 0) == 0) {
-      v.push_back( make_pair(reMatch.rm_so + off, reMatch.rm_eo + off) );
+      //v.push_back( make_pair(reMatch.rm_so + off, reMatch.rm_eo + off) );
+      v1[nVars] = reMatch.rm_so + off;
+      v2[nVars] = reMatch.rm_eo + off;
+
       ptr = &ptr[ reMatch.rm_eo ];
       off += reMatch.rm_eo;
+
+      if (++nVars == maxVar) {
+        break;
+      }
     }
 
     // If variables are found we try to substitute them in *reverse* order,
     // because matching indexes change the other way around
-    if (v.size() > 0) {
-      //AfLogInfo("{%s} <-- old string", (i->second).c_str());
-      for (int j=v.size()-1; j>=0; j--) {
-        int len = v[j].second-v[j].first-1;
+    if (nVars > 0) {
+      //AfLogInfo("old --> {%s}", val.Data());
+      for (Int_t j=nVars-1; j>=0; j--) {
+        Int_t len = v2[j]-v1[j]-1;
         char *vn = new char[ len+2 ];
-        memcpy( vn, &((i->second).c_str())[ v[j].first+1 ], len );
+        memcpy( vn, &(val.Data())[ v1[j]+1 ], len );
         vn[len] = '\0';
+        //AfLogInfo("%d, %d --> %s", v[j].second, v[j].first, vn);
 
-        map<string,string>::iterator itVar = vars.find(vn);
-        if (itVar != vars.end()) {
-          // If variable is found, substitute it; elsewhere, leave it alone
-          (i->second).replace( v[j].first, v[j].second-v[j].first,
-            itVar->second );
+        TString *var = GetVar(vn);
+        if (var) {
+          //AfLogInfo("Found: %s = %s", vn, var->Data());
+          val.Replace( v1[j], v2[j]-v1[j], var->Data() );
+          //AfLogInfo("new --> {%s}", val.Data());
+          delete elm->Value();
+          elm->SetValue( new TObjString(val.Data()) );
+          delete var;
         }
 
         delete[] vn;
       }
-      //AfLogInfo("{%s} <-- new string", (i->second).c_str());
+      //AfLogInfo("new --> {%s}",
+      //  dynamic_cast<TObjString *>(elm->Value())->GetString().Data());
     }
 
   } // end for over directives
@@ -158,25 +186,22 @@ void AfConfReader::substVar() {
   regfree(&reSub);
 }
 
-AfConfReader *AfConfReader::open(const char *cffn, bool subVars) {
+AfConfReader *AfConfReader::Open(const char *cffn, bool subVars) {
   AfConfReader *afcf = new AfConfReader();
-  (afcf->fp).open(cffn);
+  (afcf->fFp).open(cffn);
 
-  if (!(afcf->fp)) {
+  if (!(afcf->fFp)) {
     delete afcf;
     return NULL;
   }
 
-  afcf->readCf();
-  (afcf->fp).close();
+  afcf->ReadConf();
+  (afcf->fFp).close();
 
   if (subVars) {
-    afcf->substVar();
+    afcf->SubstVar();
   }
 
   return afcf;
 }
 
-AfConfReader::~AfConfReader() {
-  fp.close();
-}

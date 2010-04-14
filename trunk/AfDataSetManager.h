@@ -1,11 +1,11 @@
 #ifndef AFDATASETMANAGER_H
 #define AFDATASETMANAGER_H
 
+#include <regex.h>
+
 #include "AfConfReader.h"
 #include "AfDataSetSrc.h"
-#include <cstdio>
-
-using namespace std;
+#include "AfLog.h"
 
 class AfDataSetManager {
 
@@ -13,23 +13,23 @@ class AfDataSetManager {
 
     AfDataSetManager();
     ~AfDataSetManager();
-    void loop(unsigned int nLoops = 0);
-    bool readCf(const char *cf);
-    void setSuid(bool suid = true) { fSuid = suid; }
-    void setResetDataSets(bool suid = true) { fReset = suid; }
+    void   Loop(UInt_t nLoops = 0);
+    Bool_t ReadConf(const char *cf);
+    void   SetSuid(bool suid = kTRUE)          { fSuid = suid; }
+    void   SetResetDataSets(bool suid = kTRUE) { fReset = suid; }
 
   private:
 
     // Private methods
 
     // Private variables
-    vector<AfDataSetSrc *> fSrcList;
-    bool                   fSuid;
-    bool                   fReset;
-    string                 fRedirHost;
-    unsigned short         fRedirPort;
-    int                    fLoopSleep_s;
-    static const int       fDefaultLoopSleep_s = 3600;
+    TList              *fSrcList;
+    Bool_t              fSuid;
+    Bool_t              fReset;
+    TString             fRedirHost;
+    UShort_t            fRedirPort;
+    Int_t               fLoopSleep_s;
+    static const Int_t  fDefaultLoopSleep_s = 3600;
 };
 
 #endif // AFDATASETMANAGER_H

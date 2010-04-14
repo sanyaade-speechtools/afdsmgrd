@@ -6,15 +6,12 @@
  * Files       : 2?
  * Fork        : 3?
  * Permissions : 4?
+ * Suid        : 5?
  *
  */
 
-// System-wide includes
-#include <iostream>
-#include <fstream>
+// Standard includes
 #include <cstdlib>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
 
@@ -32,7 +29,7 @@ AfLog *gLog = NULL;
 
 int main(int argc, char *argv[]) {
 
-  int c;
+  Int_t c;
 
   opterr = 0;  // getopt lib: do not show standard errors
 
@@ -42,19 +39,16 @@ int main(int argc, char *argv[]) {
   TString confFile;
   char *dropUser = NULL;
   char *dropGroup = NULL;
-  bool bkg = false;
-  bool runOnce = false;
-  bool resetDs = false;
-  bool showRootMsg = false;
-  bool debugMsg = false;
-
-  uid_t uidDrop = 0;
-  gid_t gidDrop = 0;
+  bool bkg = kFALSE;
+  bool runOnce = kFALSE;
+  bool resetDs = kFALSE;
+  bool showRootMsg = kFALSE;
+  bool debugMsg = kFALSE;
 
   while ((c = getopt(argc, argv, "bl:c:R:ortd")) != -1) {
     switch (c) {
       case 'b':
-        bkg = true;
+        bkg = kTRUE;
       break;
 
       case 'c':
@@ -70,20 +64,20 @@ int main(int argc, char *argv[]) {
       break;
 
       case 'r':
-        resetDs = true;
-        runOnce = true;  // implied
+        resetDs = kTRUE;
+        runOnce = kTRUE;  // implied
       break;
 
       case 't':
-        showRootMsg = true;
+        showRootMsg = kTRUE;
       break;
 
       case 'd':
-        debugMsg = true;
+        debugMsg = kTRUE;
       break;
 
       case 'o':
-        runOnce = true;
+        runOnce = kTRUE;
       break;
 
       case '?':
@@ -133,16 +127,16 @@ int main(int argc, char *argv[]) {
     pid_t pid = fork();
 
     if (pid < 0) { // Cannot fork
-      exit(31);
+      gSystem->Exit(31);
     }
 
     if (pid > 0) { // This is the parent process, and pid is the child's pid
-      exit(0);
+      gSystem->Exit(0);
     }
 
     pid_t sid = setsid();
     if (sid < 0) {
-      exit(32);
+      gSystem->Exit(32);
     }
 
     //umask(0);
@@ -173,7 +167,7 @@ int main(int argc, char *argv[]) {
     char *buf = realpath(confFile.Data(), NULL);
     if (buf) {
       confFile = buf;
-      free(buf);
+      delete[] buf;
     }
     else {
       AfLogWarning("Cannot get real path for %s", confFile.Data());
@@ -223,23 +217,23 @@ int main(int argc, char *argv[]) {
   AfDataSetManager *dsm = new AfDataSetManager();
 
   if (dropUser) {
-    dsm->setSuid(true);
+    dsm->SetSuid(kTRUE);
   }
 
   if (resetDs) {
-    dsm->setResetDataSets(true);
+    dsm->SetResetDataSets(kTRUE);
   }
 
-  if ( !dsm->readCf(confFile.Data()) ) {
+  if ( !dsm->ReadConf(confFile.Data()) ) {
     delete dsm;
     return 22;
   }
 
   if (runOnce) {
-    dsm->loop(1);
+    dsm->Loop(1);
   }
   else {
-    dsm->loop();
+    dsm->Loop();
   }
 
   delete dsm;

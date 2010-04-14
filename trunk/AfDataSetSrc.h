@@ -1,53 +1,58 @@
 #ifndef AFDATASETSRC_H
 #define AFDATASETSRC_H
 
-using namespace std;
+#include "AfLog.h"
 
-#include <cstdio>
-#include <string>
+#include <THashList.h>
 #include <TDataSetManagerFile.h>
+#include <TFileStager.h>
+#include <TFileCollection.h>
 #include <TFileInfo.h>
 #include <TUrl.h>
 
-class AfDataSetSrc {
+class AfDataSetSrc : public TObject {
 
   public:
 
+    AfDataSetSrc();
     AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-      bool suid);
-    string &getDsUrl() { return fUrl; }
-    void process(bool resetBits = false);
+      Bool_t suid);
+    void Process(Bool_t resetBits = kFALSE);
+    void SetDsProcessList(TList *dsList);
     ~AfDataSetSrc();
 
   private:
 
     // Private methods
-    void flattenDsList();
-    void processDs(const char *uri);
-    void resetDs(const char *uri);
-    void listDs(const char *uri, bool debug = false);
-    int  translateUrl(TFileInfo *ti,
-      int whichUrls = kTranslateROOT | kTranslateAliEn);
-    int  putIntoStageQueue();
-    void fixDsDirPerms();
-    void doSuid();
-    void undoSuid();
-    int keepOnlyFirstUrl(TFileInfo *fi);
+    void  FlattenListOfDataSets();
+    void  ProcessDataSet(const char *uri);
+    void  ResetDataSet(const char *uri);
+    void  ListDataSetContent(const char *uri, Bool_t debug = kFALSE);
+    Int_t TranslateUrl(TFileInfo *ti,
+      Int_t whichUrls = kTranslateROOT | kTranslateAliEn);
+    Int_t KeepOnlyFirstUrl(TFileInfo *fi);
+    Int_t PutIntoStageQueue();
+    void  DoSuid();
+    void  UndoSuid();
 
     // Private variables
     TDataSetManagerFile *fManager;
-    vector<string>       fDsUris;
+    TList               *fDsUris;
     TUrl                *fRedirUrl;
-    vector<TFileInfo *>  fToStage;
-    string               fUrl;
-    string               fOpts;
-    bool                 fSuid;
-    uid_t                fUnpUid;
-    gid_t                fUnpGid;
+    TList               *fToStage;
+    TString              fUrl;
+    TString              fOpts;
+    Bool_t               fSuid;
+    Int_t                fUnpUid;
+    Int_t                fUnpGid;
+    TList               *fDsToProcess;
 
     // Some constants
-    static const int     kTranslateROOT = 1;
-    static const int     kTranslateAliEn = 2;
+    static const Int_t   kTranslateROOT  = 1;
+    static const Int_t   kTranslateAliEn = 2;
+
+  // ROOT stuff
+  ClassDef(AfDataSetSrc, 1);
 };
 
 #endif // AFDATASETSRC_H

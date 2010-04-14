@@ -1,12 +1,3 @@
-#include <cstdio>
-#include <cstdarg>
-#include <cstring>
-#include <cstdlib>
-
-
-#include <TDatime.h>
-#include <TSystem.h>
-
 #include "AfLog.h"
 
 AfLog::AfLog(bool debug) {
@@ -37,7 +28,7 @@ bool AfLog::SetFile(const char *fn) {
   fLogFile = fopen(fn, "a");
   if (!fLogFile) {
     SetStdErr();
-    return false;
+    return kFALSE;
   }
 
   fLogFileName = fn;
@@ -48,21 +39,21 @@ bool AfLog::SetFile(const char *fn) {
   else {
     fLastRotated = new TDatime();
   }
-  fRotateable = true;
-  return true;
+  fRotateable = kTRUE;
+  return kTRUE;
 }
 
 void AfLog::SetStdErr() {
   fLogFile = kStdErr;
   fLogFileName = NULL;
-  fRotateable = false;
+  fRotateable = kFALSE;
   if (fLastRotated) {
     delete fLastRotated;
     fLastRotated = NULL;
   }
 }
 
-int AfLog::CheckRotate() {
+Int_t AfLog::CheckRotate() {
 
   if (!fRotateable) {
     return 0;
@@ -79,7 +70,7 @@ int AfLog::CheckRotate() {
       fDatime->GetMonth(), fDatime->GetDay());
 
     fclose(fLogFile);
-    int rRen = gSystem->Rename( fLogFileName, buf );
+    Int_t rRen = gSystem->Rename( fLogFileName, buf );
     // TODO: add compression here
 
     bool rSet = SetFile(fLogFileName);
@@ -94,7 +85,7 @@ int AfLog::CheckRotate() {
 }
 
 void AfLog::Message(msgType type, const char *fmt, va_list args) {
-  int r = CheckRotate();
+  Int_t r = CheckRotate();
   va_list dummy = {};
   if (r == -1) {
     Format(kAfError, "Can't rotate logfile!", dummy);
