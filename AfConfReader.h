@@ -1,35 +1,37 @@
 #ifndef AFCONFREADER_H
 #define AFCONFREADER_H
 
-#include <string>
-#include <vector>
-#include <fstream>
-#include <map>
+#include <regex.h>
 
-using namespace std;
+#include "AfLog.h"
+
+#include <Riostream.h>
+#include <TList.h>
+#include <TObjString.h>
+#include <TMap.h>
 
 class AfConfReader {
 
   public:
 
     ~AfConfReader();
-    const char *getVar(const char *vn);
-    const char *getDir(const char *dn);
-    vector<const char *> *getDirs(const char *dn);
-    static AfConfReader *open(const char *cffn, bool subVars = true);
-    void printVarsAndDirs();
+    TString *GetVar(const char *vn);
+    TString *GetDir(const char *dn);
+    TList *GetDirs(const char *dn);
+    static AfConfReader *Open(const char *cffn, Bool_t subVars = kTRUE);
+    void PrintVarsAndDirs();
 
   private:
 
     // Private methods
     AfConfReader();  // constructor is private
-    void substVar();
-    void readCf();
+    void SubstVar();
+    void ReadConf();
 
     // Private variables
-    ifstream                       fp;
-    vector< pair<string, string> > dirs;
-    map<string, string>            vars;
+    ifstream    fFp;
+    TList     *fDirs;
+    TMap      *fVars;
 
 };
 

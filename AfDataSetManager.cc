@@ -1,51 +1,55 @@
-#include <regex.h>
-#include <string.h>
-#include <dirent.h>
-#include <stdlib.h>
-
 #include "AfDataSetManager.h"
-#include "AfDataSetSrc.h"
 
-#include "AfLog.h"
-
-AfDataSetManager::AfDataSetManager() {}
-
-AfDataSetManager::~AfDataSetManager() {
-  //AfLogInfo("# of datasets: %d", (int)ds.size());
-  vector<AfDataSetSrc *>::iterator i;
-  for (i=fSrcList.begin(); i!=fSrcList.end(); i++) {
-    //AfLogInfo(">> Deleting dataset with src: %s", (*i)->getDsUrl().c_str());
-    delete *i;
-  }
+AfDataSetManager::AfDataSetManager() {
+  fSrcList = new TList();
+  fSrcList->SetOwner();
 }
 
-bool AfDataSetManager::readCf(const char *cf) {
+AfDataSetManager::~AfDataSetManager() {
+  delete fSrcList;
+}
 
-  AfConfReader *cfr = AfConfReader::open(cf);
+Bool_t AfDataSetManager::ReadConf(const char *cf) {
 
-  //cfr->printVarsAndDirs();
+  AfConfReader *cfr = AfConfReader::Open(cf);
+
+  //cfr->PrintVarsAndDirs();
 
   if (!cfr) {
     AfLogFatal("Cannot read configuration file: %s", cf);
-    return false;
+    return kFALSE;
   }
+
+  // List is emptied before refilling it
+  fSrcList->Clear();
 
   regmatch_t reMatch[3];
 
   // Loop pause
-  const char *loopSleep_s = cfr->getDir("dsmgrd.sleepsecs");
+  TString *loopSleep_s = cfr->GetDir("dsmgrd.sleepsecs");
   if (!loopSleep_s) {
     AfLogWarning("Variable dsmgrd.sleepsecs not set, using default (%d)",
       fDefaultLoopSleep_s);
     fLoopSleep_s = fDefaultLoopSleep_s;
   }
-  else if ( (fLoopSleep_s = atoi(loopSleep_s)) <= 0 )  {
+  else if ( (fLoopSleep_s = loopSleep_s->Atoi()) <= 0 )  {
     AfLogWarning("Invalid value for dsmgrd.sleepsecs (%s), using default (%d)",
       loopSleep_s, fDefaultLoopSleep_s);
     fLoopSleep_s = fDefaultLoopSleep_s;
+    delete loopSleep_s;
   }
   else {
     AfLogInfo("Sleep between scans set to %d seconds", fLoopSleep_s);
+    delete loopSleep_s;
+  }
+
+  // Which datasets to process? The format is the same of TDataSetManagerFile
+  TList *procDs = cfr->GetDirs("dsmgrd.processds");
+  TIter j( procDs );
+  TObjString *o;
+
+  while ( o = dynamic_cast<TObjString *>(j.Next()) ) {
+    AfLogInfo("Dataset mask to process: %s", o->GetString().Data());
   }
 
   // Parse dataset sources
@@ -62,23 +66,27 @@ bool AfDataSetManager::readCf(const char *cf) {
   regcomp(&reDsp, "([ \t]|^)destpath:([^ \t]*)", REG_EXTENDED);
   regcomp(&reRw,  "([ \t]|^)rw=1([^ \t]*)", REG_EXTENDED);
 
-  vector<const char *> *dsSrc = cfr->getDirs("xpd.datasetsrc");
-  vector<const char *>::iterator i;
+  // Watch out: getDirs returns a poiter to a TList that must be deleted, and it
+  // is owner of its content!
+  TList *dsSrcList = cfr->GetDirs("xpd.datasetsrc");
+  TIter i( dsSrcList );
 
-  for (i=dsSrc->begin(); i!=dsSrc->end(); i++) {
+  while ( o = dynamic_cast<TObjString *>(i.Next()) ) {
 
-    AfLogInfo("Found dataset configuration: %s", *i);
+    TString dirStr = o->GetString();
+    const char *dir = dirStr.Data();  // directive
 
-    const char *dir = *i;
-    bool dsValid = true;
+    AfLogInfo("Found dataset configuration: %s", dir);
+
+    Bool_t dsValid = kTRUE;
     TUrl *redirUrl;
-    string destPath;
-    string dsUrl;
-    string opts;
-    bool rw = false;
+    TString destPath;
+    TString dsUrl;
+    TString opts;
+    Bool_t rw = kFALSE;
 
     if ( regexec(&reMss, dir, 3, reMatch, 0) == 0 ) {
-      int len = reMatch[2].rm_eo - reMatch[2].rm_so;
+      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
       char *buf = new char[ len+1 ];
       memcpy(buf, &dir[reMatch[2].rm_so], len);
       buf[len] = '\0';
@@ -92,7 +100,7 @@ bool AfDataSetManager::readCf(const char *cf) {
         AfLogError(">> Invalid MSS URL: only URLs in the form " \
           "root://host[:port] are supported");
         delete redirUrl;
-        dsValid = false;
+        dsValid = kFALSE;
       }
       else {
         // URL is flattened: only proto, host and port are retained
@@ -103,17 +111,17 @@ bool AfDataSetManager::readCf(const char *cf) {
     }
     else {
       AfLogError(">> MSS URL not set");
-      dsValid = false;
+      dsValid = kFALSE;
     }
 
     if ( regexec(&reDsp, dir, 3, reMatch, 0) == 0 ) {
-      int len = reMatch[2].rm_eo - reMatch[2].rm_so;
+      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
       char *buf = new char[ len+1 ];
       memcpy(buf, &dir[reMatch[2].rm_so], len);
       buf[len] = '\0';
       destPath = buf;
       delete[] buf;
-      AfLogInfo(">> Destination path: %s", destPath.c_str());
+      AfLogInfo(">> Destination path: %s", destPath.Data());
     }
     else {
       AfLogWarning(">> Destination path on pool (destpath) not set, using " \
@@ -122,31 +130,31 @@ bool AfDataSetManager::readCf(const char *cf) {
     }
 
     if ( regexec(&reUrl, dir, 3, reMatch, 0) == 0 ) {
-      int len = reMatch[2].rm_eo - reMatch[2].rm_so;
+      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
       char *buf = new char[ len+1 ];
       memcpy(buf, &dir[reMatch[2].rm_so], len);
       buf[len] = '\0';
       dsUrl = buf;
       delete[] buf;
-      AfLogInfo(">> URL: %s", dsUrl.c_str());
+      AfLogInfo(">> URL: %s", dsUrl.Data());
     }
     else {
       AfLogError(">> Dataset local path not set");
-      dsValid = false;
+      dsValid = kFALSE;
     }
 
     if ( regexec(&reRw, dir, 0, NULL, 0) == 0 ) {
-      rw = true;
+      rw = kTRUE;
     }
 
     if ( regexec(&reOpt, dir, 3, reMatch, 0) == 0 ) {
-      int len = reMatch[2].rm_eo - reMatch[2].rm_so;
+      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
       char *buf = new char[ len+1 ];
       memcpy(buf, &dir[reMatch[2].rm_so], len);
       buf[len] = '\0';
       opts = buf;
       delete[] buf;
-      AfLogInfo(">> Opt: %s", opts.c_str());
+      AfLogInfo(">> Opt: %s", opts.Data());
     }
     else {
       // Default options: do not allow register and verify if readonly
@@ -154,41 +162,49 @@ bool AfDataSetManager::readCf(const char *cf) {
     }
 
     if (dsValid) {
-      redirUrl->SetFile( destPath.c_str() );
-      AfDataSetSrc *dsSrc = new AfDataSetSrc(dsUrl.c_str(), redirUrl,
-        opts.c_str(), fSuid);
-      fSrcList.push_back(dsSrc);
+      redirUrl->SetFile( destPath.Data() );
+      AfDataSetSrc *dsSrc = new AfDataSetSrc(dsUrl.Data(), redirUrl,
+        opts.Data(), fSuid);
+      if (procDs->GetSize() > 0) {
+        dsSrc->SetDsProcessList(procDs);  // Set... makes a copy of the list
+      }
+      fSrcList->Add(dsSrc);
     }
     else {
       AfLogError(">> Invalid dataset configuration, ignoring", *i);
     }
 
-  }
+  } // for over xpd.datasetsrc
 
+  regfree(&reDsp);
   regfree(&reUrl);
   regfree(&reMss);
   regfree(&reOpt);
+  regfree(&reRw);
 
+  delete dsSrcList;
   delete cfr;
+  delete procDs;
 
-  if (fSrcList.size() == 0) {
+  if (fSrcList->GetSize() == 0) {
     AfLogFatal("No valid dataset source found!");
-    return false;
+    return kFALSE;
   }
 
-  return true;
+  return kTRUE;
 }
 
-void AfDataSetManager::loop(unsigned int nLoops) {
+void AfDataSetManager::Loop(UInt_t nLoops) {
 
-  vector<AfDataSetSrc *>::iterator i;
-  unsigned int countLoops = 0;
+  TIter i(fSrcList);
+  UInt_t countLoops = 0;
+  AfDataSetSrc *dsSrc;
 
-  while (true) {
+  while (kTRUE) {
     AfLogInfo("++++ Started processing loop over all dataset sources ++++");
 
-    for (i=fSrcList.begin(); i!=fSrcList.end(); i++) {
-      (*i)->process(fReset);
+    while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
+      dsSrc->Process(fReset);
     }
 
     AfLogInfo("++++ Loop %d completed ++++", countLoops++);

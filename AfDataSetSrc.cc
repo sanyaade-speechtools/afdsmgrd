@@ -1,19 +1,11 @@
 #include "AfDataSetSrc.h"
-#include "AfLog.h"
 
-#include <stdlib.h>
-#include <sys/stat.h>
+ClassImp(AfDataSetSrc);
 
-#include <TDataSetManagerFile.h>
-#include <TFileInfo.h>
-#include <TFileCollection.h>
-#include <THashList.h>
-#include <TObjString.h>
-#include <TFileStager.h>
-#include <TUrl.h>
+AfDataSetSrc::AfDataSetSrc() {}
 
 AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-  bool suid) {
+  Bool_t suid) {
 
   fUrl  = url;
   fOpts = opts;
@@ -22,51 +14,65 @@ AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
   fUnpGid = 0;
   fRedirUrl = redirUrl;
 
-  // TODO: maybe it needs to be created each time you scan the dataset, we need
-  // to investigate this
+  fDsToProcess = new TList();
+  fDsToProcess->SetOwner();
+  fDsToProcess->Add( new TObjString("/*/*") );
+
   fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
-    fUrl.c_str(), fOpts.c_str()) );
+    fUrl.Data(), fOpts.Data()) );
+
+  fDsUris = new TList();  // TList of TObjString
+  fDsUris->SetOwner();
+
+  fToStage = new TList();  // TList of TFileInfo, NOT OWNER
 }
 
 AfDataSetSrc::~AfDataSetSrc() {
   delete fManager;
   delete fRedirUrl;
+  delete fDsToProcess;
+  delete fDsUris;
+  delete fToStage;
 }
 
 // Processes all the datasets in this dataset source
-void AfDataSetSrc::process(bool resetBits) {
-  
+void AfDataSetSrc::Process(Bool_t resetBits) {
+
+  AfLogInfo("+++ Started processing of dataset source %s +++", fUrl.Data());
+
   // Creates a flattened list of ds uris
-  flattenDsList();
+  FlattenListOfDataSets();
 
   // Clears the list of files to stage this time
-  fToStage.clear();
+  fToStage->Clear();
 
-  vector<string>::iterator i;
-  for (i=fDsUris.begin(); i!=fDsUris.end(); i++) {
+  TIter i(fDsUris);
+  TObjString *s;
+  while (s = dynamic_cast<TObjString *>(i.Next())) {
     if (resetBits) {
-      resetDs( i->c_str() );
+      ResetDataSet( s->GetString().Data() );
     }
     else {
-      processDs( i->c_str() );
+      ProcessDataSet( s->GetString().Data() );
     }
   }
 
   // Processes the staging queue by using the appropriate method (AsyncOpen or
   // simply Stage) <-- TODO!! Only stage works for now
-  int nQueued = putIntoStageQueue();
-  AfLogInfo("%d file(s) put into stage queue", nQueued);
+  Int_t nQueued = PutIntoStageQueue();
+  AfLogInfo("+++ %d file(s) put into stage queue for dataset source %s +++",
+    nQueued, fUrl.Data());
 
 }
 
-int AfDataSetSrc::putIntoStageQueue() {
+Int_t AfDataSetSrc::PutIntoStageQueue() {
 
   TUrl stagerUrl( Form("%s://%s:%d",
     fRedirUrl->GetProtocol(), fRedirUrl->GetHost(), fRedirUrl->GetPort()) );
 
   TFileStager *stager = TFileStager::Open( stagerUrl.GetUrl() );
 
-  if (fToStage.size() == 0) {
+  if (fToStage->GetSize() == 0) {
     //AfLogInfo("No files need to be staged");
     return 0;
   }
@@ -80,14 +86,16 @@ int AfDataSetSrc::putIntoStageQueue() {
   //  AfLogOk("Stager instantiated");
   //}
 
-  int nQueued = 0;
-  vector<TFileInfo *>::iterator i;
+  Int_t nQueued = 0;
+  TIter i(fToStage);
+  TFileInfo *fi;
 
-  for (i=fToStage.begin(); i!=fToStage.end(); i++) {
-    TUrl url( *((*i)->GetCurrentUrl()) );
-    url.SetAnchor("");  // we want to stage the full file
-    stager->Stage( url.GetUrl() );
-    AfLogInfo(">> Put into staging queue %s", url.GetUrl());
+  while ( fi = dynamic_cast<TFileInfo *>(i.Next()) ) {
+    TUrl url( *(fi->GetCurrentUrl()) );
+    url.SetAnchor("");  // we want to stage the full archive
+    Bool_t res = stager->Stage( url.GetUrl() );
+    AfLogInfo(">> Put into staging queue %s (stager returned %s)", url.GetUrl(),
+      (res ? "true" : "false"));
     nQueued++;
   }
 
@@ -96,14 +104,14 @@ int AfDataSetSrc::putIntoStageQueue() {
   return nQueued;
 }
 
-void AfDataSetSrc::listDs(const char *uri, bool debug) {
+void AfDataSetSrc::ListDataSetContent(const char *uri, Bool_t debug) {
   TFileCollection *fc = fManager->GetDataSet(uri);
   TFileInfo *fi;
   TIter i( fc->GetList() );
 
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
-    bool isStaged = fi->TestBit(TFileInfo::kStaged);
-    bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
+    Bool_t isStaged = fi->TestBit(TFileInfo::kStaged);
+    Bool_t isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
     if (debug) {
       AfLogDebug(">> %c%c | %s",
         (isStaged ? 'S' : 's'),
@@ -121,10 +129,10 @@ void AfDataSetSrc::listDs(const char *uri, bool debug) {
   }
 }
 
-void AfDataSetSrc::resetDs(const char *uri) {
+void AfDataSetSrc::ResetDataSet(const char *uri) {
 
   AfLogDebug("Dataset %s before reset:", uri);
-  listDs(uri, true);
+  ListDataSetContent(uri, kTRUE);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
 
@@ -137,40 +145,40 @@ void AfDataSetSrc::resetDs(const char *uri) {
   TFileInfo *fi;
   TIter i( fc->GetList() );
 
-  int countChanged = 0;
+  Int_t countChanged = 0;
 
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
-    keepOnlyFirstUrl( fi );
-    countChanged += translateUrl( fi, AfDataSetSrc::kTranslateROOT );
+    KeepOnlyFirstUrl( fi );
+    countChanged += TranslateUrl( fi, AfDataSetSrc::kTranslateROOT );
   }
 
   // Save the modified dataset
   TString group, user, dsName;
   fManager->ParseUri(uri, &group, &user, &dsName);
-  doSuid();
-  int r = fManager->WriteDataSet(group, user, dsName, fc, \
+  DoSuid();
+  Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
     TDataSetManager::kFileMustExist);
-  undoSuid();
+  UndoSuid();
   if (r == 0) {
-    AfLogError("Can't save resetted dataset %s, check permissions!", uri);
+    AfLogError("Dataset reset: %s, but can't write (check permissions)", uri);
   }
   else {
-    AfLogOk("Resetted dataset %s saved", uri);
+    AfLogOk("Dataset reset: %s", uri);
   }
 
   AfLogDebug("Dataset %s after reset:", uri);
-  listDs(uri, true);
+  ListDataSetContent(uri, kTRUE);
 }
 
-void AfDataSetSrc::processDs(const char *uri) {
+void AfDataSetSrc::ProcessDataSet(const char *uri) {
 
   AfLogDebug("Dataset %s before processing:", uri);
-  listDs(uri, true);
+  ListDataSetContent(uri, kTRUE);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
 
   // Preliminar verification of dataset: for marking as staged files that
-  // already are <-- Does not work on SAF?! Why?!
+  // already are
 
   // Return code of ScanDataSet:
   //
@@ -185,10 +193,10 @@ void AfDataSetSrc::processDs(const char *uri) {
   // Please note that ScanDataSet has two overloaded methods: this one does not
   // write automatically the dataset upon verification, while the other one does
 
-  // ScanDataSet needs to write the results, so elevate permissions here (XXX)
-  doSuid();
-  bool newVerified = (fManager->ScanDataSet(fc, TDataSetManager::kReopen) == 2);
-  undoSuid();
+  // ScanDataSet needs to write the results, so elevate permissions here
+  DoSuid();
+  Bool_t newVerified = (fManager->ScanDataSet(fc, TDataSetManager::kReopen)==2);
+  UndoSuid();
 
   // TODO: remove kReopen to speedup, it is not useful; if problems, use '-r'
   // for reset
@@ -197,13 +205,13 @@ void AfDataSetSrc::processDs(const char *uri) {
   TFileInfo *fi;
   TIter i( fc->GetList() );
 
-  int countChanged = 0;
+  Int_t countChanged = 0;
 
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
-    bool isStaged = fi->TestBit(TFileInfo::kStaged);
-    bool isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
+    Bool_t isStaged = fi->TestBit(TFileInfo::kStaged);
+    Bool_t isCorrupted = fi->TestBit(TFileInfo::kCorrupted);
     if (!isStaged) {
-      int ch = translateUrl( fi );  // ch is nonzero if the object contains one
+      Int_t ch = TranslateUrl( fi );  // ch is nonzero if the object contains one
                                     // or more files that can be staged, this
                                     // means root or alien urls: staging should
                                     // not be triggered on incompatible urls
@@ -212,7 +220,7 @@ void AfDataSetSrc::processDs(const char *uri) {
         //  fi->GetCurrentUrl()->GetUrl());
 
         // File is added into staging queue
-        fToStage.push_back( fi );
+        fToStage->Add( fi );
       }
       countChanged += ch;
     }
@@ -223,60 +231,64 @@ void AfDataSetSrc::processDs(const char *uri) {
     TString group, user, dsName;
     fManager->ParseUri(uri, &group, &user, &dsName);
 
-    doSuid();
+    DoSuid();
     // kFileMustExist saves ds only if it already exists: it updates it
-    int r = fManager->WriteDataSet(group, user, dsName, fc, \
+    Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
       TDataSetManager::kFileMustExist);
-    undoSuid();
+    UndoSuid();
 
     if (r == 0) {
-      AfLogError("Can't save modified dataset %s, check permissions!", uri);
+      AfLogError("Dataset modif: %s, but can't write (check permissions)", uri);
     }
     else {
-      AfLogOk("Modified dataset %s saved", uri);
+      AfLogOk("Dataset saved: %s", uri);
     }
   }
   else {
-    AfLogInfo("Dataset %s left unchanged", uri);
+    AfLogInfo("Dataset unmod: %s", uri);
   }
 
   AfLogDebug("Dataset %s after processing:", uri);
-  listDs(uri, true);
+  ListDataSetContent(uri, kTRUE);
 }
 
 // Returns number of urls removed
-int AfDataSetSrc::keepOnlyFirstUrl(TFileInfo *fi) {
+Int_t AfDataSetSrc::KeepOnlyFirstUrl(TFileInfo *fi) {
 
-  vector<string> urlList;
-  int count = 0;
+  TList *urlList = new TList();
+  urlList->SetOwner();
+  Int_t count = 0;
   TUrl *url;
 
   fi->ResetUrl();
 
   while (url = fi->NextUrl()) {
     if (count++ > 0) {
-      urlList.push_back( url->GetUrl() );
+      urlList->Add( new TObjString(url->GetUrl()) );
     }
   }
 
-  vector<string>::iterator i;
-  for (i=urlList.begin(); i!=urlList.end(); i++) {
-    fi->RemoveUrl( i->c_str() );
+  TIter i(urlList);
+  TObjString *s;
+  while ( s = dynamic_cast<TObjString *>(i.Next()) ) {
+    fi->RemoveUrl( s->GetString().Data() );
   }
 
   fi->ResetUrl();
+
+  delete urlList;
 }
 
-int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
+Int_t AfDataSetSrc::TranslateUrl(TFileInfo *fi, Int_t whichUrls) {
 
   // TODO: whichUrls not implemented yet
 
   fi->ResetUrl();
   TUrl *url;
-  int countChanged = 0;
+  Int_t countChanged = 0;
 
-  bool doAliEn = kTranslateAliEn & whichUrls;
-  bool doROOT = kTranslateROOT & whichUrls;
+  Bool_t doAliEn = kTranslateAliEn & whichUrls;
+  Bool_t doROOT = kTranslateROOT & whichUrls;
 
   while (url = fi->NextUrl()) {
 
@@ -312,47 +324,69 @@ int AfDataSetSrc::translateUrl(TFileInfo *fi, int whichUrls) {
   return countChanged;
 }
 
-void AfDataSetSrc::flattenDsList() {
+void AfDataSetSrc::SetDsProcessList(TList *dsList) {
+  TIter i(dsList);
+  TObjString *o;
+  fDsToProcess->Clear();
+  // List is copied, so does its content
+  while ( o = dynamic_cast<TObjString *>(i.Next()) ) {
+    fDsToProcess->Add( new TObjString( o->GetString().Data() ) );
+  }
+}
 
-  fDsUris.clear();
+void AfDataSetSrc::FlattenListOfDataSets() {
 
-  TMap *groups = fManager->GetDataSets("/*/*", TDataSetManager::kReadShort);
-  TIter gi(groups);
-  TObjString *gn;
+  fDsUris->Clear();
 
-  while ( gn = dynamic_cast<TObjString *>( gi.Next() ) ) {
-    //AfLogInfo(">> Group: %s", gn->String().Data());
+  TIter pi(fDsToProcess);
+  TObjString *o;
 
-    TMap *users = dynamic_cast<TMap *>( groups->GetValue( gn->String() ) );
-    TIter ui(users);
-    TObjString *un;
+  while (o = dynamic_cast<TObjString *>(pi.Next())) {
 
-    while ( un = dynamic_cast<TObjString *>( ui.Next() ) ) {
-      //AfLogInfo(">>>> User: %s", un->GetString().Data());
+    TString dsMask = o->GetString();
 
-      TMap *dss = dynamic_cast<TMap *>( users->GetValue( un->String() ) );
-      TIter di(dss);
-      TObjString *dn;
+    AfLogDebug("Processing mask %s on dataset source %s", dsMask.Data(),
+      fUrl.Data());
 
-      while ( dn = dynamic_cast<TObjString *>( di.Next() ) ) {
+    TMap *groups = fManager->GetDataSets(dsMask.Data(),
+      TDataSetManager::kReadShort);
+    TIter gi(groups);
+    TObjString *gn;
 
-        //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
+    while ( gn = dynamic_cast<TObjString *>( gi.Next() ) ) {
+      //AfLogInfo(">> Group: %s", gn->String().Data());
 
-        // This should give an URI in the form /GROUP/USER/dataset
-        TString dsUriTmp = TDataSetManager::CreateUri( gn->String(),
-          un->String(), dn->String() );
-        string dsUri = dsUriTmp.Data();
-        fDsUris.push_back( dsUri );
+      TMap *users = dynamic_cast<TMap *>( groups->GetValue( gn->String() ) );
+      TIter ui(users);
+      TObjString *un;
 
-        //AfLogInfo(">>>>>> Dataset URI: %s", dsUri.c_str());
+      while ( un = dynamic_cast<TObjString *>( ui.Next() ) ) {
+        //AfLogInfo(">>>> User: %s", un->GetString().Data());
 
-      } // while over datasets
-    } // while over users
-  } // while over groups
+        TMap *dss = dynamic_cast<TMap *>( users->GetValue( un->String() ) );
+        TIter di(dss);
+        TObjString *dn;
+
+        while ( dn = dynamic_cast<TObjString *>( di.Next() ) ) {
+
+          //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
+
+          // This should give an URI in the form /GROUP/USER/dataset
+          TString dsUri = TDataSetManager::CreateUri( gn->String(),
+            un->String(), dn->String() );
+          fDsUris->Add( new TObjString(dsUri.Data()) );
+
+          //AfLogInfo(">>>>>> Dataset URI: %s", dsUri.Data());
+
+        } // while over datasets
+      } // while over users
+    } // while over groups
+
+  } // while over datasets mask (e.g. /*/*)
 
 }
 
-void AfDataSetSrc::doSuid() {
+void AfDataSetSrc::DoSuid() {
   if (!fSuid) {
     return;
   }
@@ -360,16 +394,16 @@ void AfDataSetSrc::doSuid() {
   fUnpGid = getegid();
   if (!((seteuid(0) == 0) && (setegid(0) == 0))) {
     AfLogFatal("Failed obtaining privileges");
-    exit(1);
+    gSystem->Exit(51);
   }
 }
 
-void AfDataSetSrc::undoSuid() {
+void AfDataSetSrc::UndoSuid() {
   if (!fSuid) {
     return;
   }
   if (!((setegid(fUnpUid) == 0) && (seteuid(fUnpGid) == 0))) {
     AfLogFatal("Can't drop privileges!");
-    exit(1);
+    gSystem->Exit(51);
   }
 }
