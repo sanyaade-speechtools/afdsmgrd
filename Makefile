@@ -1,64 +1,47 @@
-# Makefile for afdsmgrd
-# The only requirement is the ROOTSYS environment variable
+#
+# Steer Makefile for afdsmgrd.
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+# This Makefile only requires the ROOTSYS environment variable to be set. This
+# is only a "steer" Makefile where you set the variables: the real rules are in
+# Makefiles contained into the proper subdirectories.
+#
 
 ### BEGIN OF THE CUSTOMIZABLE SECTION ###
 
-ROOTCFG = $(ROOTSYS)/bin/root-config
+export ROOTCFG = $(ROOTSYS)/bin/root-config
 
-CXX = $(shell $(ROOTCFG) --cxx)
-LD = $(shell $(ROOTCFG) --ld)
-RCINT = $(ROOTSYS)/bin/rootcint
-OBJEXT = .o
-CXXEXT = .cc
-HEXT = .h
+export CXX = $(shell $(ROOTCFG) --cxx)
+export LD = $(shell $(ROOTCFG) --ld)
+export RCINT = $(ROOTSYS)/bin/rootcint
+export OBJEXT = .o
+export CXXEXT = .cc
+export HEXT = .h
 
-CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g
+export CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g
 
-ROOTLIBS = $(shell $(ROOTCFG) --libs)
-EXTRALIBS = Proof
+export ROOTLIBS = $(shell $(ROOTCFG) --libs)
+export EXTRALIBS = Proof
 
-PROG = afdsmgrd
-MODS = AfConfReader AfDataSetManager AfDataSetSrc AfLog
+export PROG = afdsmgrd
+export MODS = AfConfReader AfDataSetManager AfDataSetSrc AfLog
 
-MAIN = main
+export MAIN = $(PROG)
 
-GENDICT = AfDataSetSrc
-DICT = AfDict
+export GENDICT = AfDataSetSrc
+export DICT = AfDict
+
+export INSTALLPATH = $(ROOTSYS)/bin
+
+SRCDIR = src
 
 ### END OF THE CUSTOMIZABLE SECTION ###
 
-.PHONY: all clean
+.PHONY = all
 
-LIBS = $(ROOTLIBS) $(addprefix -l,$(EXTRALIBS))
-OBJS = $(addsuffix $(OBJEXT),$(MODS))
-OBJS += $(addsuffix $(OBJEXT),$(DICT))
-GENDICTHEADERS = $(addsuffix $(HEXT),$(GENDICT))
+all:
+	@$(MAKE) all -C $(SRCDIR)
 
-all: $(PROG)
-
-$(PROG): $(OBJS) main$(OBJEXT)
-	@echo "Linking to $@..."
-	@$(LD) -o $@ $(OBJS) main$(OBJEXT) $(LIBS)
-
-$(DICT)$(OBJEXT): $(GENDICTHEADERS)
-	@echo "Generating dictionary for $(GENDICT)..."
-	@LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(ROOTSYS)/lib $(RCINT) -f $(DICT)$(CXXEXT) -c $(CXXFLAGS) -p $^
-	@$(CXX) $(CXXFLAGS) -c -o $(DICT)$(OBJEXT) $(DICT)$(CXXEXT)
-
-%$(OBJEXT): %$(CXXEXT) %$(HEXT)
-	@echo "Compiling $@..."
-	@$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-$(MAIN)$(OBJEXT): $(MAIN)$(CXXEXT)
-	@echo "Compiling $@..."
-	@$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-clean:
-	@echo "Cleaning up..."
-	@rm -rf *$(OBJEXT) $(PROG)
-	@rm -f $(DICT)$(CXXEXT) $(DICT)$(HEXT)
-
-install: all
-	@echo "Copying $(PROG) to $(ROOTSYS)/bin..."
-	@cp $(PROG) $(ROOTSYS)/bin
-
+.DEFAULT:
+	@$(MAKE) $@ -C $(SRCDIR)
