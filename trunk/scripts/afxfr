@@ -35,17 +35,29 @@ source `dirname $0`/aflib
 function Copy() {
   local SRC="$1"
   local DEST="$2"
+  rm -f "$DEST.fail"
   mkdir -p `dirname $DEST`
-  alien_cp -s "$SRC" "$DEST" > /dev/null 2>&1
-  #alien_cp "$SRC" "$DEST" # verbose, with progressbar too
+  if [ $? != 0 ]; then
+    prn -e "Creation of destination directory failed"
+    return 1
+  fi
+  local TMPLOG=`mktemp /tmp/afxfr-alien_cp-XXXXX`
+  alien_cp -s "$SRC" "$DEST" > "$TMPLOG" 2>&1
   if [ $? == 0 ] && [ -e "$DEST" ]; then
     # Copy went right
-    rm -f "$DEST.fail"
+    rm "$TMPLOG"
     return 0
   else
-    # Copy went bad
+    # Copy went bad: output from alien_cp is only shown if an error occured
     rm -f "$DEST"
     touch "$DEST.fail"
+    prn -e "Output of alien_cp follows:"
+    local L
+    cat "$TMPLOG" | while read L
+    do
+      prn -e ">> $L"
+    done
+    rm "$TMPLOG"
   fi
   return 1
 }
@@ -67,7 +79,9 @@ function Main() {
     if [ "$3" != "" ]; then
       export LABEL="$3"
     else
-      export LABEL=""
+      # Create a unique label based on PID and a random number, to distinguish
+      # overlapped outputs in logfiles via, e.g, a grep
+      export LABEL="`printf '%05d-%05d' $$ $RANDOM`"
     fi
   fi
 
