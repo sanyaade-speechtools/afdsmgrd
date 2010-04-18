@@ -23,8 +23,6 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
   // List is emptied before refilling it
   fSrcList->Clear();
 
-  regmatch_t reMatch[3];
-
   // Loop pause
   TString *loopSleep_s = cfr->GetDir("dsmgrd.sleepsecs");
   if (!loopSleep_s) {
@@ -54,17 +52,11 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
 
   // Parse dataset sources
 
-  regex_t reMss;  // regex that matches mss:
-  regex_t reUrl;  // regex that matches url:
-  regex_t reOpt;  // regex that matches opt:
-  regex_t reDsp;  // regex that matches destpath:
-  regex_t reRw;   // regex that matches rw=1
-
-  regcomp(&reMss, "([ \t]|^)mss:([^ \t]*)", REG_EXTENDED);
-  regcomp(&reUrl, "([ \t]|^)url:([^ \t]*)", REG_EXTENDED);
-  regcomp(&reOpt, "([ \t]|^)opt:([^ \t]*)", REG_EXTENDED);
-  regcomp(&reDsp, "([ \t]|^)destpath:([^ \t]*)", REG_EXTENDED);
-  regcomp(&reRw,  "([ \t]|^)rw=1([^ \t]*)", REG_EXTENDED);
+  TPMERegexp reMss("([ \t]|^)mss:([^ \t]*)");  // regex that matches mss:
+  TPMERegexp reUrl("([ \t]|^)url:([^ \t]*)");  // regex that matches url:
+  TPMERegexp reOpt("([ \t]|^)opt:([^ \t]*)");  // regex that matches opt:
+  TPMERegexp reDsp("([ \t]|^)destpath:([^ \t]*)");
+  TPMERegexp reRw("([ \t]|^)rw=1([^ \t]*)");
 
   // Watch out: getDirs returns a poiter to a TList that must be deleted, and it
   // is owner of its content!
@@ -73,10 +65,9 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
 
   while ( o = dynamic_cast<TObjString *>(i.Next()) ) {
 
-    TString dirStr = o->GetString();
-    const char *dir = dirStr.Data();  // directive
+    TString dir = o->GetString();
 
-    AfLogInfo("Found dataset configuration: %s", dir);
+    AfLogInfo("Found dataset configuration: %s", dir.Data());
 
     Bool_t dsValid = kTRUE;
     TUrl *redirUrl;
@@ -85,15 +76,9 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
     TString opts;
     Bool_t rw = kFALSE;
 
-    if ( regexec(&reMss, dir, 3, reMatch, 0) == 0 ) {
-      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
-      char *buf = new char[ len+1 ];
-      memcpy(buf, &dir[reMatch[2].rm_so], len);
-      buf[len] = '\0';
+    if (reMss.Match(dir) == 3) {
 
-      // Now, parse host name and port
-      redirUrl = new TUrl( buf );
-      delete[] buf;
+      redirUrl = new TUrl(reMss[2]);
 
       if ((!redirUrl->IsValid()) ||
         (strcmp(redirUrl->GetProtocol(), "root") != 0)) {
@@ -103,7 +88,7 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
         dsValid = kFALSE;
       }
       else {
-        // URL is flattened: only proto, host and port are retained
+        // URL is "flattened": only proto, host and port are retained
         redirUrl->SetUrl( Form("%s://%s:%d", redirUrl->GetProtocol(),
           redirUrl->GetHost(), redirUrl->GetPort()) );
         AfLogInfo(">> MSS: %s", redirUrl->GetUrl());
@@ -114,13 +99,8 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
       dsValid = kFALSE;
     }
 
-    if ( regexec(&reDsp, dir, 3, reMatch, 0) == 0 ) {
-      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
-      char *buf = new char[ len+1 ];
-      memcpy(buf, &dir[reMatch[2].rm_so], len);
-      buf[len] = '\0';
-      destPath = buf;
-      delete[] buf;
+    if (reDsp.Match(dir) == 3) {
+      destPath = reDsp[2];
       AfLogInfo(">> Destination path: %s", destPath.Data());
     }
     else {
@@ -129,13 +109,8 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
       destPath = "/alien";
     }
 
-    if ( regexec(&reUrl, dir, 3, reMatch, 0) == 0 ) {
-      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
-      char *buf = new char[ len+1 ];
-      memcpy(buf, &dir[reMatch[2].rm_so], len);
-      buf[len] = '\0';
-      dsUrl = buf;
-      delete[] buf;
+    if (reUrl.Match(dir) == 3) {
+      dsUrl = reUrl[2];
       AfLogInfo(">> URL: %s", dsUrl.Data());
     }
     else {
@@ -143,17 +118,13 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
       dsValid = kFALSE;
     }
 
-    if ( regexec(&reRw, dir, 0, NULL, 0) == 0 ) {
+    if (reRw.Match(dir) == 3) {
+      AfLogInfo(">> R/W: true");
       rw = kTRUE;
     }
 
-    if ( regexec(&reOpt, dir, 3, reMatch, 0) == 0 ) {
-      Int_t len = reMatch[2].rm_eo - reMatch[2].rm_so;
-      char *buf = new char[ len+1 ];
-      memcpy(buf, &dir[reMatch[2].rm_so], len);
-      buf[len] = '\0';
-      opts = buf;
-      delete[] buf;
+    if (reOpt.Match(dir) == 3) {
+      opts = reOpt[2];
       AfLogInfo(">> Opt: %s", opts.Data());
     }
     else {
@@ -175,12 +146,6 @@ Bool_t AfDataSetManager::ReadConf(const char *cf) {
     }
 
   } // for over xpd.datasetsrc
-
-  regfree(&reDsp);
-  regfree(&reUrl);
-  regfree(&reMss);
-  regfree(&reOpt);
-  regfree(&reRw);
 
   delete dsSrcList;
   delete cfr;

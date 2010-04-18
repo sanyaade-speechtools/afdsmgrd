@@ -1,11 +1,10 @@
 #ifndef AFCONFREADER_H
 #define AFCONFREADER_H
 
-#include <regex.h>
-
 #include "AfLog.h"
 
 #include <Riostream.h>
+#include <TPRegexp.h>
 #include <TList.h>
 #include <TObjString.h>
 #include <TMap.h>
