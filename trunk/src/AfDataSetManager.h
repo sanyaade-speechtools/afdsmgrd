@@ -1,8 +1,6 @@
 #ifndef AFDATASETMANAGER_H
 #define AFDATASETMANAGER_H
 
-#include <regex.h>
-
 #include "AfConfReader.h"
 #include "AfDataSetSrc.h"
 #include "AfLog.h"

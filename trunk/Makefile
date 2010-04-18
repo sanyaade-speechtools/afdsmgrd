@@ -41,7 +41,7 @@ SRCDIR = src
 .PHONY = all
 
 all:
-	@$(MAKE) all -C $(SRCDIR)
+	@$(MAKE) all -C $(SRCDIR) --no-print-directory
 
 .DEFAULT:
-	@$(MAKE) $@ -C $(SRCDIR)
+	@$(MAKE) $@ -C $(SRCDIR) --no-print-directory
