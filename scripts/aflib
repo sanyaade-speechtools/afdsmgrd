@@ -165,10 +165,10 @@ function prn() {
     -o) STR="*** OK! *** $STR" ;;
     -f) STR="*** FTL *** $STR" ;;
   esac
-  if [ "$LABEL" == "<datime>" ]; then
+  if [ "$LABEL" == "" ]; then
     STR="[`Datime`] $STR"
-  elif [ "$LABEL" != "" ]; then
-    STR="[$LABEL] $STR"
+  else
+    STR="[`Datime`] [$LABEL] $STR"
   fi
   echo "$STR"
 }
@@ -228,8 +228,10 @@ function AutoAuth() {
   return 0
 }
 
-# Common init function that only does a couple of checks inside PATH
+# Common init function that only does a couple of checks inside PATH, and
+# prevents asking if the AliEn client should be recompiled
 function Init() {
+  export GSHELL_NO_GCC=1
   export PATH="$ALIEN_BIN:$PATH"
   local REQ=( alien_cp alien-token-init xrdgsiproxy alien_whereis alien_ls \
     openssl )
