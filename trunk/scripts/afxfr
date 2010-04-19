@@ -35,21 +35,39 @@ source `dirname $0`/aflib
 function Copy() {
   local SRC="$1"
   local DEST="$2"
+  local TMPDEST
+
+  # Check if DEST already has the .anew extension
+  local IDX=${#DEST}
+  let IDX-=5
+  if [ "${DEST:IDX}" == ".anew" ]; then
+    TMPDEST="$DEST"
+  else
+    TMPDEST="$DEST.anew"
+  fi
+
+  # Remove any eventually previous failure indicator
   rm -f "$DEST.fail"
+
+  # Eventually creates the destination directory
   mkdir -p `dirname $DEST`
   if [ $? != 0 ]; then
     prn -e "Creation of destination directory failed"
     return 1
   fi
+
   local TMPLOG=`mktemp /tmp/afxfr-alien_cp-XXXXX`
-  alien_cp -s "$SRC" "$DEST" > "$TMPLOG" 2>&1
-  if [ $? == 0 ] && [ -e "$DEST" ]; then
+  alien_cp -s "$SRC" "$TMPDEST" > "$TMPLOG" 2>&1
+  if [ $? == 0 ] && [ -e "$TMPDEST" ]; then
     # Copy went right
     rm "$TMPLOG"
+    if [ "$TMPDEST" != "$DEST" ]; then
+      mv "$TMPDEST" "$DEST"
+    fi
     return 0
   else
     # Copy went bad: output from alien_cp is only shown if an error occured
-    rm -f "$DEST"
+    rm -f "$TMPDEST"
     touch "$DEST.fail"
     prn -e "Output of alien_cp follows:"
     local L
@@ -76,12 +94,19 @@ function Main() {
     local LFN=`PurgeSlashes "$1"`
     local PFN=`PurgeSlashes "$2"`
     LFN=`ConvertToAliEnPath "$LFN"`
-    if [ "$3" != "" ]; then
+    if [ "$3" == "-t" ]; then
+      # Only date and time (useful if run manually)
+      export DATIME="1"
+      export LABEL=""
+    elif [ "$3" != "" ]; then
+      # Only custom label
       export LABEL="$3"
+      export DATIME="0"
     else
       # Create a unique label based on PID and a random number, to distinguish
       # overlapped outputs in logfiles via, e.g, a grep
       export LABEL="`printf '%05d-%05d' $$ $RANDOM`"
+      export DATIME="0"
     fi
   fi
 

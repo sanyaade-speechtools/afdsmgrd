@@ -165,10 +165,11 @@ function prn() {
     -o) STR="*** OK! *** $STR" ;;
     -f) STR="*** FTL *** $STR" ;;
   esac
-  if [ "$LABEL" == "" ]; then
+  if [ "$LABEL" != "" ]; then
+    STR="[$LABEL] $STR"
+  fi
+  if [ "$DATIME" != "0" ]; then
     STR="[`Datime`] $STR"
-  else
-    STR="[`Datime`] [$LABEL] $STR"
   fi
   echo "$STR"
 }
