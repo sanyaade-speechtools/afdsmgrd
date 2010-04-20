@@ -18,7 +18,7 @@
 // This project's includes
 #include "AfLog.h"
 #include "AfConfReader.h"
-#include "AfDataSetManager.h"
+#include "AfDataSetsManager.h"
 
 // ROOT includes
 #include <TSystem.h>
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
 
   //AfLogOk("If you are here, everything went fine");
 
-  AfDataSetManager *dsm = new AfDataSetManager();
+  AfDataSetsManager *dsm = new AfDataSetsManager();
 
   if (dropUser) {
     dsm->SetSuid(kTRUE);
@@ -229,12 +229,7 @@ int main(int argc, char *argv[]) {
     return 22;
   }
 
-  if (runOnce) {
-    dsm->Loop(1);
-  }
-  else {
-    dsm->Loop();
-  }
+  dsm->Loop(runOnce);
 
   delete dsm;
 
