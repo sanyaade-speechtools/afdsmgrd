@@ -19,17 +19,18 @@ export OBJEXT = .o
 export CXXEXT = .cc
 export HEXT = .h
 
-export CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g
+export SVNREV = $(shell LANG=C svn info 2> /dev/null|grep Revision:|cut -b 11-)
+export CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g -DSVNREV=$(SVNREV)
 
 export ROOTLIBS = $(shell $(ROOTCFG) --libs)
 export EXTRALIBS = Proof
 
 export PROG = afdsmgrd
-export MODS = AfConfReader AfDataSetManager AfDataSetSrc AfLog
+export MODS = AfConfReader AfDataSetsManager AfDataSetSrc AfLog AfStageUrl
 
 export MAIN = $(PROG)
 
-export GENDICT = AfDataSetSrc
+export GENDICT = AfDataSetSrc AfStageUrl
 export DICT = AfDict
 
 export INSTALLPATH = $(ROOTSYS)/bin

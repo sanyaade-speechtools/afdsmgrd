@@ -20,6 +20,7 @@ class AfLog {
   public:
     static void Init(Bool_t debug = kFALSE);
     void        SetDebug(Bool_t debug);
+    Bool_t      GetDebug() { return fDebug; };
     Bool_t      SetFile(const char *fn);
     void        SetStdErr();
     void        Debug(const char *fmt, ...);
@@ -28,6 +29,7 @@ class AfLog {
     void        Warning(const char *fmt, ...);
     void        Error(const char *fmt, ...);
     void        Fatal(const char *fmt, ...);
+	~AfLog();
 
   private:
 
@@ -36,7 +38,6 @@ class AfLog {
     void        Format(msgType type, const char *fmt, va_list args);
     Int_t       CheckRotate();
     AfLog(Bool_t debug = kFALSE);
-	~AfLog();
 
     // Constants
     FILE *kStdErr;
