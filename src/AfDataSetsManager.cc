@@ -6,11 +6,11 @@ AfDataSetsManager::AfDataSetsManager() {
   fSuid = false;
   fReset = false;
   fLoopSleep_s = kDefaultLoopSleep_s;
-  fStageQueue = new THashList();
+  fScanDsEvery = kDefaultScanDsEvery;
+  fParallelXfrs = kDefaultParallelXfrs;
+  fStageQueue = new TList();
   fStageQueue->SetOwner();
   fStageCmds = new TList();  // not owner, threads must be cancelled manually
-
-  AfLogOk("#### afdsmgrd rev. %d started its operations ####", SVNREV);
 }
 
 AfDataSetsManager::~AfDataSetsManager() {
@@ -41,13 +41,62 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   }
   else if ( (fLoopSleep_s = loopSleep_s->Atoi()) <= 0 )  {
     AfLogWarning("Invalid value for dsmgrd.sleepsecs (%s), using default (%d)",
-      loopSleep_s, kDefaultLoopSleep_s);
+      loopSleep_s->Data(), kDefaultLoopSleep_s);
     fLoopSleep_s = kDefaultLoopSleep_s;
     delete loopSleep_s;
   }
   else {
     AfLogInfo("Sleep between scans set to %d seconds", fLoopSleep_s);
     delete loopSleep_s;
+  }
+
+  // Scan dataset every X loops
+  TString *scanDsEvery = cfr->GetDir("dsmgrd.scandseveryloops");
+  if (!scanDsEvery) {
+    AfLogWarning("Variable dsmgrd.scandseveryloops not set, using default (%d)",
+      kDefaultScanDsEvery);
+    fScanDsEvery = kDefaultScanDsEvery;
+  }
+  else if ( (fScanDsEvery = scanDsEvery->Atoi()) <= 0 )  {
+    AfLogWarning("Invalid value for dsmgrd.scandseveryloops (%s), using "
+      "default (%d)", scanDsEvery->Data(), kDefaultScanDsEvery);
+    fScanDsEvery = kDefaultScanDsEvery;
+    delete scanDsEvery;
+  }
+  else {
+    AfLogInfo("Datasets are checked every %d loops", fScanDsEvery);
+    delete scanDsEvery;
+  }
+
+  // Number of parallel staging command on the whole facility
+  TString *parallelXfrs = cfr->GetDir("dsmgrd.parallelxfrs");
+  if (!parallelXfrs) {
+    AfLogWarning("Variable dsmgrd.parallelxfrs not set, using default (%d)",
+      kDefaultParallelXfrs);
+    fParallelXfrs = kDefaultParallelXfrs;
+  }
+  else if ( (fParallelXfrs = parallelXfrs->Atoi()) <= 0 )  {
+    AfLogWarning("Invalid value for dsmgrd.parallelxfrs (%s), using "
+      "default (%d)", parallelXfrs->Data(), kDefaultParallelXfrs);
+    fParallelXfrs = kDefaultParallelXfrs;
+    delete parallelXfrs;
+  }
+  else {
+    AfLogInfo("Number of parallel staging commands set to %d", fParallelXfrs);
+    delete parallelXfrs;
+  }
+
+  // Stage command
+  TString *stageCmd = cfr->GetDir("dsmgrd.stagecmd");
+  if (stageCmd) {
+    fStageCmd = *stageCmd;
+    delete stageCmd;
+    AfLogInfo("Staging command is %s", fStageCmd.Data());
+  }
+  else {
+    AfLogFatal("No stage command specified.");
+    delete stageCmd;
+    return kFALSE;
   }
 
   // Which datasets to process? The format is the same of TDataSetManagerFile
@@ -128,7 +177,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     }
 
     if (reRw.Match(dir) == 3) {
-      AfLogInfo(">> R/W: true");
+      AfLogInfo(">> R/W: yes");
       rw = kTRUE;
     }
 
@@ -170,35 +219,39 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
 
 void AfDataSetsManager::Loop(Bool_t runOnce) {
 
-  TIter i(fSrcList);
-  AfDataSetSrc *dsSrc;
+  Int_t loops = fScanDsEvery;
 
   while (kTRUE) {
 
-    AfLogInfo("++++ Started loop over dataset sources ++++");
-    while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
-      dsSrc->Process(fReset);
-    }
-    AfLogInfo("++++ Loop over dataset sources completed ++++");
-
-    if (runOnce) {
-      break;
-    }
-
-    // XXX Staging queue is not processed if running once
-
-    AfLogInfo("++++ Started loop over transfer queue ++++");
-    /*while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
-      dsSrc->Process(fReset);
-    }*/
+    AfLogDebug("++++ Started loop over transfer queue ++++");
     PrintStageList();
     ProcessTransferQueue();
     PrintStageList();
-    AfLogInfo("++++ Loop over transfer queue completed ++++");
+    AfLogDebug("++++ Loop over transfer queue completed ++++");
 
-    i.Reset();
+    if (loops++ == fScanDsEvery) {
 
-    AfLogInfo("Sleeping %d seconds before new loop", fLoopSleep_s),
+      TIter i(fSrcList);
+      AfDataSetSrc *dsSrc;
+
+      AfLogDebug("++++ Started loop over dataset sources ++++");
+      while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
+        dsSrc->Process(fReset);
+      }
+      AfLogDebug("++++ Loop over dataset sources completed ++++");
+
+      if (runOnce) {
+        break;
+      }
+
+      loops = 0;
+    }
+    else {
+      AfLogDebug("Not scanning datasets now: %d sleep(s) left before a new "
+        "dataset scan", fScanDsEvery-loops+1);
+    }
+
+    AfLogDebug("Sleeping %d seconds before a new loop", fLoopSleep_s),
     gSystem->Sleep(fLoopSleep_s * 1000);
   }
 }
@@ -230,7 +283,14 @@ Bool_t AfDataSetsManager::EnqueueUrl(const char *url) {
 }
 
 Bool_t AfDataSetsManager::DequeueUrl(const char *url) {
-  /* TODO */
+
+  AfStageUrl search(url);
+
+  if (fStageQueue->Remove( &search )) {
+    return kTRUE;
+  }
+
+  return kFALSE;
 }
 
 void AfDataSetsManager::PrintStageList() {
@@ -252,8 +312,6 @@ void AfDataSetsManager::PrintStageList() {
 }
 
 void AfDataSetsManager::ProcessTransferQueue() {
-
-  AfLogInfo("Processing transfer queue");
 
   // Loop over all elements:
   //
@@ -280,37 +338,39 @@ void AfDataSetsManager::ProcessTransferQueue() {
     TString url = su->GetUrl();
 
     if (su->GetStageStatus() == kStgStaging) {
-      AfLogDebug(">> %s is currently in threads list, is it true?",
-        url.Data());
+
       TThread *t = dynamic_cast<TThread *>(fStageCmds->FindObject(url.Data()));
       if (t) {
 
         if (t->GetState() == TThread::kRunningState) {
-          AfLogDebug(">>>> YES and it is RUNNING");
+          AfLogDebug("Thread #%ld running for staging %s", t->GetId(),
+            url.Data());
         }
         else if (t->GetState() == TThread::kCanceledState) {
+
+          AfLogDebug("Thread #%ld completed", t->GetId());
+
           Bool_t *retVal = NULL;
           Long_t l = t->Join((void **)&retVal);
 
-          AfLogDebug(">>>> YES but it has finished %s %x %d",
-            (*retVal ? "GOOD" : "BAD"), retVal, *retVal);
-
           if (*retVal) {
+            AfLogOk("Staging completed: %s", url.Data());
             su->SetStageStatus(kStgDone);
           }
           else {
+            AfLogError("Staging failed: %s", url.Data());
             su->SetStageStatus(kStgFail);
           }
 
           delete retVal;
+
           if (!fStageCmds->Remove(t)) {
-            AfLogDebug(">>>> FAIL removing from list");
-          }
-          else {
-            AfLogDebug(">>>> SUCCESSFULLY removed from list");
+            AfLogError(">>>> Failed removing staging thread from list - this "
+              "should not happen!");
           }
 
-          t->Delete();
+          //t->Delete(); // safe to use delete: thread has been cancelled
+          delete t;
         }
 
       }
@@ -324,38 +384,60 @@ void AfDataSetsManager::ProcessTransferQueue() {
 
   i.Reset();
 
-  // Second loop: only look for elements "staging" and check if their
-  // corresponding thread has finished
+  // Second loop: only look for elements "queued" and start thread accordingly
   while ( su = dynamic_cast<AfStageUrl *>(i.Next()) ) {
 
     Int_t nXfr = fStageCmds->GetSize();
 
-    if ((su->GetStageStatus() == kStgQueue) && (nXfr < kParallelXfr)) {
-      TString *url = new TString(su->GetUrl());
-      TThread *t = new TThread(url->Data(),
-        (TThread::VoidRtnFunc_t)&Stage, url);
+    if ((su->GetStageStatus() == kStgQueue) && (nXfr < fParallelXfrs)) {
+
+      TString url = su->GetUrl();
+
+      // Arguments for the staging command: this TObjArray is owner
+      TObjArray *args = new TObjArray(2);  // capacity=2
+      args->SetOwner();
+      args->AddAt(new TObjString(url), 0);  // the url
+      args->AddAt(new TObjString(fStageCmd), 1);     // the cmd
+
+      TThread *t = new TThread(url.Data(), (TThread::VoidRtnFunc_t)&Stage,
+        args);
       fStageCmds->AddLast(t);
       t->Run();
       su->SetStageStatus(kStgStaging);
+      AfLogInfo("Staging started: %s", url.Data());
+      AfLogDebug("Spawned thread #%ld to stage %s", t->GetId(), url.Data());
     }
-
   }
 
 }
 
 void *AfDataSetsManager::Stage(void *args) {
-  TString *url = (TString *)args;
-  TString cmd = Form("xrdstagetool -d 0 %s 2> /dev/null", url->Data());
-  delete url;
+  TObjArray *o = (TObjArray *)args;
+  TString url = dynamic_cast<TObjString *>( o->At(0) )->GetString();
+  TString cmd = dynamic_cast<TObjString *>( o->At(1) )->GetString();
+  delete o;  // owner: TObjStrings are also deleted
+
+  TPMERegexp re("\\$URLTOSTAGE([ \t]|$)", "g");
+  url.Append(" ");
+  if (re.Substitute(cmd, url, kFALSE) == 0) {
+    // If no URLTOSTAGE is found, URL is appended at the end of command by def.
+    cmd.Append(" ");
+    cmd.Append(url);
+  }
+  cmd.Append("2> /dev/null");  // we are only interested in stdout
+
+  AfLogDebug("Thread #%ld is spawning staging command: %s", TThread::SelfId(),
+    cmd.Data());
+
   TString out = gSystem->GetFromPipe(cmd.Data());
+
   Bool_t *retVal = new Bool_t;
   if (out.BeginsWith("OK ")) {
-    AfLogOk("OKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOK");
     *retVal = kTRUE;
   }
   else {
-    AfLogError("ERRERRERRERRERRERRERRERRERRERRERRERRERRERRERR");
     *retVal = kFALSE;
   }
+
   return retVal;
 }

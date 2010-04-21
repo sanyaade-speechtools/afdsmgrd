@@ -174,6 +174,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // From this point on, configuration file and logfile are set
+
+  AfLogOk("##### afdsmgrd rev. %d started its operations #####", SVNREV);
+
   // Drop current effective user: it can revert back to the former at any time,
   // and only when needed
   if (dropUser) {

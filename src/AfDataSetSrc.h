@@ -35,7 +35,7 @@ class AfDataSetSrc : public TObject {
     void  FlattenListOfDataSets();
     void  ProcessDataSet(const char *uri);
     void  ResetDataSet(const char *uri);
-    void  ListDataSetContent(const char *uri, Bool_t debug = kFALSE);
+    void  ListDataSetContent(const char *uri, const char *header, Bool_t debug);
     Int_t TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
     Int_t KeepOnlyFirstUrl(TFileInfo *fi);
     void  DoSuid();

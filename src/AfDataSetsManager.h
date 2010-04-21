@@ -7,6 +7,8 @@
 #include "AfLog.h"
 
 #include <TThread.h>
+#include <TObjArray.h>
+#include <TObjString.h>
 
 class AfDataSetsManager {
 
@@ -31,8 +33,9 @@ class AfDataSetsManager {
     static void *Stage(void *args);
 
     // Private variables
-    static const Int_t  kParallelXfr = 1;
+    static const Int_t  kDefaultParallelXfrs = 1;
     static const Int_t  kDefaultLoopSleep_s = 3600;
+    static const Int_t  kDefaultScanDsEvery = 10;
 
     TList              *fSrcList;
     Bool_t              fSuid;
@@ -40,6 +43,9 @@ class AfDataSetsManager {
     TString             fRedirHost;
     UShort_t            fRedirPort;
     Int_t               fLoopSleep_s;
+    Int_t               fScanDsEvery;
+    TString             fStageCmd;
+    Int_t               fParallelXfrs;
 
     TList              *fStageQueue;
     TList              *fStageCmds;
