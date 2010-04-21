@@ -36,7 +36,7 @@ AfDataSetSrc::~AfDataSetSrc() {
 // Processes all the datasets in this dataset source
 void AfDataSetSrc::Process(Bool_t resetBits) {
 
-  AfLogInfo("+++ Started processing of dataset source %s +++", fUrl.Data());
+  AfLogDebug("+++ Started processing of dataset source %s +++", fUrl.Data());
 
   // Creates a flattened list of dataset URIs
   FlattenListOfDataSets();
@@ -52,11 +52,20 @@ void AfDataSetSrc::Process(Bool_t resetBits) {
     }
   }
 
-  AfLogInfo("+++ Ended processing dataset source %s +++", fUrl.Data());
+  AfLogDebug("+++ Ended processing dataset source %s +++", fUrl.Data());
 
 }
 
-void AfDataSetSrc::ListDataSetContent(const char *uri, Bool_t debug) {
+void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
+  Bool_t debug) {
+
+  if (debug) {
+    AfLogDebug(header);
+  }
+  else {
+    AfLogInfo(header);
+  }
+
   TFileCollection *fc = fManager->GetDataSet(uri);
   TFileInfo *fi;
   TIter i( fc->GetList() );
@@ -81,8 +90,7 @@ void AfDataSetSrc::ListDataSetContent(const char *uri, Bool_t debug) {
 void AfDataSetSrc::ResetDataSet(const char *uri) {
 
   if (gLog->GetDebug()) {
-    AfLogDebug("Dataset %s before reset:", uri);
-    ListDataSetContent(uri, kTRUE);
+    ListDataSetContent(uri, Form("Dataset %s before reset:", uri), kTRUE);
   }
 
   TFileCollection *fc = fManager->GetDataSet(uri);
@@ -118,16 +126,14 @@ void AfDataSetSrc::ResetDataSet(const char *uri) {
   }
 
   if (gLog->GetDebug()) {
-    AfLogDebug("Dataset %s after reset:", uri);
-    ListDataSetContent(uri, kTRUE);
+    ListDataSetContent(uri, Form("Dataset %s after reset:", uri), kTRUE);
   }
 }
 
 void AfDataSetSrc::ProcessDataSet(const char *uri) {
 
   if (gLog->GetDebug()) {
-    AfLogDebug("Dataset %s before processing:", uri);
-    ListDataSetContent(uri, kTRUE);
+    ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
   }
 
   TFileCollection *fc = fManager->GetDataSet(uri);
@@ -155,12 +161,19 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
       StgStatus_t st = fParentManager->GetStageStatus(url);
 
       if (st == kStgDone) {
-        fi->SetBit( TFileInfo::kStaged );
+        fi->SetBit( TFileInfo::kStaged );  // info is changed in dataset
         fParentManager->DequeueUrl(url);
         changed = kTRUE;
+        AfLogDebug("Dequeued: %s", url);
       }
-      else if ((st == kStgFail) || (st == kStgAbsent)) {
-        fParentManager->EnqueueUrl(url);
+      else if (st == kStgFail) {
+        fParentManager->DequeueUrl(url);  // removed from current position
+        fParentManager->EnqueueUrl(url);  // pushed at the end with status Q
+        AfLogInfo("Requeued (has failed): %s", url);
+      }
+      else if (st == kStgAbsent) {
+        fParentManager->EnqueueUrl(url);  // pushed at the end with status Q
+        AfLogInfo("Queued: %s", url);
       }
     }
 
@@ -185,12 +198,11 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
     }
   }
   else {
-    AfLogInfo("Dataset unmod: %s", uri);
+    AfLogDebug("Dataset unmod: %s", uri);
   }
 
   if (gLog->GetDebug()) {
-    AfLogDebug("Dataset %s after processing:", uri);
-    ListDataSetContent(uri, kTRUE);
+    ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
   }
 }
 
