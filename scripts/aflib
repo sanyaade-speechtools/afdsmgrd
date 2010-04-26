@@ -34,13 +34,13 @@
 
 # Pool prefix mapped to the AliEn root directory: this variable must be escaped
 # like in a regular expression, so that for instance "/" becomes "\/"!
-export POOL_PREFIX="\/alien"
+export POOL_PREFIX="\/pool\/alien"
 
 # Location of the AliEn binaries
-export ALIEN_BIN="/home/xrd/sw/alien-versions/alien/api/bin"
+export ALIEN_BIN="/opt/alien/api/bin"
 
 # The username on AliEn (it is usually "proof" for service certificates)
-export ALIEN_UNAME="dberzano"
+export ALIEN_UNAME="proof"
 
 # Location of the AliEn token
 export TOKEN="/tmp/gclient_token_$UID"
