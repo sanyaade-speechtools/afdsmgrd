@@ -67,6 +67,13 @@ export MAXWAIT=60
 # Number of tries to get the token or the proxy
 export TRIES=3
 
+# Custom variables are now eventually loaded
+export CUSTOM_CONF="`dirname $0`/afconf"
+if [ -r "$CUSTOM_CONF" ]; then
+  source "$CUSTOM_CONF"
+fi
+unset CUSTOM_CONF
+
 #
 # Library functions
 #
