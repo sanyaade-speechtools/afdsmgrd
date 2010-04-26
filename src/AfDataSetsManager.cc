@@ -218,14 +218,14 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   return kTRUE;
 }
 
-void AfDataSetsManager::Reset() {
+void AfDataSetsManager::ProcessAllDataSetsOnce(DsAction_t action) {
 
   TIter i(fSrcList);
   AfDataSetSrc *dsSrc;
 
   AfLogDebug("++++ Started loop over dataset sources ++++");
   while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
-    dsSrc->Process(kTRUE);
+    dsSrc->Process(action);
   }
   AfLogDebug("++++ Loop over dataset sources completed ++++");
 
@@ -244,16 +244,7 @@ void AfDataSetsManager::Loop() {
     AfLogDebug("++++ Loop over transfer queue completed ++++");
 
     if (loops++ == fScanDsEvery) {
-
-      TIter i(fSrcList);
-      AfDataSetSrc *dsSrc;
-
-      AfLogDebug("++++ Started loop over dataset sources ++++");
-      while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
-        dsSrc->Process(kFALSE);
-      }
-      AfLogDebug("++++ Loop over dataset sources completed ++++");
-
+      ProcessAllDataSetsOnce(kDsProcess);
       loops = 0;
     }
     else {

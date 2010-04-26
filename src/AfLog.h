@@ -8,7 +8,8 @@
 #define AfLogFatal(...) gLog->Fatal(__VA_ARGS__)
 #define AfLogDebug(...) gLog->Debug(__VA_ARGS__)
 
-enum msgType { kAfOk, kAfInfo, kAfWarning, kAfError, kAfFatal, kAfDebug };
+typedef enum { kMsgOk, kMsgInfo, kMsgWarning, kMsgError, kMsgFatal, kMsgDebug }
+  MsgType_t;
 
 #include <Riostream.h>
 #include <Varargs.h>
@@ -34,8 +35,8 @@ class AfLog {
   private:
 
     // Methods
-    void        Message(msgType type, const char *fmt, va_list args);
-    void        Format(msgType type, const char *fmt, va_list args);
+    void        Message(MsgType_t type, const char *fmt, va_list args);
+    void        Format(MsgType_t type, const char *fmt, va_list args);
     Int_t       CheckRotate();
     AfLog(Bool_t debug = kFALSE);
 

@@ -89,40 +89,40 @@ Int_t AfLog::CheckRotate() {
 
 }
 
-void AfLog::Message(msgType type, const char *fmt, va_list args) {
+void AfLog::Message(MsgType_t type, const char *fmt, va_list args) {
   Int_t r = CheckRotate();
   va_list dummy = {};
   if (r == -1) {
-    Format(kAfError, "Can't rotate logfile!", dummy);
+    Format(kMsgError, "Can't rotate logfile!", dummy);
   }
   else if (r == 1) {
-    Format(kAfOk, "Logfile rotated", dummy);
+    Format(kMsgOk, "Logfile rotated", dummy);
   }
   // 0 == no need to rotate
   Format(type, fmt, args);
 }
 
-void AfLog::Format(msgType type, const char *fmt, va_list args) {
+void AfLog::Format(MsgType_t type, const char *fmt, va_list args) {
 
   char prefix[4];
 
   switch (type) {
-    case kAfOk:
+    case kMsgOk:
       strcpy(prefix, "OK!");
     break;
-    case kAfWarning:
+    case kMsgWarning:
       strcpy(prefix, "WRN");
     break;
-    case kAfInfo:
+    case kMsgInfo:
       strcpy(prefix, "INF");
     break;
-    case kAfError:
+    case kMsgError:
       strcpy(prefix, "ERR");
     break;
-    case kAfFatal:
+    case kMsgFatal:
       strcpy(prefix, "FTL");
     break;
-    case kAfDebug:
+    case kMsgDebug:
       strcpy(prefix, "DBG");
     break;
   }
@@ -141,7 +141,7 @@ void AfLog::Debug(const char *fmt, ...) {
   if (fDebug) {
     va_list args;
     va_start(args, fmt);
-    Message(kAfDebug, fmt, args);
+    Message(kMsgDebug, fmt, args);
     va_end(args);
   }
 }
@@ -149,34 +149,34 @@ void AfLog::Debug(const char *fmt, ...) {
 void AfLog::Info(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kAfInfo, fmt, args);
+  Message(kMsgInfo, fmt, args);
   va_end(args);
 }
 
 void AfLog::Ok(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kAfOk, fmt, args);
+  Message(kMsgOk, fmt, args);
   va_end(args);
 }
 
 void AfLog::Warning(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kAfWarning, fmt, args);
+  Message(kMsgWarning, fmt, args);
   va_end(args);
 }
 
 void AfLog::Error(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kAfError, fmt, args);
+  Message(kMsgError, fmt, args);
   va_end(args);
 }
 
 void AfLog::Fatal(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kAfFatal, fmt, args);
+  Message(kMsgFatal, fmt, args);
   va_end(args);
 }
