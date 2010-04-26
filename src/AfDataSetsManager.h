@@ -25,7 +25,7 @@ class AfDataSetsManager {
     Bool_t EnqueueUrl(const char *url);
     Bool_t DequeueUrl(const char *url);
     void ProcessTransferQueue();
-    void PrintStageList();
+    void PrintStageList(const char *header, Bool_t debug);
 
   private:
 
@@ -48,6 +48,11 @@ class AfDataSetsManager {
 
     TList              *fStageQueue;
     TList              *fStageCmds;
+
+    Int_t               fLastQueue;
+    Int_t               fLastStaging;
+    Int_t               fLastFail;
+    Int_t               fLastDone;
 };
 
 #endif // AFDATASETSMANAGER_H
