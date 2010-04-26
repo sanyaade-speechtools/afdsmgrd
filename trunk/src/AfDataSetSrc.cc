@@ -158,7 +158,7 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
       }
 
       TUrl url( fi->GetCurrentUrl()->GetUrl() );
-      url.SetAnchor("");  // strip #stuff
+      url.SetAnchor("");  // download the full file, not only the #Anchor.root
       const char *surl = url.GetUrl();
       StgStatus_t st = fParentManager->GetStageStatus(surl);
 

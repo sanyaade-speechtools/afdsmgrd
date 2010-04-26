@@ -62,15 +62,20 @@ Int_t AfLog::CheckRotate() {
   fDatime->Set();
 
   if ( fDatime->GetDate() > fLastRotated->GetDate() ) {
-    char buf[200];
+  //if ( fDatime->GetTime() != fLastRotated->GetTime() ) {
 
     // Archived logfile has yesterday's date
     fDatime->Set( fDatime->Convert() - 86400 );
-    snprintf(buf, 200, "%s.%04u%02u%02u", fLogFileName, fDatime->GetYear(),
+
+    TString newFn = Form("%s.%04u%02u%02u", fLogFileName, fDatime->GetYear(),
       fDatime->GetMonth(), fDatime->GetDay());
 
+    //TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName,
+    //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
+    //  fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
+
     fclose(fLogFile);
-    Int_t rRen = gSystem->Rename( fLogFileName, buf );
+    Int_t rRen = gSystem->Rename( fLogFileName, newFn.Data() );
     // TODO: add compression here
 
     bool rSet = SetFile(fLogFileName);

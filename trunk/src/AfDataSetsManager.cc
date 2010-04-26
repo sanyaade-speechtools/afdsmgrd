@@ -10,6 +10,8 @@ AfDataSetsManager::AfDataSetsManager() {
   fStageQueue = new TList();
   fStageQueue->SetOwner();
   fStageCmds = new TList();  // not owner, threads must be cancelled manually
+
+  fLastQueue = fLastStaging = fLastFail = fLastDone = -1;
 }
 
 AfDataSetsManager::~AfDataSetsManager() {
@@ -236,9 +238,9 @@ void AfDataSetsManager::Loop() {
   while (kTRUE) {
 
     AfLogDebug("++++ Started loop over transfer queue ++++");
-    PrintStageList();
+    PrintStageList("Stage queue before processing:", kTRUE);
     ProcessTransferQueue();
-    PrintStageList();
+    PrintStageList("Stage queue after processing:", kTRUE);
     AfLogDebug("++++ Loop over transfer queue completed ++++");
 
     if (loops++ == fScanDsEvery) {
@@ -301,20 +303,35 @@ Bool_t AfDataSetsManager::DequeueUrl(const char *url) {
   return kFALSE;
 }
 
-void AfDataSetsManager::PrintStageList() {
+void AfDataSetsManager::PrintStageList(const char *header, Bool_t debug) {
 
-  if (!gLog->GetDebug()) {
+  if ((debug) && (!gLog->GetDebug())) {
     return;
   }
 
   TIter i( fStageQueue );
   AfStageUrl *su;
 
-  AfLogDebug("Staging queue has %d element(s) (D=done, Q=queued, S=staging, "
-    "F=fail):",
-    fStageQueue->GetSize());
+  TString summary = Form("Staging queue has %d element(s) (D=done, Q=queued, "
+    "S=staging, F=failed):", fStageQueue->GetSize());
+
+  if (debug) {
+    AfLogDebug(header);
+    AfLogDebug(summary);
+  }
+  else {
+    AfLogInfo(header);
+    AfLogInfo(summary);
+  }
+
   while ( su = dynamic_cast<AfStageUrl *>(i.Next()) ) {
-    AfLogDebug(">> %c | %s", su->GetStageStatus(), su->GetUrl().Data());
+    TString itm = Form(">> %c | %s", su->GetStageStatus(), su->GetUrl().Data());
+    if (debug) {
+      AfLogDebug(itm);
+    }
+    else {
+      AfLogInfo(itm);
+    }
   }
 
 }
@@ -392,6 +409,13 @@ void AfDataSetsManager::ProcessTransferQueue() {
 
   i.Reset();
 
+  Int_t nStaging;
+  Int_t nQueue;
+  Int_t nFail;
+  Int_t nDone;
+
+  nStaging = nQueue = nFail = nDone = 0;
+
   // Second loop: only look for elements "queued" and start thread accordingly
   while ( su = dynamic_cast<AfStageUrl *>(i.Next()) ) {
 
@@ -414,7 +438,32 @@ void AfDataSetsManager::ProcessTransferQueue() {
       su->SetStageStatus(kStgStaging);
       AfLogInfo("Staging started: %s", url.Data());
       AfLogDebug("Spawned thread #%ld to stage %s", t->GetId(), url.Data());
+
+      nStaging++;
     }
+    else {
+
+      switch( su->GetStageStatus() ) {
+        case kStgQueue:   nQueue++;   break;
+        case kStgStaging: nStaging++; break;
+        case kStgDone:    nDone++;    break;
+        case kStgFail:    nFail++;    break;
+      }
+
+    }
+  }
+
+  // Eventually print statistics (only if changed since last time)
+  if ((nStaging != fLastStaging) || (nQueue != fLastQueue) || 
+    (nDone != fLastDone) || (nFail != fLastFail)) {
+
+    AfLogInfo("Elements in queue: Queued=%d | Staging=%d | Done=%d | "
+      "Failed=%d", nQueue, nStaging, nDone, nFail);
+
+    fLastStaging = nStaging;
+    fLastQueue = nQueue;
+    fLastDone = nDone;
+    fLastFail = nFail;
   }
 
 }
