@@ -1,6 +1,8 @@
 #ifndef AFDATASETSRC_H
 #define AFDATASETSRC_H
 
+typedef enum { kDsVerify, kDsReset, kDsProcess } DsAction_t;
+
 #include "AfLog.h"
 #include "AfDataSetsManager.h"
 
@@ -22,7 +24,7 @@ class AfDataSetSrc : public TObject {
     AfDataSetSrc();
     AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
       Bool_t suid, AfDataSetsManager *parentManager);
-    void Process(Bool_t resetBits = kFALSE);
+    void Process(DsAction_t action);
     void SetDsProcessList(TList *dsList);
     ~AfDataSetSrc();
 
@@ -35,6 +37,7 @@ class AfDataSetSrc : public TObject {
     void  FlattenListOfDataSets();
     void  ProcessDataSet(const char *uri);
     void  ResetDataSet(const char *uri);
+    void  VerifyDataSet(const char *uri);
     void  ListDataSetContent(const char *uri, const char *header, Bool_t debug);
     Int_t TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
     Int_t KeepOnlyFirstUrl(TFileInfo *fi);
