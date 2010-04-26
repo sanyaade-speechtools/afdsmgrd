@@ -74,7 +74,7 @@ export TRIES=3
 # Tells if AliEn token will be expired after TOL seconds (gives a better control
 # than alien-token-info)
 function IsTokenExpiring() {
-  if [ -e "$TOKEN" ]; then
+  if [ -e "$ALIEN_ENV" ] && [ -e "$TOKEN" ]; then
     # These times are Unix timestamps (no timezone-dependant) in seconds
     local EXP=`grep '^Expiretime = ' $TOKEN | cut -b14-`
     local NOW=`date +%s`

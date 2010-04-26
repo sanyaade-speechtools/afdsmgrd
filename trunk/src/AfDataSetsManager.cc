@@ -4,7 +4,6 @@ AfDataSetsManager::AfDataSetsManager() {
   fSrcList = new TList();
   fSrcList->SetOwner();
   fSuid = false;
-  fReset = false;
   fLoopSleep_s = kDefaultLoopSleep_s;
   fScanDsEvery = kDefaultScanDsEvery;
   fParallelXfrs = kDefaultParallelXfrs;
@@ -217,7 +216,20 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   return kTRUE;
 }
 
-void AfDataSetsManager::Loop(Bool_t runOnce) {
+void AfDataSetsManager::Reset() {
+
+  TIter i(fSrcList);
+  AfDataSetSrc *dsSrc;
+
+  AfLogDebug("++++ Started loop over dataset sources ++++");
+  while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
+    dsSrc->Process(kTRUE);
+  }
+  AfLogDebug("++++ Loop over dataset sources completed ++++");
+
+}
+
+void AfDataSetsManager::Loop() {
 
   Int_t loops = fScanDsEvery;
 
@@ -236,13 +248,9 @@ void AfDataSetsManager::Loop(Bool_t runOnce) {
 
       AfLogDebug("++++ Started loop over dataset sources ++++");
       while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
-        dsSrc->Process(fReset);
+        dsSrc->Process(kFALSE);
       }
       AfLogDebug("++++ Loop over dataset sources completed ++++");
-
-      if (runOnce) {
-        break;
-      }
 
       loops = 0;
     }

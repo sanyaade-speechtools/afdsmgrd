@@ -16,10 +16,10 @@ class AfDataSetsManager {
 
     AfDataSetsManager();
     ~AfDataSetsManager();
-    void   Loop(Bool_t runOnce);
+    void   Loop();
+    void   Reset();
     Bool_t ReadConf(const char *cf);
-    void   SetSuid(bool suid = kTRUE)          { fSuid = suid; }
-    void   SetResetDataSets(bool suid = kTRUE) { fReset = suid; }
+    void   SetSuid(bool suid = kTRUE) { fSuid = suid; }
 
     StgStatus_t GetStageStatus(const char *url);
     Bool_t EnqueueUrl(const char *url);
@@ -39,7 +39,6 @@ class AfDataSetsManager {
 
     TList              *fSrcList;
     Bool_t              fSuid;
-    Bool_t              fReset;
     TString             fRedirHost;
     UShort_t            fRedirPort;
     Int_t               fLoopSleep_s;

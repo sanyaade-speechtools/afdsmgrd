@@ -122,7 +122,7 @@ void AfDataSetSrc::ResetDataSet(const char *uri) {
     AfLogError("Dataset reset: %s, but can't write (check permissions)", uri);
   }
   else {
-    AfLogOk("Dataset reset: %s", uri);
+    AfLogOk("Dataset reset: %s (WriteDataSet -> %d)", uri, r);
   }
 
   if (gLog->GetDebug()) {
@@ -157,23 +157,25 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
         changed = kTRUE;
       }
 
-      const char *url = fi->GetCurrentUrl()->GetUrl();
-      StgStatus_t st = fParentManager->GetStageStatus(url);
+      TUrl url( fi->GetCurrentUrl()->GetUrl() );
+      url.SetAnchor("");  // strip #stuff
+      const char *surl = url.GetUrl();
+      StgStatus_t st = fParentManager->GetStageStatus(surl);
 
       if (st == kStgDone) {
         fi->SetBit( TFileInfo::kStaged );  // info is changed in dataset
-        fParentManager->DequeueUrl(url);
+        fParentManager->DequeueUrl(surl);
         changed = kTRUE;
-        AfLogDebug("Dequeued: %s", url);
+        AfLogDebug("Dequeued: %s", surl);
       }
       else if (st == kStgFail) {
-        fParentManager->DequeueUrl(url);  // removed from current position
-        fParentManager->EnqueueUrl(url);  // pushed at the end with status Q
-        AfLogInfo("Requeued (has failed): %s", url);
+        fParentManager->DequeueUrl(surl);  // removed from current position
+        fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
+        AfLogInfo("Requeued (has failed): %s", surl);
       }
       else if (st == kStgAbsent) {
-        fParentManager->EnqueueUrl(url);  // pushed at the end with status Q
-        AfLogInfo("Queued: %s", url);
+        fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
+        AfLogInfo("Queued: %s", surl);
       }
     }
 
@@ -194,7 +196,7 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
       AfLogError("Dataset modif: %s, but can't write (check permissions)", uri);
     }
     else {
-      AfLogOk("Dataset saved: %s", uri);
+      AfLogOk("Dataset saved: %s (WriteDataSet -> %d)", uri, r);
     }
   }
   else {

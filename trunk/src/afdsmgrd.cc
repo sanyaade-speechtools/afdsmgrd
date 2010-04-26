@@ -40,7 +40,6 @@ int main(int argc, char *argv[]) {
   char *dropUser = NULL;
   char *dropGroup = NULL;
   bool bkg = kFALSE;
-  bool runOnce = kFALSE;
   bool resetDs = kFALSE;
   bool showRootMsg = kFALSE;
   bool debugMsg = kFALSE;
@@ -65,7 +64,6 @@ int main(int argc, char *argv[]) {
 
       case 'r':
         resetDs = kTRUE;
-        runOnce = kTRUE;  // implied
       break;
 
       case 't':
@@ -74,10 +72,6 @@ int main(int argc, char *argv[]) {
 
       case 'd':
         debugMsg = kTRUE;
-      break;
-
-      case 'o':
-        runOnce = kTRUE;
       break;
 
       case '?':
@@ -224,16 +218,17 @@ int main(int argc, char *argv[]) {
     dsm->SetSuid(kTRUE);
   }
 
-  if (resetDs) {
-    dsm->SetResetDataSets(kTRUE);
-  }
-
   if ( !dsm->ReadConf(confFile.Data()) ) {
     delete dsm;
     return 22;
   }
 
-  dsm->Loop(runOnce);
+  if (resetDs) {
+    dsm->Reset();
+  }
+  else {
+    dsm->Loop();
+  }
 
   delete dsm;
 
