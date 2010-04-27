@@ -1,0 +1,5 @@
+#summary afdsmgrd - Dataset management for PROOF-based analysis facilities
+
+= afdsmgrd manual =
+
+  * [http://newton.ph.unito.it/~berzano/ afdsmgrd manual]
