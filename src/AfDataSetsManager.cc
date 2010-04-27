@@ -448,8 +448,8 @@ void AfDataSetsManager::ProcessTransferQueue() {
   if ((nStaging != fLastStaging) || (nQueue != fLastQueue) || 
     (nDone != fLastDone) || (nFail != fLastFail)) {
 
-    AfLogInfo("Elements in queue: Queued=%d | Staging=%d | Done=%d | "
-      "Failed=%d", nQueue, nStaging, nDone, nFail);
+    AfLogInfo("Elements in queue: Total=%d | Queued=%d | Staging=%d | Done=%d | "
+      "Failed=%d", nQueue+nStaging+nDone+nFail, nQueue, nStaging, nDone, nFail);
 
     fLastStaging = nStaging;
     fLastQueue = nQueue;

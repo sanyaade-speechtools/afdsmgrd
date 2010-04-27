@@ -195,11 +195,14 @@ void AfDataSetSrc::ResetDataSet(const char *uri) {
   Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
     TDataSetManager::kFileMustExist);
   UndoSuid();
+
+  AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
+
   if (r == 0) {
     AfLogError("Dataset reset: %s, but can't write (check permissions)", uri);
   }
   else {
-    AfLogOk("Dataset reset: %s (WriteDataSet -> %d)", uri, r);
+    AfLogOk("Dataset reset: %s", uri);
   }
 
   if (gLog->GetDebug()) {
@@ -241,6 +244,13 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
 
       if (st == kStgDone) {
         fi->SetBit( TFileInfo::kStaged );  // info is changed in dataset
+
+        TUrl *realUrl = GetRealUrl( fi->GetCurrentUrl() );
+        if (realUrl) {
+          fi->AddUrl( realUrl->GetUrl(), kTRUE );  // kTRUE = first elm of list
+          delete realUrl;
+        }
+
         fParentManager->DequeueUrl(surl);
         changed = kTRUE;
         AfLogDebug("Dequeued: %s", surl);
@@ -260,6 +270,10 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
 
   // Save the modified dataset
   if (changed) {
+
+    // Update the count of staged/corrupted files
+    fc->Update();
+
     TString group, user, dsName;
     fManager->ParseUri(uri, &group, &user, &dsName);
 
@@ -269,11 +283,13 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
       TDataSetManager::kFileMustExist);
     UndoSuid();
 
+    AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
+
     if (r == 0) {
       AfLogError("Dataset modif: %s, but can't write (check permissions)", uri);
     }
     else {
-      AfLogOk("Dataset saved: %s (WriteDataSet -> %d)", uri, r);
+      AfLogOk("Dataset saved: %s", uri);
     }
   }
   else {
@@ -437,4 +453,16 @@ void AfDataSetSrc::UndoSuid() {
     AfLogFatal("Can't drop privileges!");
     gSystem->Exit(51);
   }
+}
+
+TUrl *AfDataSetSrc::GetRealUrl(TUrl *url) {
+  TFile *f = TFile::Open(url->GetUrl());
+  if (f) {
+    TUrl *realUrl = new TUrl( const_cast<TUrl *>( f->GetEndpointUrl() )->GetUrl() );
+    realUrl->SetAnchor(url->GetAnchor());
+    f->Close();
+    return realUrl;
+  }
+
+  return NULL;
 }
