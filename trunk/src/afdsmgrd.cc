@@ -41,11 +41,10 @@ int main(int argc, char *argv[]) {
   char *dropGroup = NULL;
   bool bkg = kFALSE;
   bool resetDs = kFALSE;
-  bool verifyDs = kFALSE;
   bool showRootMsg = kFALSE;
   bool debugMsg = kFALSE;
 
-  while ((c = getopt(argc, argv, "bl:c:R:Vrtd")) != -1) {
+  while ((c = getopt(argc, argv, "bl:c:R:rtd")) != -1) {
     switch (c) {
       case 'b':
         bkg = kTRUE;
@@ -65,10 +64,6 @@ int main(int argc, char *argv[]) {
 
       case 'r':
         resetDs = kTRUE;
-      break;
-
-      case 'V':
-        verifyDs = kTRUE;
       break;
 
       case 't':
@@ -156,12 +151,6 @@ int main(int argc, char *argv[]) {
 
   // After having the logfile, we should check the rest!
 
-  // Verify and Reset together?
-  if ((verifyDs) && (resetDs)) {
-    AfLogFatal("Either one of '-V' (verify) or '-r' (reset) should be chosen.");
-    return 15;
-  }
-
   // Configuration file checks
   if (confFile.IsNull()) {
     AfLogFatal("Configuration file is compulsory");
@@ -236,9 +225,6 @@ int main(int argc, char *argv[]) {
 
   if (resetDs) {
     dsm->ProcessAllDataSetsOnce(kDsReset);
-  }
-  else if (verifyDs) {
-    dsm->ProcessAllDataSetsOnce(kDsVerify);
   }
   else {
     dsm->Loop();

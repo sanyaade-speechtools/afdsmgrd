@@ -53,10 +53,6 @@ void AfDataSetSrc::Process(DsAction_t action) {
       case kDsProcess:
         ProcessDataSet( s->GetString().Data() );
       break;
-
-      case kDsVerify:
-        VerifyDataSet( s->GetString().Data() );
-      break;
     }
   }
 
@@ -95,75 +91,6 @@ void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
   }
 }
 
-void AfDataSetSrc::VerifyDataSet(const char *uri) {
-
-  if (gLog->GetDebug()) {
-    ListDataSetContent(uri, Form("Dataset %s before verify:", uri), kTRUE);
-  }
-
-  TFileCollection *fc = fManager->GetDataSet(uri);
-
-  // Preliminar verification of dataset: for marking as staged files that
-  // already are
-
-  // Return code of ScanDataSet:
-  //
-  // Error conditions:
-  //  * -1 : dataset not found
-  //  * -2 : dataset can not be written after verification
-  //
-  // Success conditions:
-  //  *  1 : dataset was not changed
-  //  *  2 : dataset was changed
-
-  // Please note that ScanDataSet has two overloaded methods: this one does not
-  // write automatically the dataset upon verification, while the other one does
-
-  // We need to write the results, so elevate permissions here
-
-  DoSuid();
-
-  if ( fManager->ScanDataSet(fc, TDataSetManager::kReopen) >= 0 ) {
-    TString group, user, dsName;
-    fManager->ParseUri(uri, &group, &user, &dsName);
-    if ( fManager->WriteDataSet(group, user, dsName, fc,
-      TDataSetManager::kFileMustExist) >= 0 ) {
-      AfLogOk("Dataset %s verified", uri);
-    }
-    else {
-      AfLogError("Dataset %s verified but can't save (check permissions)", uri);
-    }
-  }
-  else {
-    AfLogError("Dataset %s verification failed (check permissions)", uri);
-  }
-
-  UndoSuid();
-
-  /*switch (r) {
-    case -2:
-      AfLogError("Dataset %s can not be written after verification, "
-        "check permissions", uri);
-    break;
-
-    case -1:
-      AfLogError("Dataset %s not found", uri);
-    break;
-
-    case 1:
-      AfLogOk("Dataset %s left unchanged", uri);
-    break;
-
-    case 2:
-      AfLogOk("Dataset %s verified and saved", uri);
-    break;
-  }*/
-
-  if (gLog->GetDebug()) {
-    ListDataSetContent(uri, Form("Dataset %s after verify:", uri), kTRUE);
-  }
-}
-
 void AfDataSetSrc::ResetDataSet(const char *uri) {
 
   if (gLog->GetDebug()) {
@@ -181,11 +108,9 @@ void AfDataSetSrc::ResetDataSet(const char *uri) {
   TFileInfo *fi;
   TIter i( fc->GetList() );
 
-  Int_t countChanged = 0;
-
   while (fi = dynamic_cast<TFileInfo *>(i.Next())) {
-    KeepOnlyFirstUrl( fi );
-    countChanged += TranslateUrl(fi, kUrlRoot);
+    KeepOnlyLastUrl( fi );
+    TranslateUrl(fi, kUrlRoot);
   }
 
   // Save the modified dataset
@@ -302,17 +227,18 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
 }
 
 // Returns number of URLs removed
-Int_t AfDataSetSrc::KeepOnlyFirstUrl(TFileInfo *fi) {
+Int_t AfDataSetSrc::KeepOnlyLastUrl(TFileInfo *fi) {
 
   TList *urlList = new TList();
   urlList->SetOwner();
   Int_t count = 0;
+  Int_t nUrls = fi->GetNUrls();
   TUrl *url;
 
   fi->ResetUrl();
 
   while (url = fi->NextUrl()) {
-    if (count++ > 0) {
+    if (++count < nUrls) {
       urlList->Add( new TObjString(url->GetUrl()) );
     }
   }
