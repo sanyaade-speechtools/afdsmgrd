@@ -1,7 +1,7 @@
 #ifndef AFDATASETSRC_H
 #define AFDATASETSRC_H
 
-typedef enum { kDsVerify, kDsReset, kDsProcess } DsAction_t;
+typedef enum { kDsReset, kDsProcess } DsAction_t;
 
 #include "AfLog.h"
 #include "AfDataSetsManager.h"
@@ -41,7 +41,7 @@ class AfDataSetSrc : public TObject {
     void  VerifyDataSet(const char *uri);
     void  ListDataSetContent(const char *uri, const char *header, Bool_t debug);
     Int_t TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
-    Int_t KeepOnlyFirstUrl(TFileInfo *fi);
+    Int_t KeepOnlyLastUrl(TFileInfo *fi);
     void  DoSuid();
     void  UndoSuid();
     TUrl *GetRealUrl(TUrl *url);
