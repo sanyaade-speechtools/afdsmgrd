@@ -12,6 +12,7 @@ typedef enum { kDsVerify, kDsReset, kDsProcess } DsAction_t;
 #include <TFileCollection.h>
 #include <TFileInfo.h>
 #include <TUrl.h>
+#include <TFile.h>
 
 // Reciprocal inclusions between AfDataSetSrc and AfDataSetsManager require the
 // following forward declaration
@@ -43,6 +44,7 @@ class AfDataSetSrc : public TObject {
     Int_t KeepOnlyFirstUrl(TFileInfo *fi);
     void  DoSuid();
     void  UndoSuid();
+    TUrl *GetRealUrl(TUrl *url);
 
     // Private variables
     TDataSetManagerFile *fManager;

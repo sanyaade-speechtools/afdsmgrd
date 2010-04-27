@@ -33,7 +33,7 @@ export MAIN = $(PROG)
 export GENDICT = AfDataSetSrc AfStageUrl
 export DICT = AfDict
 
-export INSTALLPATH = $(ROOTSYS)/bin
+export INSTALLPATH = $(PWD)/bin
 
 SRCDIR = src
 
