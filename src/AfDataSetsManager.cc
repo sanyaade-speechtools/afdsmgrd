@@ -47,7 +47,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     delete loopSleep_s;
   }
   else {
-    AfLogInfo("Sleep between scans set to %d seconds", fLoopSleep_s);
+    AfLogInfo("Sleep between scans set to %d second(s)", fLoopSleep_s);
     delete loopSleep_s;
   }
 
@@ -65,7 +65,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     delete scanDsEvery;
   }
   else {
-    AfLogInfo("Datasets are checked every %d loops", fScanDsEvery);
+    AfLogInfo("Datasets are checked every %d loop(s)", fScanDsEvery);
     delete scanDsEvery;
   }
 
@@ -243,11 +243,12 @@ void AfDataSetsManager::Loop() {
     PrintStageList("Stage queue after processing:", kTRUE);
     AfLogDebug("++++ Loop over transfer queue completed ++++");
 
-    if (loops++ == fScanDsEvery) {
+    if (loops == fScanDsEvery) {
       ProcessAllDataSetsOnce(kDsProcess);
-      loops = 0;
+      loops = 1;
     }
     else {
+      loops++;
       AfLogDebug("Not scanning datasets now: %d sleep(s) left before a new "
         "dataset scan", fScanDsEvery-loops+1);
     }
