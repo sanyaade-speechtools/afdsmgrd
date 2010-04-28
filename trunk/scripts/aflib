@@ -81,22 +81,15 @@ unset CUSTOM_CONF
 # Tells if AliEn token will be expired after TOL seconds (gives a better control
 # than alien-token-info)
 function IsTokenExpiring() {
-
-  alien-token-info > /dev/null 2>&1
-  local R=$?
-
-  if [ $R == 0 ] && [ -e "$ALIEN_ENV" ] && [ -e "$TOKEN" ]; then
+  if [ -e "$ALIEN_ENV" ] && [ -e "$TOKEN" ]; then
     # These times are Unix timestamps (no timezone-dependant) in seconds
     local EXP=`grep '^Expiretime = ' $TOKEN | cut -b14-`
     local NOW=`date +%s`
     let EXP=EXP-TOL
     if [ $EXP -gt $NOW ]; then
-      # Will still be valid for a while
       return 0
     fi
   fi
-
-  # Is expiring
   return 1
 }
 
