@@ -89,6 +89,8 @@ void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
     }
 
   }
+
+  delete fc;
 }
 
 void AfDataSetSrc::ResetDataSet(const char *uri) {
@@ -120,6 +122,8 @@ void AfDataSetSrc::ResetDataSet(const char *uri) {
   Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
     TDataSetManager::kFileMustExist);
   UndoSuid();
+
+  delete fc;
 
   AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
 
@@ -170,11 +174,7 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
       if (st == kStgDone) {
         fi->SetBit( TFileInfo::kStaged );  // info is changed in dataset
 
-        TUrl *realUrl = GetRealUrl( fi->GetCurrentUrl() );
-        if (realUrl) {
-          fi->AddUrl( realUrl->GetUrl(), kTRUE );  // kTRUE = first elm of list
-          delete realUrl;
-        }
+        AddRealUrlAndMetaData(fi);
 
         fParentManager->DequeueUrl(surl);
         changed = kTRUE;
@@ -196,7 +196,8 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
   // Save the modified dataset
   if (changed) {
 
-    // Update the count of staged/corrupted files
+    // Update the count of staged/corrupted files; it also updates metadata
+    // which summarizes the metadatas inside the TFileInfos it contains
     fc->Update();
 
     TString group, user, dsName;
@@ -207,6 +208,8 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
     Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
       TDataSetManager::kFileMustExist);
     UndoSuid();
+
+    delete fc;
 
     AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
 
@@ -381,14 +384,39 @@ void AfDataSetSrc::UndoSuid() {
   }
 }
 
-TUrl *AfDataSetSrc::GetRealUrl(TUrl *url) {
+Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
+
+  fi->RemoveMetaData();
+
+  TUrl *url = fi->GetCurrentUrl();
   TFile *f = TFile::Open(url->GetUrl());
-  if (f) {
-    TUrl *realUrl = new TUrl( const_cast<TUrl *>( f->GetEndpointUrl() )->GetUrl() );
-    realUrl->SetAnchor(url->GetAnchor());
-    f->Close();
-    return realUrl;
+
+  if (!f) {
+    return kFALSE;
   }
 
-  return NULL;
+  // Get the real URL
+  TUrl *realUrl = new TUrl( const_cast<TUrl *>( f->GetEndpointUrl() )->GetUrl() );
+  realUrl->SetAnchor(url->GetAnchor());
+  fi->AddUrl( realUrl->GetUrl(), kTRUE );  // kTRUE = first elm of list
+  delete realUrl;
+
+  // Get the associated metadata
+  TIter k( f->GetListOfKeys() );
+  TKey *key;
+
+  while ( key = dynamic_cast<TKey *>(k.Next()) ) {
+    if ( strcmp(key->GetClassName(), "TTree") == 0 ) {
+
+      TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
+      TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
+      meta->SetEntries( tree->GetEntries() );
+      fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
+    }
+  }
+
+  f->Close();
+  delete f;
+
+  return kTRUE;
 }

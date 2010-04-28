@@ -13,6 +13,8 @@ typedef enum { kDsReset, kDsProcess } DsAction_t;
 #include <TFileInfo.h>
 #include <TUrl.h>
 #include <TFile.h>
+#include <TKey.h>
+#include <TTree.h>
 
 // Reciprocal inclusions between AfDataSetSrc and AfDataSetsManager require the
 // following forward declaration
@@ -35,16 +37,16 @@ class AfDataSetSrc : public TObject {
     typedef enum { kUrlRoot = 1, kUrlAliEn = 2 } UrlType_t;
 
     // Private methods
-    void  FlattenListOfDataSets();
-    void  ProcessDataSet(const char *uri);
-    void  ResetDataSet(const char *uri);
-    void  VerifyDataSet(const char *uri);
-    void  ListDataSetContent(const char *uri, const char *header, Bool_t debug);
-    Int_t TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
-    Int_t KeepOnlyLastUrl(TFileInfo *fi);
-    void  DoSuid();
-    void  UndoSuid();
-    TUrl *GetRealUrl(TUrl *url);
+    void   FlattenListOfDataSets();
+    void   ProcessDataSet(const char *uri);
+    void   ResetDataSet(const char *uri);
+    void   VerifyDataSet(const char *uri);
+    void   ListDataSetContent(const char *uri, const char *header, Bool_t debug);
+    Int_t  TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
+    Int_t  KeepOnlyLastUrl(TFileInfo *fi);
+    Bool_t AddRealUrlAndMetaData(TFileInfo *fi);
+    void   DoSuid();
+    void   UndoSuid();
 
     // Private variables
     TDataSetManagerFile *fManager;
