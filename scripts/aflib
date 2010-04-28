@@ -53,8 +53,12 @@ export ALIEN_ENV="/tmp/gclient_env_$UID"
 
 # Expiration "tolerance": check if token or proxy will expire within the next X
 # seconds. This is useful because it may take a long time between the AliEn LFN
-# query and the subsequent transfer
-export TOL=120
+# query and the subsequent transfer. There are two different values for proxy
+# and token because they usually have different durations. The default values
+# are very big because of usually common server downtimes: it's 23h for token
+# and 11h for the proxy
+export TOL_TOKEN=82800
+export TOL_PROXY=39600
 
 # This script waits for other instances of xrdgsiproxy and alien-token-init to
 # quit before asking for a new token, in order to avoid conflicts and multiple
@@ -78,14 +82,14 @@ unset CUSTOM_CONF
 # Library functions
 #
 
-# Tells if AliEn token will be expired after TOL seconds (gives a better control
-# than alien-token-info)
+# Tells if AliEn token will be expired after TOL_TOKEN seconds (gives a better
+# control than alien-token-info)
 function IsTokenExpiring() {
   if [ -e "$ALIEN_ENV" ] && [ -e "$TOKEN" ]; then
     # These times are Unix timestamps (no timezone-dependant) in seconds
     local EXP=`grep '^Expiretime = ' $TOKEN | cut -b14-`
     local NOW=`date +%s`
-    let EXP=EXP-TOL
+    let EXP=EXP-TOL_TOKEN
     if [ $EXP -gt $NOW ]; then
       return 0
     fi
@@ -93,11 +97,11 @@ function IsTokenExpiring() {
   return 1
 }
 
-# Tells if Grid proxy will be expired after TOL seconds - since it is a standard
-# x509 certificate, we can directly ask openssl. It returns 1 both when the
-# proxy is not found or when it is expiring
+# Tells if Grid proxy will be expired after TOL_PROXY seconds - since it is a
+# standard x509 certificate, we can directly ask openssl, because it returns 1
+# both when the proxy is not found or when it is expiring
 function IsProxyExpiring() {
-  openssl x509 -in "$PROXY" -noout -checkend $TOL > /dev/null 2>&1
+  openssl x509 -in "$PROXY" -noout -checkend $TOL_PROXY > /dev/null 2>&1
   return $?
 }
 
