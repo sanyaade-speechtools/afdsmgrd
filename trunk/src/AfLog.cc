@@ -13,6 +13,9 @@ AfLog::~AfLog() {
     delete fLastRotated;
   }
   delete fDatime;
+  if (fLogFile) {
+    fclose(fLogFile);
+  }
 }
 
 void AfLog::Init(bool debug) {
@@ -21,6 +24,12 @@ void AfLog::Init(bool debug) {
   }
   else {
     gLog->Warning("Log facility already initialized!");
+  }
+}
+
+void AfLog::Delete() {
+  if (gLog) {
+    delete gLog;
   }
 }
 

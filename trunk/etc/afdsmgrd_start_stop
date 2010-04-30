@@ -1,0 +1,105 @@
+#!/bin/sh
+
+#
+# Start and stop the afdsmgrd daemon.
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+
+#
+# chkconfig header
+#
+
+# chkconfig: 345 99 0
+# description: afdsmgrd, which stands for Analysis Facility Dataset Manager
+#              Daemon, is a ROOT-based daemon that scans the stored datasets in
+#              order to issue the actual data staging
+#
+# processname: afdsmgrd
+# pidfile: /var/run/afdsmgrd.pid
+
+#
+# LSB header
+#
+
+### BEGIN INIT INFO
+# Provides: afdsmgrd
+# Default-Start: 3 4 5
+# Short-Description: Dataset manager for PROOF-based AFs
+# Description: afdsmgrd, which stands for Analysis Facility Dataset Manager
+#              Daemon, is a ROOT-based daemon that scans the stored datasets in
+#              order to issue the actual data staging
+### END INIT INFO
+
+# Source function library
+if [ -r /etc/init.d/functions ]; then
+  . /etc/init.d/functions
+fi
+
+# Get the configuration variables
+if [ -r /etc/sysconfig/afdsmgrd ]; then
+  . /etc/sysconfig/afdsmgrd
+elif [ -r /etc/default/afdsmgrd ]; then
+  . /etc/default/afdsmgrd
+fi
+
+[ -x $AFDSMGRD_PROG ] || exit 0
+
+RETVAL=0
+PROG=afdsmgrd
+
+start() {
+  echo -n "Starting $PROG..."
+  export LD_LIBRARY_PATH=$AFDSMGRD_LIBS:$LD_LIBRARY_PATH
+  mkdir -p $AFDSMGRD_LOGDIR
+  chown -R $AFDSMGRD_USER:$AFDSMGRD_USER $AFDSMGRD_LOGDIR
+  [ $AFDSMGRD_DEBUG -eq 1 ] && EXTRAOPTS=-d
+  $AFDSMGRD_PROG -c $AFDSMGRD_CONF -R $AFDSMGRD_USER -b -l $AFDSMGRD_LOGFILE \
+    -p $AFDSMGRD_PIDFILE $EXTRAOPTS
+  RETVAL=$?
+  [ $RETVAL -eq 0 ] && echo "done" || echo "failed"
+  return $RETVAL
+}
+
+stop() {
+  [ ! -f $AFDSMGRD_PIDFILE ] && return 0 || true
+  echo -n "Stopping $PROG..."
+  kill -9 $(cat $AFDSMGRD_PIDFILE)
+  RETVAL=$?
+  [ $RETVAL -eq 0 ] && rm -f $AFDSMGRD_PIDFILE
+  [ $RETVAL -eq 0 ] && echo "done" || echo "failed"
+  return $RETVAL
+}
+
+#
+# Entry point
+#
+
+case "$1" in
+  start)
+    start
+  ;;
+  stop)
+    stop
+  ;;
+  status)
+    status afdsmgrd
+    RETVAL=$?
+  ;;
+  restart|reload)
+    stop
+    start
+  ;;
+  condrestart)
+    if [ -f $AFDSMGRD_PIDFILE ]; then
+      stop
+      start
+    fi
+  ;;
+  *)
+     echo  "Usage: $0 {start|stop|status|restart|reload|condrestart}"
+     exit 1
+  ;;
+esac
+
+exit $RETVAL

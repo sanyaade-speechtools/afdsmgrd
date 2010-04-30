@@ -38,11 +38,17 @@ clean:
 	@echo "Cleaning up..."
 	@rm -rf *$(OBJEXT) $(PROG)
 	@rm -f $(DICT)$(CXXEXT) $(DICT)$(HEXT)
+	@rm -f ../Makefile.vars
 
 install: all
-	@echo "Copying $(PROG) to $(INSTALLPATH)..."
+	@echo "Installing $(PROG) to $(PREFIX)..."
+	@mkdir -p $(INSTALLPATH)
 	@cp $(PROG) $(INSTALLPATH)
+	@cp ../etc/afdsmgrd_start_stop $(PREFIX)/etc/init.d/afdsmgrd
+	@cp ../etc/afdsmgrd_sysconfig $(PREFIX)/etc/sysconfig/afdsmgrd
 
 uninstall:
-	@echo "Removing installed binary from $(INSTALLPATH)..."
+	@echo "Removing installed binary and scripts from $(PREFIX)..."
 	@rm -f $(INSTALLPATH)/$(PROG)
+	@rm -f $(PREFIX)/etc/init.d/afdsmgrd
+	@rm -f $(PREFIX)/etc/sysconfig/afdsmgrd
