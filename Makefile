@@ -10,6 +10,9 @@
 
 ### BEGIN OF THE CUSTOMIZABLE SECTION ###
 
+# Extra variables created by the configure script
+include Makefile.vars
+
 export ROOTCFG = $(ROOTSYS)/bin/root-config
 
 export CXX = $(shell $(ROOTCFG) --cxx)
@@ -33,7 +36,7 @@ export MAIN = $(PROG)
 export GENDICT = AfDataSetSrc AfStageUrl
 export DICT = AfDict
 
-export INSTALLPATH = $(PWD)/bin
+export INSTALLPATH = $(PREFIX)/usr/bin
 
 SRCDIR = src
 

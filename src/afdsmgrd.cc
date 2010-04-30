@@ -37,6 +37,7 @@ int main(int argc, char *argv[]) {
 
   TString logFile;
   TString confFile;
+  TString pidFile;
   char *dropUser = NULL;
   char *dropGroup = NULL;
   bool bkg = kFALSE;
@@ -44,7 +45,7 @@ int main(int argc, char *argv[]) {
   bool showRootMsg = kFALSE;
   bool debugMsg = kFALSE;
 
-  while ((c = getopt(argc, argv, "bl:c:R:rtd")) != -1) {
+  while ((c = getopt(argc, argv, ":bl:c:R:p:rtd")) != -1) {
     switch (c) {
       case 'b':
         bkg = kTRUE;
@@ -56,6 +57,10 @@ int main(int argc, char *argv[]) {
 
       case 'l':
         logFile = optarg;
+      break;
+
+      case 'p':
+        pidFile = optarg;
       break;
 
       case 'R':
@@ -74,20 +79,14 @@ int main(int argc, char *argv[]) {
         debugMsg = kTRUE;
       break;
 
-      case '?':
-        switch (optopt) {
-          case 'l':
-          case 'c':
-          case 'R':
-            AfLogFatal("Option '-%c' requires an argument", optopt);
-            return 11;
-          break;
+      case ':':
+        AfLogFatal("Option '-%c' requires an argument", optopt);
+        return 11;
+      break;
 
-          default:
-            AfLogFatal("Unknown option: '-%c'", optopt);
-            return 12;
-          break;
-        }
+      case '?':
+        AfLogFatal("Unknown option: '-%c'", optopt);
+        return 12;
       break;
     } // switch
   } // while
@@ -101,19 +100,14 @@ int main(int argc, char *argv[]) {
   }
 
   // Open logfile just to check if it can be opened
-  if (!logFile.IsNull()) {
-    /*FILE *tmpLogFp = fopen(logFile, "a");
-    if (!tmpLogFp) {
-      AfLogFatal("Can't open logfile \"%s\" for writing", logFile);
-      exit(1);
-    }
-    else {
-      fclose(tmpLogFp);
-    }*/ // TODO
-  }
-  else if (bkg) {
+  if ((logFile.IsNull()) && (bkg)) {
     AfLogFatal("Logfile is compulsory if daemonizing");
     return 13;
+  }
+
+  // Check if PID filename is absolute
+  if ((!pidFile.IsNull()) && (!pidFile.BeginsWith("/"))) {
+    pidFile = Form("%s/%s", gSystem->WorkingDirectory(), pidFile.Data());
   }
 
   // Eventually forking
@@ -150,6 +144,21 @@ int main(int argc, char *argv[]) {
   }
 
   // After having the logfile, we should check the rest!
+
+  // Write PID to the pidfile
+  if (!pidFile.IsNull()) {
+    ofstream pids(pidFile.Data());
+    if (pids) {
+      pids << gSystem->GetPid() << endl;
+      pids.close();
+    }
+    else {
+      AfLogWarning("Can't write process PID on the specified pidfile.");
+    }
+  }
+  else if (bkg) {
+    AfLogWarning("PID file not specified: the PID is %d", gSystem->GetPid());
+  }
 
   // Configuration file checks
   if (confFile.IsNull()) {
@@ -231,6 +240,8 @@ int main(int argc, char *argv[]) {
   }
 
   delete dsm;
+
+  AfLog::Delete();
 
   return 0;
 }
