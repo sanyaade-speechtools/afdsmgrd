@@ -348,6 +348,8 @@ void AfDataSetSrc::FlattenListOfDataSets() {
           //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
 
           // This should give an URI in the form /GROUP/USER/dataset
+          // COMMON user/group mapping is a concept which is used in PROOF only,
+          // here we see the real directory names
           TString dsUri = TDataSetManager::CreateUri( gn->String(),
             un->String(), dn->String() );
           fDsUris->Add( new TObjString(dsUri.Data()) );

@@ -39,13 +39,28 @@ export DICT = AfDict
 export INSTALLPATH = $(PREFIX)/usr/bin
 
 SRCDIR = src
+ETCDIR = etc
 
 ### END OF THE CUSTOMIZABLE SECTION ###
 
-.PHONY = all
+.PHONY = all install uninstall
 
 all:
 	@$(MAKE) all -C $(SRCDIR) --no-print-directory
+
+install:
+	@echo "Copying program to $(BINPREFIX)..."
+	@mkdir -p $(BINPREFIX)
+	@cp $(SRCDIR)/$(PROG) $(BINPREFIX)/$(PROG)
+	@echo "Copying startup variables to $(ETCPREFIX)/sysconfig (doesn't overwrite)..."
+	@mkdir -p $(ETCPREFIX)/sysconfig
+	@yes n | cp -i $(ETCDIR)/$(PROG)_sysconfig $(ETCPREFIX)/sysconfig/$(PROG) 2> /dev/null
+	@echo "Copying example configuration to $(ETCPREFIX)/xrootd..."
+	@mkdir -p $(ETCPREFIX)/xrootd
+	@yes n | cp -i $(ETCDIR)/$(PROG).cf.example $(ETCPREFIX)/xrootd/ 2> /dev/null
+
+uninstall:
+	@echo "Uninstall..."
 
 .DEFAULT:
 	@$(MAKE) $@ -C $(SRCDIR) --no-print-directory
