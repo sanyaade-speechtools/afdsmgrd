@@ -38,7 +38,6 @@ clean:
 	@echo "Cleaning up..."
 	@rm -rf *$(OBJEXT) $(PROG)
 	@rm -f $(DICT)$(CXXEXT) $(DICT)$(HEXT)
-	@rm -f ../Makefile.vars
 
 install: all
 	@echo "Installing $(PROG) to $(PREFIX)..."
