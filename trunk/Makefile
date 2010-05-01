@@ -52,15 +52,22 @@ install:
 	@echo "Copying program to $(BINPREFIX)..."
 	@mkdir -p $(BINPREFIX)
 	@cp $(SRCDIR)/$(PROG) $(BINPREFIX)/$(PROG)
+
 	@echo "Copying startup variables to $(ETCPREFIX)/sysconfig (doesn't overwrite)..."
 	@mkdir -p $(ETCPREFIX)/sysconfig
 	@yes n | cp -i $(ETCDIR)/$(PROG)_sysconfig $(ETCPREFIX)/sysconfig/$(PROG) 2> /dev/null
+
+	@echo "Copying startup script to $(ETCPREFIX)/init.d..."
+	@mkdir -p $(ETCPREFIX)/init.d
+	@cp $(ETCDIR)/$(PROG)_start_stop $(ETCPREFIX)/init.d/$(PROG) 2> /dev/null
+
 	@echo "Copying example configuration to $(ETCPREFIX)/xrootd..."
 	@mkdir -p $(ETCPREFIX)/xrootd
 	@yes n | cp -i $(ETCDIR)/$(PROG).cf.example $(ETCPREFIX)/xrootd/ 2> /dev/null
 
 uninstall:
-	@echo "Uninstall..."
+	@echo "Uninstalling (custom settings will not be deleted)..."
+	@rm -f $(BINPREFIX)/$(PROG) $(ETCPREFIX)/init.d/$(PROG) $(ETCPREFIX)/xrootd/$(PROG).cf.example
 
 .DEFAULT:
 	@$(MAKE) $@ -C $(SRCDIR) --no-print-directory
