@@ -160,7 +160,7 @@ function ConfigCustom() {
     exit 3
   fi
 
-  export BINPREFIX=`PurgeSlashes "$PREFIX/bin"`
+  export BINPREFIX=`PurgeSlashes "$PREFIX/usr/bin"`
   export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`
 }
 
@@ -194,7 +194,7 @@ export AFDSMGRD_LOGDIR=/var/log/afdsmgrd
 export AFDSMGRD_LOGFILE=\$AFDSMGRD_LOGDIR/afdsmgrd.log
 
 # The PID file
-export AFDSMGRD_PIDFILE=/var/run/afdsmgrd
+export AFDSMGRD_PIDFILE=/var/run/afdsmgrd.pid
 
 # Unprivileged user that launches the daemon
 export AFDSMGRD_USER=alicaf
