@@ -5,6 +5,7 @@ AfLog::AfLog(bool debug) {
   fDatime = new TDatime();
   fLastRotated = NULL;
   fDebug = debug;
+  fLogFile = NULL;
   SetStdErr();
 }
 
@@ -13,7 +14,7 @@ AfLog::~AfLog() {
     delete fLastRotated;
   }
   delete fDatime;
-  if (fLogFile) {
+  if ((fLogFile) && (fLogFile != kStdErr)) {
     fclose(fLogFile);
   }
 }
@@ -34,6 +35,12 @@ void AfLog::Delete() {
 }
 
 bool AfLog::SetFile(const char *fn) {
+
+  // Close previously opened file, if one
+  if ((fLogFile) && (fLogFile != kStdErr)) {
+    fclose(fLogFile);
+  }
+
   fLogFile = fopen(fn, "a");
   if (!fLogFile) {
     SetStdErr();
@@ -53,8 +60,11 @@ bool AfLog::SetFile(const char *fn) {
 }
 
 void AfLog::SetStdErr() {
+  if ((fLogFile) && (fLogFile != kStdErr)) {
+    fclose(fLogFile);
+  }
   fLogFile = kStdErr;
-  fLogFileName = NULL;
+  fLogFileName = "";
   fRotateable = kFALSE;
   if (fLastRotated) {
     delete fLastRotated;
@@ -62,6 +72,14 @@ void AfLog::SetStdErr() {
   }
 }
 
+// Return values:
+//   0 : not rotated
+//   1 : rotated
+//   2 : rotated but not compressed
+//  -1 : can't rename, output still appended to old file
+//  -2 : can't rename and can't reopen, output on stderr
+//  -3 : renamed and compressed but can't open file, output on stderr
+//  -4 : renamed but not compressed and can't open file, output on stderr
 Int_t AfLog::CheckRotate() {
 
   if (!fRotateable) {
@@ -76,35 +94,62 @@ Int_t AfLog::CheckRotate() {
     // Archived logfile has yesterday's date
     fDatime->Set( fDatime->Convert() - 86400 );
 
-    TString newFn = Form("%s.%04u%02u%02u", fLogFileName, fDatime->GetYear(),
-      fDatime->GetMonth(), fDatime->GetDay());
+    TString newFn = Form("%s.%04u%02u%02u", fLogFileName.Data(),
+      fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay());
 
-    //TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName,
+    //TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName.Data(),
     //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
     //  fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
 
-    fclose(fLogFile);
-    Int_t rRen = gSystem->Rename( fLogFileName, newFn.Data() );
-    // TODO: add compression here
+    // It is not allowed to close the log: we need to switch to stderr for a
+    // moment to close the opened file, but before that we save the name of the
+    // opened file
+    TString realLogFn = fLogFileName;
+    SetStdErr();
+    
+    //Printf("Rename %s to %s", realLogFn.Data(), newFn.Data());
 
-    bool rSet = SetFile(fLogFileName);
-
-    if ((rRen == -1) || (!rSet)) {
+    if (gSystem->Rename(realLogFn.Data(), newFn.Data()) == -1) {
+      // Revert to the old logfile if rename failed
+      if ( !SetFile(realLogFn.Data()) ) {
+        SetStdErr();
+        return -2;
+      }
       return -1;
+    }
+
+    // bzip2 command must be in path
+    Int_t rCmp = gSystem->Exec( Form("bzip2 -9 \"%s\" > /dev/null 2>&1",
+      newFn.Data()) );
+
+    // Redirect again the output on the expected original file, which is now
+    // new and empty
+    if ( !SetFile(realLogFn.Data()) ) {
+      SetStdErr();
+      if (rCmp != 0) {
+        return -4;
+      }
+      return -3;
+    }
+
+    if (rCmp != 0) {
+      return 2;
     }
 
     return 1;
   }
 
+  return 0;
 }
 
 void AfLog::Message(MsgType_t type, const char *fmt, va_list args) {
   Int_t r = CheckRotate();
   va_list dummy = {};
-  if (r == -1) {
-    Format(kMsgError, "Can't rotate logfile!", dummy);
+  if (r < 0) {
+    Printf("e porco dio: %d", r);
+    Format(kMsgError, "Errors occured rotating logfile!", dummy);
   }
-  else if (r == 1) {
+  else if (r > 0) {
     Format(kMsgOk, "Logfile rotated", dummy);
   }
   // 0 == no need to rotate
