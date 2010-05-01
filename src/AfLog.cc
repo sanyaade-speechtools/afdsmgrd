@@ -106,8 +106,6 @@ Int_t AfLog::CheckRotate() {
     // opened file
     TString realLogFn = fLogFileName;
     SetStdErr();
-    
-    //Printf("Rename %s to %s", realLogFn.Data(), newFn.Data());
 
     if (gSystem->Rename(realLogFn.Data(), newFn.Data()) == -1) {
       // Revert to the old logfile if rename failed

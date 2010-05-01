@@ -139,7 +139,8 @@ int main(int argc, char *argv[]) {
   // would close the fd of the child too)
   if (!logFile.IsNull()) {
     if (!gLog->SetFile(logFile.Data())) {
-      return 21;  // no error message can be seen at this point, useless to print
+      return 21;  // no error message can be seen at this point, it is pointless
+                  // to print something
     }
   }
 
