@@ -48,7 +48,7 @@ class AfLog {
     FILE       *fLogFile;
     TDatime    *fDatime;
     TDatime    *fLastRotated;
-    const char *fLogFileName;
+    TString     fLogFileName;
     Bool_t      fRotateable;
     Bool_t      fDebug;
 
