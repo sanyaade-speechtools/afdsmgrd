@@ -88,18 +88,18 @@ Int_t AfLog::CheckRotate() {
 
   fDatime->Set();
 
-  //if ( fDatime->GetDate() > fLastRotated->GetDate() ) {
-  if ( fDatime->GetTime() != fLastRotated->GetTime() ) {
+  if ( fDatime->GetDate() > fLastRotated->GetDate() ) {
+  //if ( fDatime->GetTime() != fLastRotated->GetTime() ) {
 
     // Archived logfile has yesterday's date
     fDatime->Set( fDatime->Convert() - 86400 );
 
-    //TString newFn = Form("%s.%04u%02u%02u", fLogFileName.Data(),
-    //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay());
+    TString newFn = Form("%s.%04u%02u%02u", fLogFileName.Data(),
+      fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay());
 
-    TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName.Data(),
-      fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
-      fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
+    //TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName.Data(),
+    //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
+    //  fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
 
     // It is not allowed to close the log: we need to switch to stderr for a
     // moment to close the opened file, but before that we save the name of the
