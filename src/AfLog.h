@@ -22,6 +22,7 @@ class AfLog {
     static void Init(Bool_t debug = kFALSE);
     static void Delete();
     void        SetDebug(Bool_t debug);
+    void        SetRotateMessage(const char *msg) { fRotateMsg = msg; };
     Bool_t      GetDebug() { return fDebug; };
     Bool_t      SetFile(const char *fn);
     void        SetStdErr();
@@ -50,6 +51,7 @@ class AfLog {
     TDatime    *fLastRotated;
     TString     fLogFileName;
     Bool_t      fRotateable;
+    TString     fRotateMsg;
     Bool_t      fDebug;
 
 };
