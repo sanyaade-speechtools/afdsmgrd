@@ -51,19 +51,23 @@ all:
 install:
 	@echo "Copying program to $(BINPREFIX)..."
 	@mkdir -p $(BINPREFIX)
-	@cp $(SRCDIR)/$(PROG) $(BINPREFIX)/$(PROG)
-
-	@echo "Copying startup variables to $(ETCPREFIX)/sysconfig (doesn't overwrite)..."
-	@mkdir -p $(ETCPREFIX)/sysconfig
-	@yes n | cp -i $(ETCDIR)/$(PROG)_sysconfig $(ETCPREFIX)/sysconfig/$(PROG) 2> /dev/null
+	@cp $(SRCDIR)/$(PROG) $(BINPREFIX)/
 
 	@echo "Copying startup script to $(ETCPREFIX)/init.d..."
 	@mkdir -p $(ETCPREFIX)/init.d
-	@cp $(ETCDIR)/$(PROG)_start_stop $(ETCPREFIX)/init.d/$(PROG) 2> /dev/null
+	@cp $(ETCDIR)/init.d/$(PROG) $(ETCPREFIX)/init.d/ 2> /dev/null
+
+# Custom sysconfig and example configuration are copied only if not installing
+# via xrd-installer
+ifeq ($(XRD_INSTALLER),0)
+	@echo "Copying startup variables to $(ETCPREFIX)/sysconfig (doesn't overwrite)..."
+	@mkdir -p $(ETCPREFIX)/sysconfig
+	@yes n | cp -i $(ETCDIR)/sysconfig/$(PROG) $(ETCPREFIX)/sysconfig/ 2> /dev/null
 
 	@echo "Copying example configuration to $(ETCPREFIX)/xrootd..."
 	@mkdir -p $(ETCPREFIX)/xrootd
-	@yes n | cp -i $(ETCDIR)/$(PROG).cf.example $(ETCPREFIX)/xrootd/ 2> /dev/null
+	@yes n | cp -i $(ETCDIR)/xrootd/$(PROG).cf.example $(ETCPREFIX)/xrootd/ 2> /dev/null
+endif
 
 uninstall:
 	@echo "Uninstalling (custom settings will not be deleted)..."

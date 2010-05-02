@@ -32,7 +32,6 @@ function Main() {
   echo ""
   PrintConfig
   WriteConfig
-  PrepareSysConfig
   exit 0
 }
 
@@ -58,9 +57,10 @@ function PrintHelp() {
 # Prints the configuration
 function PrintConfig() {
   echo "Installation variables:"
-  echo " * ROOTSYS    = $ROOTSYS"
-  echo " * BINPREFIX  = $BINPREFIX"
-  echo " * ETCPREFIX  = $ETCPREFIX"
+  echo " * ROOTSYS       = $ROOTSYS"
+  echo " * BINPREFIX     = $BINPREFIX"
+  echo " * ETCPREFIX     = $ETCPREFIX"
+  echo " * XRD_INSTALLER = $XRD_INSTALLER" >> "$MAKEOUT"
 }
 
 # Saves the configuration to the output file
@@ -70,6 +70,7 @@ function WriteConfig() {
   echo "export ROOTSYS = $ROOTSYS" >> "$MAKEOUT"
   echo "export BINPREFIX = $BINPREFIX" >> "$MAKEOUT"
   echo "export ETCPREFIX = $ETCPREFIX" >> "$MAKEOUT"
+  echo "export XRD_INSTALLER = $XRD_INSTALLER" >> "$MAKEOUT"
 }
 
 # Configures variables if called from xrd-installer
@@ -77,7 +78,12 @@ function ConfigXrd() {
   local PREFIX="$1"
   export ROOTSYS=`cd "$PREFIX" 2>/dev/null && cd ../root 2>/dev/null && pwd`
   export BINPREFIX=`PurgeSlashes "$PREFIX/bin"`
-  export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`
+
+  # We have to decide if to copy configuration stuff to $PREFIX/etc or to /etc
+  #export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`
+  export ETCPREFIX="/etc"
+
+  export XRD_INSTALLER=1
   if [ ! -d "$ROOTSYS" ]; then
     echo "ROOT not found, aborting!"
     exit 3
@@ -162,47 +168,8 @@ function ConfigCustom() {
 
   export BINPREFIX=`PurgeSlashes "$PREFIX/usr/bin"`
   export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`
-}
 
-# Prepares the sysconfig-style file to be called by the init.d-style script
-function PrepareSysConfig() {
-  local SC=`cd etc && pwd`
-  SC="$SC/afdsmgrd_sysconfig"
-
-  cat > "$SC" <<EOF
-#
-# Configuration options to launch the afdsmgrd daemon.
-#
-# by Dario Berzano <dario.berzano@gmail.com>
-#
-
-# Full path to the afdsmgrd executable
-export AFDSMGRD_PROG=$BINPREFIX/afdsmgrd
-
-# The configuration file - configuration may be shared with xrootd, cmsd and
-# proof without conflicts
-export AFDSMGRD_CONF=$ETCPREFIX/xrootd/afdsmgrd.cf
-
-# Library paths required by afdsmgrd: it should contain both ROOT libraries and
-# eventually the xrootd libraries to run the custom staging command
-export AFDSMGRD_LIBS=$ROOTSYS/lib:$PREFIX/lib
-
-# The log directory
-export AFDSMGRD_LOGDIR=/var/log/afdsmgrd
-
-# The log file
-export AFDSMGRD_LOGFILE=\$AFDSMGRD_LOGDIR/afdsmgrd.log
-
-# The PID file
-export AFDSMGRD_PIDFILE=/var/run/afdsmgrd.pid
-
-# Unprivileged user that launches the daemon
-export AFDSMGRD_USER=alicaf
-
-# Set to 1 to enable verbose debug output
-export AFDSMGRD_DEBUG=0
-EOF
-
+  export XRD_INSTALLER=0
 }
 
 #
