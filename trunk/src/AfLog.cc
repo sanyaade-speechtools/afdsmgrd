@@ -144,7 +144,6 @@ void AfLog::Message(MsgType_t type, const char *fmt, va_list args) {
   Int_t r = CheckRotate();
   va_list dummy = {};
   if (r < 0) {
-    Printf("e porco dio: %d", r);
     Format(kMsgError, "Errors occured rotating logfile!", dummy);
   }
   else if (r > 0) {

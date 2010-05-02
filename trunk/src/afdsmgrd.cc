@@ -16,6 +16,7 @@
 #include <grp.h>
 
 // This project's includes
+#include "AfVersion.h"
 #include "AfLog.h"
 #include "AfConfReader.h"
 #include "AfDataSetsManager.h"
@@ -180,7 +181,8 @@ int main(int argc, char *argv[]) {
 
   // From this point on, configuration file and logfile are set
 
-  AfLogOk("##### afdsmgrd rev. %d started its operations #####", SVNREV);
+  AfLogOk("##### afdsmgrd ver. %s rev. %d -- " \
+    "by Dario Berzano <dario.berzano@gmail.com> #####", AFVER, SVNREV);
 
   // Drop current effective user: it can revert back to the former at any time,
   // and only when needed
