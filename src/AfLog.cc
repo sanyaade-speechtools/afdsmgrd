@@ -88,18 +88,18 @@ Int_t AfLog::CheckRotate() {
 
   fDatime->Set();
 
-  if ( fDatime->GetDate() > fLastRotated->GetDate() ) {
-  //if ( fDatime->GetTime() != fLastRotated->GetTime() ) {
+  //if ( fDatime->GetDate() > fLastRotated->GetDate() ) {
+  if ( fDatime->GetTime() != fLastRotated->GetTime() ) {
 
     // Archived logfile has yesterday's date
     fDatime->Set( fDatime->Convert() - 86400 );
 
-    TString newFn = Form("%s.%04u%02u%02u", fLogFileName.Data(),
-      fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay());
+    //TString newFn = Form("%s.%04u%02u%02u", fLogFileName.Data(),
+    //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay());
 
-    //TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName.Data(),
-    //  fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
-    //  fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
+    TString newFn = Form("%s.%04u%02u%02u-%02u%02u%02u", fLogFileName.Data(),
+      fDatime->GetYear(), fDatime->GetMonth(), fDatime->GetDay(),
+      fDatime->GetHour(), fDatime->GetMinute(), fDatime->GetSecond());
 
     // It is not allowed to close the log: we need to switch to stderr for a
     // moment to close the opened file, but before that we save the name of the
@@ -140,14 +140,24 @@ Int_t AfLog::CheckRotate() {
   return 0;
 }
 
+void AfLog::PrintBanner() {
+  if (!fBanner.IsNull()) {
+    Info(fBanner);
+  }
+}
+
 void AfLog::Message(MsgType_t type, const char *fmt, va_list args) {
   Int_t r = CheckRotate();
-  va_list dummy = {};
+  va_list vl1 = {};
   if (r < 0) {
-    Format(kMsgError, "Errors occured rotating logfile!", dummy);
+    Format(kMsgError, "Errors occured rotating logfile!", vl1);
   }
   else if (r > 0) {
-    Format(kMsgOk, "Logfile rotated", dummy);
+    if (!fBanner.IsNull()) {
+      va_list vl2 = {};
+      Format(kMsgInfo, fBanner, vl2);
+    }
+    Format(kMsgOk, "Logfile rotated", vl1);
   }
   // 0 == no need to rotate
   Format(type, fmt, args);

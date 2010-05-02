@@ -181,8 +181,10 @@ int main(int argc, char *argv[]) {
 
   // From this point on, configuration file and logfile are set
 
-  AfLogOk("##### afdsmgrd ver. %s rev. %d -- " \
-    "by Dario Berzano <dario.berzano@gmail.com> #####", AFVER, SVNREV);
+  // The banner will be printed at each logfile rotation
+  gLog->SetBanner(Form("##### afdsmgrd ver. %s rev. %d #####", AFVER, SVNREV));
+
+  gLog->PrintBanner();
 
   // Drop current effective user: it can revert back to the former at any time,
   // and only when needed
