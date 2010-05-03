@@ -15,6 +15,7 @@ typedef enum { kMsgOk, kMsgInfo, kMsgWarning, kMsgError, kMsgFatal, kMsgDebug }
 #include <Varargs.h>
 #include <TDatime.h>
 #include <TSystem.h>
+#include <TThread.h>
 
 class AfLog {
 
@@ -39,9 +40,10 @@ class AfLog {
     // Methods
     AfLog(Bool_t debug = kFALSE);
 	~AfLog();
-    void        Message(MsgType_t type, const char *fmt, va_list args);
-    void        Format(MsgType_t type, const char *fmt, va_list args);
-    Int_t       CheckRotate();
+    void CheckRotateAndFormat(MsgType_t type, const char *fmt,
+      va_list args);
+    void Format(MsgType_t type, const char *fmt, va_list args);
+    Int_t CheckRotate();
 
     // Constants
     FILE *kStdErr;
