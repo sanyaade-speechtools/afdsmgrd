@@ -22,12 +22,12 @@ export AFDSMGRD_LOGDIR=/var/log/afdsmgrd
 export AFDSMGRD_LOGFILE=$AFDSMGRD_LOGDIR/afdsmgrd.log
 
 # The PID file
-export AFDSMGRD_PIDFILE=/var/run/afdsmgrd
+export AFDSMGRD_PIDFILE=/var/run/afdsmgrd.pid
 
 # Unprivileged user that launches the daemon
 export AFDSMGRD_USER=xrd
 
-# Unprivileged group that launches the daemon
+# Files created by the init.d script will belong to AFDSMGRD_USER and this group
 export AFDSMGRD_GROUP=xrd
 
 # Set to 1 to enable verbose debug output
