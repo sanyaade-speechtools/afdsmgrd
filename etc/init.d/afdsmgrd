@@ -6,7 +6,7 @@
 # by Dario Berzano <dario.berzano@gmail.com>
 #
 # This script is conform to the LSB specifications and it is compatible with
-# the chkconfig custom header.
+# the chkconfig custom header format.
 #
 
 #
@@ -65,6 +65,8 @@ start() {
   export LD_LIBRARY_PATH=$AFDSMGRD_LIBS:$LD_LIBRARY_PATH
   mkdir -p $AFDSMGRD_LOGDIR
   chown -R $AFDSMGRD_USER:$AFDSMGRD_GROUP $AFDSMGRD_LOGDIR
+  touch $AFDSMGRD_LOGFILE
+  chown $AFDSMGRD_USER:$AFDSMGRD_GROUP $AFDSMGRD_LOGFILE
   [ $AFDSMGRD_DEBUG -eq 1 ] && EXTRAOPTS=-d
 
   $AFDSMGRD_PROG -c $AFDSMGRD_CONF -R $AFDSMGRD_USER -b -l $AFDSMGRD_LOGFILE \
