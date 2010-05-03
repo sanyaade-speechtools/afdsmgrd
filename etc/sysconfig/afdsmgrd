@@ -27,5 +27,8 @@ export AFDSMGRD_PIDFILE=/var/run/afdsmgrd
 # Unprivileged user that launches the daemon
 export AFDSMGRD_USER=xrd
 
+# Unprivileged group that launches the daemon
+export AFDSMGRD_GROUP=xrd
+
 # Set to 1 to enable verbose debug output
 export AFDSMGRD_DEBUG=0
