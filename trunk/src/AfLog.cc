@@ -146,7 +146,13 @@ void AfLog::PrintBanner() {
   }
 }
 
-void AfLog::Message(MsgType_t type, const char *fmt, va_list args) {
+void AfLog::CheckRotateAndFormat(MsgType_t type, const char *fmt,
+  va_list args) {
+
+  // Messages are not eventually mangled by several threads trying to write,
+  // and in the worst case, even rotate the log file, at the same time
+  TThread::Lock();
+
   Int_t r = CheckRotate();
   va_list vl1 = {};
   if (r < 0) {
@@ -161,6 +167,8 @@ void AfLog::Message(MsgType_t type, const char *fmt, va_list args) {
   }
   // 0 == no need to rotate
   Format(type, fmt, args);
+
+  TThread::UnLock();  // end of the asynchronous code section
 }
 
 void AfLog::Format(MsgType_t type, const char *fmt, va_list args) {
@@ -202,7 +210,7 @@ void AfLog::Debug(const char *fmt, ...) {
   if (fDebug) {
     va_list args;
     va_start(args, fmt);
-    Message(kMsgDebug, fmt, args);
+    CheckRotateAndFormat(kMsgDebug, fmt, args);
     va_end(args);
   }
 }
@@ -210,34 +218,34 @@ void AfLog::Debug(const char *fmt, ...) {
 void AfLog::Info(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kMsgInfo, fmt, args);
+  CheckRotateAndFormat(kMsgInfo, fmt, args);
   va_end(args);
 }
 
 void AfLog::Ok(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kMsgOk, fmt, args);
+  CheckRotateAndFormat(kMsgOk, fmt, args);
   va_end(args);
 }
 
 void AfLog::Warning(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kMsgWarning, fmt, args);
+  CheckRotateAndFormat(kMsgWarning, fmt, args);
   va_end(args);
 }
 
 void AfLog::Error(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kMsgError, fmt, args);
+  CheckRotateAndFormat(kMsgError, fmt, args);
   va_end(args);
 }
 
 void AfLog::Fatal(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  Message(kMsgFatal, fmt, args);
+  CheckRotateAndFormat(kMsgFatal, fmt, args);
   va_end(args);
 }
