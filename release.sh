@@ -31,6 +31,10 @@ function Main() {
       DoArch "$2"
     ;;
 
+    --upload)
+      Upload "$2" "$3"
+    ;;
+
   esac
 
 }
@@ -57,6 +61,7 @@ function DoTag() {
   if [ $RET != 0 ]; then
     echo "svn copy failed with error $RET"
     echo -n "Type \"Yes\" to continue anyway: "
+    read ANS
     if [ "$ANS" != "Yes" ]; then
       echo "Tagging aborted after failure of svn copy"
       exit $RET
@@ -122,6 +127,34 @@ function DoArch() {
   fi
 
   exit $?
+}
+
+function Upload() {
+
+  local VER="$1"
+
+  cd "$ARCHDIR"
+
+  local GUSER=`head -n1 .googlecode.pwd`
+  local GPWD=`tail -n1 .googlecode.pwd`
+  local ARCH="$PROG-v$VER.tar.gz"
+  local SUMMARY="$PROG v$VER - $2"
+
+  echo "You are about to upload a file to Google Code using the following info:"
+  echo ""
+  echo " * Username: $GUSER"
+  echo " * Password: $GPWD"
+  echo " * Filename: $ARCH"
+  echo " * Summary:  $SUMMARY"
+  echo ""
+  echo -n "Is this correct? Type \"Yes\" if it is: "
+  read ANS
+  if [ "$ANS" != "Yes" ]; then
+    echo "Uploading aborted"
+    exit 3
+  fi
+
+  ./upload -s "$SUMMARY" -p $PROG -u $GUSER -w $GPWD $ARCH
 }
 
 #
