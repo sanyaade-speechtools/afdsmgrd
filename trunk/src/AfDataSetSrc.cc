@@ -188,16 +188,33 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
         fParentManager->DequeueUrl(surl);
         changed = kTRUE;
-        AfLogDebug("Dequeued: %s", surl);
+        AfLogDebug("Dequeued (staged): %s", surl);
       }
       else if (st == kStgFail) {
         fParentManager->DequeueUrl(surl);  // removed from current position
-        fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
-        AfLogInfo("Requeued (has failed): %s", surl);
+        if (c) {
+          // After download has started the file may have been marked as corr.
+          AfLogInfo("Dequeued after failure (marked as corrupted): %s", surl);
+        }
+        else {
+          // Not corrupted, retry but as the last file in queue
+          fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
+          AfLogInfo("Requeued (has failed): %s", surl);
+        }
       }
       else if (st == kStgAbsent) {
-        fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
-        AfLogInfo("Queued: %s", surl);
+        if (c) {
+          AfLogInfo("Not queuing (marked as corrupted): %s", surl);
+        }
+        else {
+          fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
+          AfLogInfo("Queued: %s", surl);
+        }
+      }
+      else if ((st == kStgQueue) && (c)) {
+        // After queuing the file may have been marked as corrupted
+        AfLogInfo("Dequeued (marked as corrupted): %s", surl);
+        fParentManager->DequeueUrl(surl);
       }
     }
 
