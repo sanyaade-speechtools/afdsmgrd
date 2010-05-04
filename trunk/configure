@@ -78,7 +78,7 @@ function ConfigXrd() {
   local PREFIX="$1"
   export ROOTSYS=`cd "$PREFIX" 2>/dev/null && cd ../root 2>/dev/null && pwd`
   export BINPREFIX=`PurgeSlashes "$PREFIX/bin"`
-  export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`"
+  export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`
   export XRD_INSTALLER=1
   if [ ! -d "$ROOTSYS" ]; then
     echo "ROOT not found, aborting!"
