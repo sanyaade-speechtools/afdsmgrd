@@ -16,7 +16,7 @@ class AfDataSetsManager {
 
     AfDataSetsManager();
     ~AfDataSetsManager();
-    void   ProcessAllDataSetsOnce(DsAction_t action);
+    Int_t  ProcessAllDataSetsOnce(DsAction_t action);
     void   Loop();
     void   Reset();
     Bool_t ReadConf(const char *cf);

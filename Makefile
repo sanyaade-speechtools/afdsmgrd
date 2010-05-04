@@ -22,7 +22,7 @@ export OBJEXT = .o
 export CXXEXT = .cc
 export HEXT = .h
 
-export SVNREV = $(shell svnversion 2>/dev/null|cut -f2 -d:|tr -d '[:alpha:]')
+#export SVNREV = $(shell svnversion 2>/dev/null|cut -f2 -d:|tr -d '[:alpha:]')
 export CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g -DSVNREV=$(SVNREV)
 
 export ROOTLIBS = $(shell $(ROOTCFG) --libs)

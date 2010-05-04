@@ -182,7 +182,8 @@ int main(int argc, char *argv[]) {
   // From this point on, configuration file and logfile are set
 
   // The banner will be printed at each logfile rotation
-  gLog->SetBanner(Form("##### afdsmgrd ver. %s rev. %d #####", AFVER, SVNREV));
+  gLog->SetBanner(Form("##### afdsmgrd ver. %s compiled %s %s #####", AFVER,
+    __DATE__, __TIME__));
 
   gLog->PrintBanner();
 
