@@ -1,6 +1,7 @@
 #
 # Steer Makefile for afdsmgrd.
 #
+#
 # by Dario Berzano <dario.berzano@gmail.com>
 #
 # This Makefile only requires the ROOTSYS environment variable to be set. This
