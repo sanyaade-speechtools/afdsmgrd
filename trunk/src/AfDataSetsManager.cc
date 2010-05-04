@@ -249,7 +249,7 @@ void AfDataSetsManager::Loop() {
     }
     else {
       loops++;
-      AfLogDebug("Not scanning datasets now: %d sleep(s) left before a new "
+      AfLogInfo("Not scanning datasets now: %d sleep(s) left before a new "
         "dataset scan", fScanDsEvery-loops+1);
     }
 
