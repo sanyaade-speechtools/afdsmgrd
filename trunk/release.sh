@@ -52,7 +52,7 @@ function DoTag() {
     exit 2
   fi
 
-  svn copy $TRUNKURL $TAGSURL/v$VER
+  svn copy $TRUNKURL $TAGSURL/v$VER -m " * Created tagged revision v$VER"
   RET=$?
   if [ $RET != 0 ]; then
     echo "svn copy failed with error $RET"
@@ -72,10 +72,10 @@ function DoTag() {
   svn ci -m " * Version number set to $VER in tag"
 
   RET=$?
-  if [ $RET != 0 ]; then
+  if [ $RET == 0 ]; then
     rm -rf "$WORKDIR"
   else
-    echo "Working directory $WORKDIR not removed"
+    echo "Working directory $WORKDIR not removed: svn ci failed with $RET"
   fi
 
   exit $?
@@ -115,10 +115,10 @@ function DoArch() {
   tar czf "$ARCH" $PROG
 
   RET=$?
-  if [ $RET != 0 ]; then
+  if [ $RET == 0 ]; then
     rm -rf "$WORKDIR"
   else
-    echo "Working directory $WORKDIR not removed"
+    echo "Working directory $WORKDIR not removed: tar exited with $RET"
   fi
 
   exit $?
