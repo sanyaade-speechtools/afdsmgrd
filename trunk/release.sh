@@ -1,8 +1,12 @@
 #!/bin/bash
 
-
 #
-# Used to make a SVN "tag" and the corresponding package
+# Used to make a SVN "tag" and the corresponding package, and to finally upload
+# it.
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+# THIS IS NOT MEANT TO BE USED BY THE USER!!!
 #
 
 export TRUNKURL="https://afdsmgrd.googlecode.com/svn/trunk"
@@ -16,7 +20,7 @@ export TAGSDIR=`dirname $0`/../tags
 function Main() {
 
   if [ "$1" == "" ] || [ "$2" == "" ]; then
-    echo "Usage: $0 [--tag|--arch] <version>"
+    echo "Usage: $0 [--tag|--arch|--upload] <version> [<upload_msg>]"
     echo "<version> is expected to be in the form MAJOR.MINOR.PATCHES"
     exit 1
   fi
@@ -39,6 +43,8 @@ function Main() {
 
 }
 
+# Make a new tag via svn copy. Also automatically corrects the version number
+# in AfVersion.h and commits the change in tag only
 function DoTag() {
   local VER=$1
   local ANS
@@ -86,6 +92,8 @@ function DoTag() {
   exit $?
 }
 
+# Creates an archive of a tagged version which must exist on svn. It cleans up
+# the SVN information before archiving
 function DoArch() {
   local VER=$1
   local ANS
@@ -129,6 +137,8 @@ function DoArch() {
   exit $?
 }
 
+# Uploads a created archive on Google Code via the command line interface
+# provided as a Python script on Google SVN
 function Upload() {
 
   local VER="$1"
