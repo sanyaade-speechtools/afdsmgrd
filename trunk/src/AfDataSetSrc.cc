@@ -34,12 +34,14 @@ AfDataSetSrc::~AfDataSetSrc() {
 }
 
 // Processes all the datasets in this dataset source
-void AfDataSetSrc::Process(DsAction_t action) {
+Int_t AfDataSetSrc::Process(DsAction_t action) {
 
   AfLogDebug("+++ Started processing of dataset source %s +++", fUrl.Data());
 
   // Creates a flattened list of dataset URIs
   FlattenListOfDataSets();
+
+  Int_t nChanged = 0;
 
   TIter i(fDsUris);
   TObjString *s;
@@ -47,17 +49,18 @@ void AfDataSetSrc::Process(DsAction_t action) {
 
     switch (action) {
       case kDsReset:
-        ResetDataSet( s->GetString().Data() );
+        nChanged = ResetDataSet( s->GetString().Data() );
       break;
 
       case kDsProcess:
-        ProcessDataSet( s->GetString().Data() );
+        nChanged = ProcessDataSet( s->GetString().Data() );
       break;
     }
   }
 
   AfLogDebug("+++ Ended processing dataset source %s +++", fUrl.Data());
 
+  return nChanged;
 }
 
 void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
@@ -93,13 +96,15 @@ void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
   delete fc;
 }
 
-void AfDataSetSrc::ResetDataSet(const char *uri) {
+Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
 
   if (gLog->GetDebug()) {
     ListDataSetContent(uri, Form("Dataset %s before reset:", uri), kTRUE);
   }
 
   TFileCollection *fc = fManager->GetDataSet(uri);
+
+  Int_t nChanged = 0;
 
   // Reset "staged" and "corrupted" bits
   fc->ResetBitAll( TFileInfo::kStaged );
@@ -132,20 +137,25 @@ void AfDataSetSrc::ResetDataSet(const char *uri) {
   }
   else {
     AfLogOk("Dataset reset: %s", uri);
+    nChanged++;
   }
 
   if (gLog->GetDebug()) {
     ListDataSetContent(uri, Form("Dataset %s after reset:", uri), kTRUE);
   }
+
+  return nChanged;
 }
 
-void AfDataSetSrc::ProcessDataSet(const char *uri) {
+Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
   if (gLog->GetDebug()) {
     ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
   }
 
   TFileCollection *fc = fManager->GetDataSet(uri);
+
+  Int_t nChanged = 0;
 
   // If you want to do a ScanDataSet here, you need to do fc->GetList() after
   // that, because ScanDataSet actually modifies the list and writes it to disk
@@ -218,6 +228,7 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
     }
     else {
       AfLogOk("Dataset saved: %s", uri);
+      nChanged++;
     }
   }
   else {
@@ -227,6 +238,8 @@ void AfDataSetSrc::ProcessDataSet(const char *uri) {
   if (gLog->GetDebug()) {
     ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
   }
+
+  return nChanged;
 }
 
 // Returns number of URLs removed

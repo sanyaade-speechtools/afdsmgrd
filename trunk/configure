@@ -78,11 +78,7 @@ function ConfigXrd() {
   local PREFIX="$1"
   export ROOTSYS=`cd "$PREFIX" 2>/dev/null && cd ../root 2>/dev/null && pwd`
   export BINPREFIX=`PurgeSlashes "$PREFIX/bin"`
-
-  # We have to decide if to copy configuration stuff to $PREFIX/etc or to /etc
-  export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`
-  #export ETCPREFIX="/etc"
-
+  export ETCPREFIX=`PurgeSlashes "$PREFIX/etc"`"
   export XRD_INSTALLER=1
   if [ ! -d "$ROOTSYS" ]; then
     echo "ROOT not found, aborting!"

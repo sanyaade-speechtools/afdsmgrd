@@ -218,17 +218,19 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   return kTRUE;
 }
 
-void AfDataSetsManager::ProcessAllDataSetsOnce(DsAction_t action) {
+Int_t AfDataSetsManager::ProcessAllDataSetsOnce(DsAction_t action) {
 
   TIter i(fSrcList);
   AfDataSetSrc *dsSrc;
+  Int_t nChanged = 0;
 
   AfLogDebug("++++ Started loop over dataset sources ++++");
   while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
-    dsSrc->Process(action);
+    nChanged = dsSrc->Process(action);
   }
   AfLogDebug("++++ Loop over dataset sources completed ++++");
 
+  return nChanged;
 }
 
 void AfDataSetsManager::Loop() {
@@ -244,13 +246,24 @@ void AfDataSetsManager::Loop() {
     AfLogDebug("++++ Loop over transfer queue completed ++++");
 
     if (loops == fScanDsEvery) {
-      ProcessAllDataSetsOnce(kDsProcess);
+      AfLogInfo("Scanning datasets");
+      Int_t nChanged = ProcessAllDataSetsOnce(kDsProcess);
+      if (nChanged) {
+        AfLogOk("%d dataset(s) were changed");
+      }
       loops = 1;
     }
     else {
       loops++;
-      AfLogInfo("Not scanning datasets now: %d sleep(s) left before a new "
-        "dataset scan", fScanDsEvery-loops+1);
+      Int_t scansLeft = fScanDsEvery-loops+1;
+      if (scansLeft == 1) {
+        AfLogInfo("Not scanning datasets now: they will be scanned in the "
+          "next loop");
+      }
+      else {     
+        AfLogInfo("Not scanning datasets now: %d sleep(s) left before a new "
+          "dataset scan", scansLeft);
+      }
     }
 
     AfLogDebug("Sleeping %d seconds before a new loop", fLoopSleep_s),
