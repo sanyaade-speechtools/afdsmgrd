@@ -249,7 +249,7 @@ void AfDataSetsManager::Loop() {
       AfLogInfo("Scanning datasets");
       Int_t nChanged = ProcessAllDataSetsOnce(kDsProcess);
       if (nChanged) {
-        AfLogOk("%d dataset(s) were changed");
+        AfLogOk("%d dataset(s) were changed", nChanged);
       }
       loops = 1;
     }
