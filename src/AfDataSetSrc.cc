@@ -236,8 +236,6 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
       TDataSetManager::kFileMustExist);
     UndoSuid();
 
-    delete fc;
-
     AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
 
     if (r == 0) {
@@ -255,6 +253,8 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
   if (gLog->GetDebug()) {
     ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
   }
+
+  delete fc;
 
   return nChanged;
 }
