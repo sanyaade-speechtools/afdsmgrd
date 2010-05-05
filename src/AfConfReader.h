@@ -28,7 +28,7 @@ class AfConfReader {
     void ReadConf();
 
     // Private variables
-    ifstream    fFp;
+    ifstream   fFp;
     TList     *fDirs;
     TMap      *fVars;
 

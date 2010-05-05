@@ -17,6 +17,7 @@ AfDataSetsManager::AfDataSetsManager() {
 AfDataSetsManager::~AfDataSetsManager() {
   delete fSrcList;
   delete fStageQueue;
+  delete fStageCmds;
 }
 
 Bool_t AfDataSetsManager::ReadConf(const char *cf) {
@@ -300,8 +301,10 @@ Bool_t AfDataSetsManager::EnqueueUrl(const char *url) {
 Bool_t AfDataSetsManager::DequeueUrl(const char *url) {
 
   AfStageUrl search(url);
+  AfStageUrl *removed;
 
-  if (fStageQueue->Remove( &search )) {
+  if (removed = dynamic_cast<AfStageUrl *>( fStageQueue->Remove(&search) )) {
+    delete removed;
     return kTRUE;
   }
 
