@@ -25,10 +25,22 @@
 #include <TSystem.h>
 #include <TString.h>
 #include <TError.h>
+#include <TObjectTable.h>
+
+// POSIX includes
+#include <signal.h>
 
 AfLog *gLog = NULL;
 
+void PrintObjTableOnSignal(Int_t signum) {
+  gObjectTable->Print();
+}
+
 int main(int argc, char *argv[]) {
+
+  if (TObject::GetObjectStat()) {
+    signal(SIGUSR1, PrintObjTableOnSignal);
+  }
 
   Int_t c;
 
@@ -158,8 +170,13 @@ int main(int argc, char *argv[]) {
       AfLogWarning("Can't write process PID on the specified pidfile.");
     }
   }
-  else if (bkg) {
-    AfLogWarning("PID file not specified: the PID is %d", gSystem->GetPid());
+  else {
+    if (bkg) {
+      AfLogWarning("PID file not specified: the PID is %d", gSystem->GetPid());
+    }
+    else {
+      AfLogInfo("Running as PID %d", gSystem->GetPid());
+    }
   }
 
   // Configuration file checks

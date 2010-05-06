@@ -9,6 +9,7 @@
 #include <TThread.h>
 #include <TObjArray.h>
 #include <TObjString.h>
+#include <TObjectTable.h>
 
 class AfDataSetsManager {
 
