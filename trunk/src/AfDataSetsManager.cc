@@ -267,6 +267,10 @@ void AfDataSetsManager::Loop() {
       }
     }
 
+    //if (TObject::GetObjectStat()) {
+    //  gObjectTable->Print();
+    //}
+
     AfLogDebug("Sleeping %d seconds before a new loop", fLoopSleep_s),
     gSystem->Sleep(fLoopSleep_s * 1000);
   }

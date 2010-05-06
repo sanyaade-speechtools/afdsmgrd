@@ -356,6 +356,7 @@ void AfDataSetSrc::FlattenListOfDataSets() {
 
     TMap *groups = fManager->GetDataSets(dsMask.Data(),
       TDataSetManager::kReadShort);
+    groups->SetOwnerKeyValue();  // important to avoid leaks!
     TIter gi(groups);
     TObjString *gn;
 
@@ -363,6 +364,7 @@ void AfDataSetSrc::FlattenListOfDataSets() {
       //AfLogInfo(">> Group: %s", gn->String().Data());
 
       TMap *users = dynamic_cast<TMap *>( groups->GetValue( gn->String() ) );
+      users->SetOwnerKeyValue();
       TIter ui(users);
       TObjString *un;
 
@@ -370,27 +372,28 @@ void AfDataSetSrc::FlattenListOfDataSets() {
         //AfLogInfo(">>>> User: %s", un->GetString().Data());
 
         TMap *dss = dynamic_cast<TMap *>( users->GetValue( un->String() ) );
+        dss->SetOwnerKeyValue();
         TIter di(dss);
         TObjString *dn;
 
         while ( dn = dynamic_cast<TObjString *>( di.Next() ) ) {
-
-          //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
 
           // This should give an URI in the form /GROUP/USER/dataset
           // COMMON user/group mapping is a concept which is used in PROOF only,
           // here we see the real directory names
           TString dsUri = TDataSetManager::CreateUri( gn->String(),
             un->String(), dn->String() );
+          //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
+          //AfLogInfo(">> Dataset URI: %s", dsUri.Data());
           fDsUris->Add( new TObjString(dsUri.Data()) );
 
-          //AfLogInfo(">>>>>> Dataset URI: %s", dsUri.Data());
-
         } // while over datasets
+
       } // while over users
+
     } // while over groups
 
-    delete groups;
+    delete groups;  // groups and all other TMaps are owners of Keys and Values
 
   } // while over datasets mask (e.g. /*/*)
 
@@ -430,7 +433,7 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   }
 
   // Get the real URL
-  TUrl *realUrl = new TUrl( const_cast<TUrl *>( f->GetEndpointUrl() )->GetUrl() );
+  TUrl *realUrl = new TUrl( const_cast<TUrl *>(f->GetEndpointUrl())->GetUrl() );
   realUrl->SetAnchor(url->GetAnchor());
   fi->AddUrl( realUrl->GetUrl(), kTRUE );  // kTRUE = first elm of list
   delete realUrl;
