@@ -1,0 +1,42 @@
+#
+# afdsmgrd.cf.example - example configuration file for afdsmgrd.
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+# afdsmgrd is able to parse variables and needs to read the xpd.datasetsrc
+# directive(s), so it is a good idea to merge this configuration with PROOF's
+# one.
+#
+
+# Datasets management: the destpath: is the path that will be prefixed to any
+# URL beginning with alien://
+xpd.datasetsrc file url:/pool/datasets mss:root://$MASTER:1094 opt:Cq:Av:Ar: destpath:/alien rw=1
+
+# At each loop the transfer queue is checked: sleep time between each loop, in
+# seconds
+dsmgrd.sleepsecs 30
+
+# Every certain number of loops the information in the transfer queue is
+# synchronized with the information inside the datasets
+dsmgrd.scandseveryloops 10
+
+# Maximum number of parallel staging commands to launch. For consistency, set it
+# to the number of servers * the number of parallel transfers for each server
+# (see oss.xfr). To accommodate some delay betwen a transfer's end and the
+# beginning of a new transfer, think about adding some "overbooking"
+dsmgrd.parallelxfrs 30
+
+# Custom command to stage a single file. $URLTOSTAGE will be substituted with
+# the file's URL when staging. Remember that this command has the environment
+# set by afdsmgrd, so if you use xrdstagetool from xrootd you should set the
+# $LD_LIBRARY_PATH properly when launching afdsmgrd. This command can be a
+# generic command: afdsmgrd doesn't care about the return value, but it assumes
+# the transfer went right when the stagecmd writes a line that begins with "OK"
+# followed by a space on stdout (in any other case it thinks it has failed).
+# Output on stderr is ignored
+dsmgrd.stagecmd /path/to/xrootd/bin/xrdstagetool -d 0 $URLTOSTAGE
+
+# Which datasets to process? Supports the wildcards syntax as implemented in the
+# TDataSetManager class. This setting applies to all the dataset sources. Rarely
+# used, you probably don't have to use it! 
+#dsmgrd.processds /ALICE/*
