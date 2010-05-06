@@ -153,8 +153,8 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
   }
 
-  // NOTE: I see 4 bytes of memory loss per loop inside TFileCollection...
   TFileCollection *fc = fManager->GetDataSet(uri);
+
   Int_t nChanged = 0;
 
   // If you want to do a ScanDataSet here, you need to do fc->GetList() after
@@ -390,8 +390,6 @@ void AfDataSetSrc::FlattenListOfDataSets() {
       } // while over users
     } // while over groups
 
-    delete groups;
-
   } // while over datasets mask (e.g. /*/*)
 
 }
@@ -441,12 +439,11 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
 
   while ( key = dynamic_cast<TKey *>(k.Next()) ) {
     if ( strcmp(key->GetClassName(), "TTree") == 0 ) {
-      // Every tree will be filled with data
+
       TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
       TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
       meta->SetEntries( tree->GetEntries() );
       fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
-      //delete tree;  // CHECK: should I delete it or not?
     }
   }
 

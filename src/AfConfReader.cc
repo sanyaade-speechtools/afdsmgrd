@@ -2,21 +2,13 @@
 
 AfConfReader::AfConfReader() {
   fVars = new TMap();
-  fVars->SetOwnerKeyValue();
+  fVars->SetOwner();
   fDirs = new TList();
-  //fDirs->SetOwner();  // list of TPairs (they do not own objects): manual dtor
+  fDirs->SetOwner();
 }
 
 AfConfReader::~AfConfReader() {
   delete fVars;
-
-  TPair *p;
-  TIter i(fDirs);
-  while (p = dynamic_cast<TPair *>(i.Next())) {
-    delete p->Key();
-    delete p->Value();
-    delete p;
-  }
   delete fDirs;
 }
 
@@ -94,14 +86,14 @@ void AfConfReader::ReadConf() {
       // Not a comment
 
       if ( reVar.Match(buf) == 3 ) {
-        // We've got a variable here: fVars is a TMap
+        // We've got a variable here
         fVars->Add( new TObjString(reVar[1]), new TObjString(reVar[2]) );
       }
       if ( reDir.Match(buf) == 3 ) {
-        // We've got a directive here -- fDirs is a TList
-        fDirs->Add( new TPair( new TObjString(reDir[1]),
-          new TObjString(reDir[2]) ) );
+        // We've got a directive here
+        fDirs->Add( new TPair( new TObjString(reDir[1]), new TObjString(reDir[2]) ) );
       }
+      //else {}
 
     }
 

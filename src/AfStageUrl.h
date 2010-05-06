@@ -14,7 +14,7 @@ class AfStageUrl : public TObject {
     StgStatus_t GetStageStatus() { return fStgStatus; };
     void SetStageStatus(StgStatus_t status) { fStgStatus = status; };
     virtual ULong_t Hash() const;
-    const TUrl *GetUrlObj() { return fUrl; }
+    TUrl *GetUrlObj() { return fUrl; }
     TString GetUrl() const { return fUrl->GetUrl(); };
     virtual Bool_t IsEqual(const TObject* obj) const;
     virtual ~AfStageUrl();
