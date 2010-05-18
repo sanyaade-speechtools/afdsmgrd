@@ -4,7 +4,7 @@
 #include <TUrl.h>
 
 typedef enum { kStgDone = 'D', kStgFail = 'F', kStgQueue = 'Q',
-  kStgStaging = 'S', kStgAbsent = 'A' } StgStatus_t;
+  kStgStaging = 'S', kStgAbsent = 'A', kStgQueueFull = 'X' } StgStatus_t;
 
 class AfStageUrl : public TObject {
 

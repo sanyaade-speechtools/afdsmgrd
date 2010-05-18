@@ -153,7 +153,6 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
   }
 
-  // NOTE: I see 4 bytes of memory loss per loop inside TFileCollection...
   TFileCollection *fc = fManager->GetDataSet(uri);
   Int_t nChanged = 0;
 
@@ -198,8 +197,9 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
         }
         else {
           // Not corrupted, retry but as the last file in queue
-          fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
-          AfLogInfo("Requeued (has failed): %s", surl);
+          if ( fParentManager->EnqueueUrl(surl) != kStgQueueFull ) {
+            AfLogInfo("Requeued (has failed): %s", surl);
+          }
         }
       }
       else if (st == kStgAbsent) {
@@ -207,8 +207,10 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
           AfLogInfo("Not queuing (marked as corrupted): %s", surl);
         }
         else {
-          fParentManager->EnqueueUrl(surl);  // pushed at the end with status Q
-          AfLogInfo("Queued: %s", surl);
+          // Try to push at the end with status Q
+          if ( fParentManager->EnqueueUrl(surl) != kStgQueueFull ) {
+            AfLogInfo("Queued: %s", surl);
+          }
         }
       }
       else if ((st == kStgQueue) && (c)) {

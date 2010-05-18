@@ -88,6 +88,24 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     delete parallelXfrs;
   }
 
+  // Maximum number of files to place in queue (0 == no limit)
+  TString *maxFilesInQueue = cfr->GetDir("dsmgrd.maxfilesinqueue");
+  if (!maxFilesInQueue) {
+    AfLogWarning("Variable dsmgrd.maxfilesinqueue not set, queue not limited "
+      "by default");
+    fMaxFilesInQueue = kDefaultMaxFilesInQueue;
+  }
+  else if ( (fMaxFilesInQueue = maxFilesInQueue->Atoi()) <= 0 )  {
+    AfLogWarning("Invalid value for dsmgrd.maxfilesinqueue (%s), using "
+      "default (%d)", maxFilesInQueue->Data(), kDefaultMaxFilesInQueue);
+    fMaxFilesInQueue = kDefaultMaxFilesInQueue;
+    delete maxFilesInQueue;
+  }
+  else {
+    AfLogInfo("Queue limited to a maximum of %d file(s)", fMaxFilesInQueue);
+    delete maxFilesInQueue;
+  }
+
   // Stage command
   TString *stageCmd = cfr->GetDir("dsmgrd.stagecmd");
   if (stageCmd) {
@@ -289,30 +307,37 @@ StgStatus_t AfDataSetsManager::GetStageStatus(const char *url) {
   return found->GetStageStatus();
 }
 
-Bool_t AfDataSetsManager::EnqueueUrl(const char *url) {
+StgStatus_t AfDataSetsManager::EnqueueUrl(const char *url) {
+
+  // Check if queue is full
+  if ((fMaxFilesInQueue != 0) &&
+    (fStageQueue->GetEntries() >= fMaxFilesInQueue) {
+    return kStgQueueFull;
+  }
 
   AfStageUrl search(url);
 
   // Only adds elements not already there
   if ( fStageQueue->FindObject( &search ) == NULL ) {
-    fStageQueue->AddLast( new AfStageUrl(url) );
-    return kTRUE;
+    AfStageUrl *u = new AfStageUrl(url);
+    fStageQueue->AddLast(u);
+    return u->GetStageStatus();
   }
 
-  return kFALSE;
+  return kStgAbsent;  // error indicator
 }
 
-Bool_t AfDataSetsManager::DequeueUrl(const char *url) {
+StgStatus_t AfDataSetsManager::DequeueUrl(const char *url) {
 
   AfStageUrl search(url);
   AfStageUrl *removed;
 
   if (removed = dynamic_cast<AfStageUrl *>( fStageQueue->Remove(&search) )) {
     delete removed;
-    return kTRUE;
+    return kStgAbsent;
   }
 
-  return kFALSE;
+  return kStgQueue;  // error indicator
 }
 
 void AfDataSetsManager::PrintStageList(const char *header, Bool_t debug) {

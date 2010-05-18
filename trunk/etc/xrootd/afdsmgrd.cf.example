@@ -36,6 +36,11 @@ dsmgrd.parallelxfrs 30
 # Output on stderr is ignored
 dsmgrd.stagecmd /path/to/xrootd/bin/xrdstagetool -d 0 $URLTOSTAGE
 
+# Maximum number of files to place in the queue. If zero or if the directive is
+# omitted, defaults to "no limit". It is strongly advised to put a limit in
+# order to control the memory consumption.
+dsmgrd.maxfilesinqueue 500
+
 # Which datasets to process? Supports the wildcards syntax as implemented in the
 # TDataSetManager class. This setting applies to all the dataset sources. Rarely
 # used, you probably don't have to use it! 
