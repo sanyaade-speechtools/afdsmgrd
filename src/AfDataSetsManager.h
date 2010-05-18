@@ -24,8 +24,8 @@ class AfDataSetsManager {
     void   SetSuid(bool suid = kTRUE) { fSuid = suid; }
 
     StgStatus_t GetStageStatus(const char *url);
-    Bool_t EnqueueUrl(const char *url);
-    Bool_t DequeueUrl(const char *url);
+    StgStatus_t EnqueueUrl(const char *url);
+    StgStatus_t DequeueUrl(const char *url);
     void ProcessTransferQueue();
     void PrintStageList(const char *header, Bool_t debug);
 
@@ -38,6 +38,7 @@ class AfDataSetsManager {
     static const Int_t  kDefaultParallelXfrs = 1;
     static const Int_t  kDefaultLoopSleep_s = 3600;
     static const Int_t  kDefaultScanDsEvery = 10;
+    static const Int_t  kDefaultMaxFilesInQueue = 0;
 
     TList              *fSrcList;
     Bool_t              fSuid;
@@ -55,6 +56,7 @@ class AfDataSetsManager {
     Int_t               fLastStaging;
     Int_t               fLastFail;
     Int_t               fLastDone;
+    Int_t               fMaxFilesInQueue;
 };
 
 #endif // AFDATASETSMANAGER_H
