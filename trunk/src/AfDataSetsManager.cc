@@ -311,7 +311,7 @@ StgStatus_t AfDataSetsManager::EnqueueUrl(const char *url) {
 
   // Check if queue is full
   if ((fMaxFilesInQueue != 0) &&
-    (fStageQueue->GetEntries() >= fMaxFilesInQueue) {
+    (fStageQueue->GetEntries() >= fMaxFilesInQueue)) {
     return kStgQueueFull;
   }
 
