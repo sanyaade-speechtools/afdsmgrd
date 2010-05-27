@@ -428,9 +428,13 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   fi->RemoveMetaData();
 
   TUrl *url = fi->GetCurrentUrl();
+  //AfLogInfo("Checking %s...", url->GetUrl());
   TFile *f = TFile::Open(url->GetUrl());
+  //AfLogInfo("Opened %s...", url->GetUrl());
 
   if (!f) {
+    AfLogWarning("Can't fill meta information for %s, file unaccessible - "
+      "server went down?", url->GetUrl());
     return kFALSE;
   }
 
@@ -446,17 +450,30 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
 
   while ( key = dynamic_cast<TKey *>(k.Next()) ) {
     if ( strcmp(key->GetClassName(), "TTree") == 0 ) {
+
       // Every tree will be filled with data
       TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
       TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
-      meta->SetEntries( tree->GetEntries() );
-      fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
-      //delete tree;  // CHECK: should I delete it or not?
+
+      // Maybe the file is now unaccessible for some reason, and the tree is
+      // unreadable!
+      if (tree) {
+        meta->SetEntries( tree->GetEntries() );
+        fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
+        //delete tree;  // CHECK: should I delete it or not?
+      }
+      else {
+        AfLogWarning("In file %s, can't read TTree %s - server went down?",
+          url->GetUrl(), key->GetName());
+      }
+
     }
   }
 
   f->Close();
   delete f;
+
+  //AfLogInfo("Closed %s...", url->GetUrl());
 
   return kTRUE;
 }
