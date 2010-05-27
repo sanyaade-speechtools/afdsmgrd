@@ -53,12 +53,12 @@ int main(int argc, char *argv[]) {
   TString pidFile;
   char *dropUser = NULL;
   char *dropGroup = NULL;
-  bool bkg = kFALSE;
-  bool resetDs = kFALSE;
-  bool showRootMsg = kFALSE;
-  bool debugMsg = kFALSE;
+  Bool_t bkg = kFALSE;
+  Bool_t resetDs = kFALSE;
+  Bool_t showRootMsg = kFALSE;
+  Int_t debugLevel = -999;
 
-  while ((c = getopt(argc, argv, ":bl:c:R:p:rtd")) != -1) {
+  while ((c = getopt(argc, argv, ":bl:c:R:p:rtd:")) != -1) {
     switch (c) {
       case 'b':
         bkg = kTRUE;
@@ -89,7 +89,11 @@ int main(int argc, char *argv[]) {
       break;
 
       case 'd':
-        debugMsg = kTRUE;
+        {
+          TString *dl = new TString(optarg);
+          debugLevel = dl->Atoi();
+          delete dl;
+        }
       break;
 
       case ':':
@@ -105,7 +109,7 @@ int main(int argc, char *argv[]) {
   } // while
 
   // Show debug messages?
-  gLog->SetDebug(debugMsg);
+  gLog->SetDebugLevel(debugLevel);
 
   // Check if log filename is absolute
   if ((!logFile.IsNull()) && (!logFile.BeginsWith("/"))) {

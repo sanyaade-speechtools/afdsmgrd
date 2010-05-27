@@ -243,11 +243,11 @@ Int_t AfDataSetsManager::ProcessAllDataSetsOnce(DsAction_t action) {
   AfDataSetSrc *dsSrc;
   Int_t nChanged = 0;
 
-  AfLogDebug("++++ Started loop over dataset sources ++++");
+  AfLogDebug(20, "++++ Started loop over dataset sources ++++");
   while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
     nChanged = dsSrc->Process(action);
   }
-  AfLogDebug("++++ Loop over dataset sources completed ++++");
+  AfLogDebug(20, "++++ Loop over dataset sources completed ++++");
 
   return nChanged;
 }
@@ -258,11 +258,11 @@ void AfDataSetsManager::Loop() {
 
   while (kTRUE) {
 
-    AfLogDebug("++++ Started loop over transfer queue ++++");
+    AfLogDebug(20, "++++ Started loop over transfer queue ++++");
     PrintStageList("Stage queue before processing:", kTRUE);
     ProcessTransferQueue();
     PrintStageList("Stage queue after processing:", kTRUE);
-    AfLogDebug("++++ Loop over transfer queue completed ++++");
+    AfLogDebug(20, "++++ Loop over transfer queue completed ++++");
 
     if (loops == fScanDsEvery) {
       AfLogInfo("Scanning datasets");
@@ -289,7 +289,7 @@ void AfDataSetsManager::Loop() {
     //  gObjectTable->Print();
     //}
 
-    AfLogDebug("Sleeping %d seconds before a new loop", fLoopSleep_s),
+    AfLogDebug(10, "Sleeping %d seconds before a new loop", fLoopSleep_s),
     gSystem->Sleep(fLoopSleep_s * 1000);
   }
 }
@@ -342,7 +342,8 @@ StgStatus_t AfDataSetsManager::DequeueUrl(const char *url) {
 
 void AfDataSetsManager::PrintStageList(const char *header, Bool_t debug) {
 
-  if ((debug) && (!gLog->GetDebug())) {
+  // Show messages only with debug level >= 30
+  if ((debug) && (gLog->GetDebugLevel() < 30)) {
     return;
   }
 
@@ -353,8 +354,8 @@ void AfDataSetsManager::PrintStageList(const char *header, Bool_t debug) {
     "S=staging, F=failed):", fStageQueue->GetSize());
 
   if (debug) {
-    AfLogDebug(header);
-    AfLogDebug(summary);
+    AfLogDebug(30, header);
+    AfLogDebug(30, summary);
   }
   else {
     AfLogInfo(header);
@@ -364,7 +365,7 @@ void AfDataSetsManager::PrintStageList(const char *header, Bool_t debug) {
   while ( su = dynamic_cast<AfStageUrl *>(i.Next()) ) {
     TString itm = Form(">> %c | %s", su->GetStageStatus(), su->GetUrl().Data());
     if (debug) {
-      AfLogDebug(itm);
+      AfLogDebug(30, itm);
     }
     else {
       AfLogInfo(itm);
@@ -405,12 +406,12 @@ void AfDataSetsManager::ProcessTransferQueue() {
       if (t) {
 
         if (t->GetState() == TThread::kRunningState) {
-          AfLogDebug("Thread #%ld running for staging %s", t->GetId(),
+          AfLogDebug(30, "Thread #%ld running for staging %s", t->GetId(),
             url.Data());
         }
         else if (t->GetState() == TThread::kCanceledState) {
 
-          AfLogDebug("Thread #%ld completed", t->GetId());
+          AfLogDebug(30, "Thread #%ld completed", t->GetId());
 
           Bool_t *retVal = NULL;
           Long_t l = t->Join((void **)&retVal);
@@ -474,7 +475,7 @@ void AfDataSetsManager::ProcessTransferQueue() {
       t->Run();
       su->SetStageStatus(kStgStaging);
       AfLogInfo("Staging started: %s", url.Data());
-      AfLogDebug("Spawned thread #%ld to stage %s", t->GetId(), url.Data());
+      AfLogDebug(30, "Spawned thread #%ld to stage %s", t->GetId(), url.Data());
 
       nStaging++;
     }
@@ -494,8 +495,9 @@ void AfDataSetsManager::ProcessTransferQueue() {
   if ((nStaging != fLastStaging) || (nQueue != fLastQueue) || 
     (nDone != fLastDone) || (nFail != fLastFail)) {
 
-    AfLogInfo("Elements in queue: Total=%d | Queued=%d | Staging=%d | Done=%d | "
-      "Failed=%d", nQueue+nStaging+nDone+nFail, nQueue, nStaging, nDone, nFail);
+    AfLogInfo("Elements in queue: Total=%d | Queued=%d | Staging=%d | "
+      "Done=%d | Failed=%d", nQueue+nStaging+nDone+nFail, nQueue, nStaging,
+       nDone, nFail);
 
     fLastStaging = nStaging;
     fLastQueue = nQueue;
@@ -511,6 +513,20 @@ void *AfDataSetsManager::Stage(void *args) {
   TString cmd = dynamic_cast<TObjString *>( o->At(1) )->GetString();
   delete o;  // owner: TObjStrings are also deleted
 
+  // Output of stderr will be redirected to a file; if everything goes fine, the
+  // file is finally deleted. If not, the contents of the file is printed on the
+  // logfile (then it is deleted).
+  TString tfn = "afdsmgrd-stagecmd-err-";
+  FILE *errFp = gSystem->TempFileName(tfn);
+  if (errFp) {
+    fclose(errFp);
+  }
+  else {
+    AfLogWarning("Can't create temporary file for saving stderr of the stage "
+    "command!");
+    tfn = "/dev/null";
+  }
+
   TPMERegexp re("\\$URLTOSTAGE([ \t]|$)", "g");
   url.Append(" ");
   if (re.Substitute(cmd, url, kFALSE) == 0) {
@@ -518,10 +534,11 @@ void *AfDataSetsManager::Stage(void *args) {
     cmd.Append(" ");
     cmd.Append(url);
   }
-  cmd.Append("2> /dev/null");  // we are only interested in stdout
+  cmd.Append("2> ");
+  cmd.Append(tfn.Data());
 
-  AfLogDebug("Thread #%ld is spawning staging command: %s", TThread::SelfId(),
-    cmd.Data());
+  AfLogDebug(30, "Thread #%ld is spawning staging command: %s",
+    TThread::SelfId(), cmd.Data());
 
   TString out = gSystem->GetFromPipe(cmd.Data());
 
@@ -531,6 +548,32 @@ void *AfDataSetsManager::Stage(void *args) {
   }
   else {
     *retVal = kFALSE;
+
+    if ((tfn != "/dev/null") && (errFp = fopen(tfn.Data(), "r")))  {
+      char buf[1000];
+
+      TThread::Lock();
+
+      AfLogDebug(10, "Staging of URL %s failed, stderr of stagecmd follows",
+        url.Data());
+      AfLogDebug(10, "[stagecmd] ----------------- CUT HERE -----------------");
+      while ( fgets(buf, 1000, errFp) ) {
+        Int_t l = strlen(buf);
+        while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
+          buf[l] = '\0';
+        }
+        AfLogDebug(10, "[stagecmd] %s", buf);
+      }
+      AfLogDebug(10, "[stagecmd] ----------------- CUT HERE -----------------");
+
+      TThread::UnLock();
+
+      fclose(errFp);
+    }
+  }
+
+  if (tfn != "/dev/null") {
+    gSystem->Unlink(tfn.Data());
   }
 
   return retVal;

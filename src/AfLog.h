@@ -20,15 +20,15 @@ typedef enum { kMsgOk, kMsgInfo, kMsgWarning, kMsgError, kMsgFatal, kMsgDebug }
 class AfLog {
 
   public:
-    static void Init(Bool_t debug = kFALSE);
+    static void Init(Int_t debugLevel = -999);
     static void Delete();
-    void        SetDebug(Bool_t debug);
     void        SetBanner(const char *msg) { fBanner = msg; };
     void        PrintBanner();
-    Bool_t      GetDebug() { return fDebug; };
+    Int_t       GetDebugLevel() { return fDebugLevel; };
+    void        SetDebugLevel(Int_t debugLevel) { fDebugLevel = debugLevel; };
     Bool_t      SetFile(const char *fn);
     void        SetStdErr();
-    void        Debug(const char *fmt, ...);
+    void        Debug(Int_t level, const char *fmt, ...);
     void        Info(const char *fmt, ...);
     void        Ok(const char *fmt, ...);
     void        Warning(const char *fmt, ...);
@@ -38,7 +38,7 @@ class AfLog {
   private:
 
     // Methods
-    AfLog(Bool_t debug = kFALSE);
+    AfLog(Int_t debugLevel = -999);
 	~AfLog();
     void CheckRotateAndFormat(MsgType_t type, const char *fmt,
       va_list args);
@@ -55,7 +55,7 @@ class AfLog {
     TString     fLogFileName;
     Bool_t      fRotateable;
     TString     fBanner;
-    Bool_t      fDebug;
+    Int_t       fDebugLevel;
 
 };
 
