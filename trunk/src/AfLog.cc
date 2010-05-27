@@ -1,10 +1,10 @@
 #include "AfLog.h"
 
-AfLog::AfLog(bool debug) {
+AfLog::AfLog(Int_t debugLevel) {
   kStdErr = stderr;
   fDatime = new TDatime();
   fLastRotated = NULL;
-  fDebug = debug;
+  fDebugLevel = debugLevel;
   fLogFile = NULL;
   SetStdErr();
 }
@@ -19,9 +19,9 @@ AfLog::~AfLog() {
   }
 }
 
-void AfLog::Init(bool debug) {
+void AfLog::Init(Int_t debugLevel) {
   if (!gLog) {
-    gLog = new AfLog(debug);
+    gLog = new AfLog(debugLevel);
   }
   else {
     gLog->Warning("Log facility already initialized!");
@@ -202,12 +202,8 @@ void AfLog::Format(MsgType_t type, const char *fmt, va_list args) {
   fflush(fLogFile);
 }
 
-void AfLog::SetDebug(bool debug) {
-  fDebug = debug;
-}
-
-void AfLog::Debug(const char *fmt, ...) {
-  if (fDebug) {
+void AfLog::Debug(Int_t level, const char *fmt, ...) {
+  if (level <= fDebugLevel) {
     va_list args;
     va_start(args, fmt);
     CheckRotateAndFormat(kMsgDebug, fmt, args);

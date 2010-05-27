@@ -36,7 +36,8 @@ AfDataSetSrc::~AfDataSetSrc() {
 // Processes all the datasets in this dataset source
 Int_t AfDataSetSrc::Process(DsAction_t action) {
 
-  AfLogDebug("+++ Started processing of dataset source %s +++", fUrl.Data());
+  AfLogDebug(20, "+++ Started processing of dataset source %s +++",
+    fUrl.Data());
 
   // Creates a flattened list of dataset URIs
   FlattenListOfDataSets();
@@ -58,7 +59,7 @@ Int_t AfDataSetSrc::Process(DsAction_t action) {
     }
   }
 
-  AfLogDebug("+++ Ended processing dataset source %s +++", fUrl.Data());
+  AfLogDebug(20, "+++ Ended processing dataset source %s +++", fUrl.Data());
 
   return nChanged;
 }
@@ -66,8 +67,13 @@ Int_t AfDataSetSrc::Process(DsAction_t action) {
 void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
   Bool_t debug) {
 
+  // Show messages only with debug level >= 30
+  if ((debug) && (gLog->GetDebugLevel() < 30)) {
+    return;
+  }
+
   if (debug) {
-    AfLogDebug(header);
+    AfLogDebug(30, header);
   }
   else {
     AfLogInfo(header);
@@ -85,7 +91,7 @@ void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
       fi->GetCurrentUrl()->GetUrl());
 
     if (debug) {
-      AfLogDebug(s.Data());
+      AfLogDebug(30, s.Data());
     }
     else {
       AfLogInfo(s.Data());
@@ -98,9 +104,7 @@ void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
 
 Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
 
-  if (gLog->GetDebug()) {
-    ListDataSetContent(uri, Form("Dataset %s before reset:", uri), kTRUE);
-  }
+  ListDataSetContent(uri, Form("Dataset %s before reset:", uri), kTRUE);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
 
@@ -130,7 +134,7 @@ Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
 
   delete fc;
 
-  AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
+  AfLogDebug(20, "WriteDataSet() for %s has returned %d", uri, r);
 
   if (r == 0) {
     AfLogError("Dataset reset: %s, but can't write (check permissions)", uri);
@@ -140,18 +144,14 @@ Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
     nChanged++;
   }
 
-  if (gLog->GetDebug()) {
-    ListDataSetContent(uri, Form("Dataset %s after reset:", uri), kTRUE);
-  }
+  ListDataSetContent(uri, Form("Dataset %s after reset:", uri), kTRUE);
 
   return nChanged;
 }
 
 Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
-  if (gLog->GetDebug()) {
-    ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
-  }
+  ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
 
   TFileCollection *fc = fManager->GetDataSet(uri);
   Int_t nChanged = 0;
@@ -187,7 +187,7 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
         fParentManager->DequeueUrl(surl);
         changed = kTRUE;
-        AfLogDebug("Dequeued (staged): %s", surl);
+        AfLogDebug(10, "Dequeued (staged): %s", surl);
       }
       else if (st == kStgFail) {
         fParentManager->DequeueUrl(surl);  // removed from current position
@@ -238,7 +238,7 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
       TDataSetManager::kFileMustExist);
     UndoSuid();
 
-    AfLogDebug("WriteDataSet() for %s has returned %d", uri, r);
+    AfLogDebug(20, "WriteDataSet() for %s has returned %d", uri, r);
 
     if (r == 0) {
       AfLogError("Dataset modif: %s, but can't write (check permissions)", uri);
@@ -249,12 +249,10 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     }
   }
   else {
-    AfLogDebug("Dataset unmod: %s", uri);
+    AfLogDebug(10, "Dataset unmod: %s", uri);
   }
 
-  if (gLog->GetDebug()) {
-    ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
-  }
+  ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
 
   delete fc;
 
@@ -353,7 +351,7 @@ void AfDataSetSrc::FlattenListOfDataSets() {
 
     TString dsMask = o->GetString();
 
-    AfLogDebug("Processing mask %s on dataset source %s", dsMask.Data(),
+    AfLogDebug(20, "Processing mask %s on dataset source %s", dsMask.Data(),
       fUrl.Data());
 
     TMap *groups = fManager->GetDataSets(dsMask.Data(),
