@@ -59,6 +59,7 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
   TIter i(fc->GetList());
   TFileInfo *inf;
   UInt_t count = 0;
+  UInt_t countMatching = 0;
 
   while ( inf = dynamic_cast<TFileInfo *>(i.Next()) ) {
     count++;
@@ -77,25 +78,47 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
         Printf("         | %s", url->GetUrl());
       }
       inf->ResetUrl();
+
+      countMatching++;
     }
   }
 
   delete fc;
   delete mgr;
 
-  Printf(">> There are %d file(s) in the dataset", count);
+  Printf(">> There are %u file(s) in the dataset, %u matched your criteria",
+    count, countMatching);
 }
 
 /** Gets a flattened TList of datasets. The list must be destroyed by the user,
  *  and it is owner of its content.
+ *
+ *  The dsMask parameter can both specify a single dataset name or a mask which
+ *  must be understandable by the TDataSetManagerFile::GetDataSets() function.
  */
-TList *afGetListOfDs(const char *mask = "/*/*") {
+TList *afGetListOfDs(const char *dsMask = "/*/*") {
 
   TDataSetManagerFile *mgr = afCreateDsMgr();
   TList *listOfDs = new TList();
   listOfDs->SetOwner();
 
-  TMap *groups = mgr->GetDataSets(mask, TDataSetManager::kReadShort);
+  // First of all it tries to open a dataset named "mask"; if does not succeed,
+  // it considers it a mask.
+  Int_t oldErrorIgnoreLevel = gErrorIgnoreLevel;
+  gErrorIgnoreLevel = 10000;
+  TFileCollection *fc = mgr->GetDataSet(dsMask);
+  gErrorIgnoreLevel = oldErrorIgnoreLevel;
+  if (fc) {
+    listOfDs->Add( new TObjString(dsMask) );
+    delete fc;
+    return listOfDs;
+  }
+
+  // Not a single dataset: let's try with a mask
+  TMap *groups = mgr->GetDataSets(dsMask, TDataSetManager::kReadShort);
+  if (!groups) {
+    return listOfDs;
+  }
   groups->SetOwnerKeyValue();  // important to avoid leaks!
   TIter gi(groups);
   TObjString *gn;
@@ -136,43 +159,43 @@ TList *afGetListOfDs(const char *mask = "/*/*") {
  *  with one or more among "SsCc". Clearly, "S" is incompatible with "s" and "C"
  *  is incompatible with "c". The URL may match any URL of a TFileInfo, even not
  *  the first one.
+ *
+ *  The URL is searched in the dataset(s) specified by dsMask.
+ *
+ *  If "*" is used as URL, it applies to every entry in the dataset.
  */
-void afMarkUrlAs(const char *fileUrl, TString bits = "") {
+void afMarkUrlAs(const char *fileUrl, TString bits = "",
+  const char *dsMask = "/*/*") {
 
-  Bool_t setStaged = kFALSE;
-  Bool_t unsetStaged = kFALSE;
-  Bool_t setCorr = kFALSE;
-  Bool_t unsetCorr = kFALSE;
+  Bool_t allFiles = kFALSE;
 
-  if (bits.Index('S') >= 0) {
-    setStaged = kTRUE;
+  if (strcmp(fileUrl, "*") == 0) {
+    allFiles = kTRUE;
   }
 
-  if (bits.Index('s') >= 0) {
-    unsetStaged = kTRUE;
-  }
+  Bool_t bS = kFALSE;
+  Bool_t bs = kFALSE;
+  Bool_t bC = kFALSE;
+  Bool_t bc = kFALSE;
 
-  if (bits.Index('C') >= 0) {
-    setCorr = kTRUE;
-  }
-
-  if (bits.Index('c') >= 0) {
-    unsetCorr = kTRUE;
-  }
+  if (bits.Index('S') >= 0) bS = kTRUE;
+  if (bits.Index('s') >= 0) bs = kTRUE;
+  if (bits.Index('C') >= 0) bC = kTRUE;
+  if (bits.Index('c') >= 0) bc = kTRUE;
 
   Bool_t err = kFALSE;
 
-  if (setStaged && unsetStaged) {
+  if (bs && bS) {
     Printf("Cannot set STAGED and NOT STAGED at the same time!");
     err = kTRUE;
   }
 
-  if (setCorr && unsetCorr) {
+  if (bc && bC) {
     Printf("Cannot set CORRUPTED and NOT CORRUPTED at the same time!");
     err = kTRUE;
   }
 
-  if (!setCorr && !setStaged && !setCorr && !unsetCorr) {
+  if (!bs && !bS && !bc && !bC) {
     Printf("Nothing to do: specify sScC as options to (un)mark STAGED or "
       "CORRUPTED bit");
     err = kTRUE;
@@ -183,7 +206,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "") {
   }
 
   TDataSetManagerFile *mgr = afCreateDsMgr();
-  TList *listOfDs = afGetListOfDs();
+  TList *listOfDs = afGetListOfDs(dsMask);
   Int_t regErrors = 0;
   TIter i(listOfDs);
   TObjString *dsUriObj;
@@ -194,43 +217,55 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "") {
     Int_t nChanged = 0;
 
     TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
-    TIter j(fc->GetList());
-    TFileInfo *fi;
 
-    while (fi = dynamic_cast<TFileInfo *>(j.Next())) {
-      if ( fi->FindByUrl(fileUrl) ) {
-        Printf(">> Found on dataset %s", dsUri.Data());
+    if (allFiles) {
+      if (bC)      fc->SetBitAll(TFileInfo::kCorrupted);
+      else if (bc) fc->ResetBitAll(TFileInfo::kCorrupted);
 
-        if (setCorr) {
-          fi->SetBit(TFileInfo::kCorrupted);
-        }
-        else if (unsetCorr) {
-          fi->ResetBit(TFileInfo::kCorrupted);
-        }
+      if (bS)      fc->SetBitAll(TFileInfo::kStaged);
+      else if (bs) fc->ResetBitAll(TFileInfo::kStaged);
 
-        if (setStaged) {
-          fi->SetBit(TFileInfo::kStaged);
-        }
-        else if (unsetStaged) {
-          fi->ResetBit(TFileInfo::kStaged);
-        }
+      nChanged = fc->GetNFiles();
+    }
+    else {
 
-        nChanged++;
+      TIter j(fc->GetList());
+      TFileInfo *fi;
+
+      while (fi = dynamic_cast<TFileInfo *>(j.Next())) {
+
+        if (fi->FindByUrl(fileUrl)) {
+
+          if (!allFiles) {
+            Printf(">> Found on dataset %s", dsUri.Data());
+          }
+
+          if (bC)      fi->SetBit(TFileInfo::kCorrupted);
+          else if (bc) fi->ResetBit(TFileInfo::kCorrupted);
+
+          if (bS)      fi->SetBit(TFileInfo::kStaged);
+          else if (bs) fi->ResetBit(TFileInfo::kStaged);
+
+          nChanged++;
+
+        }
       }
+
     }
 
     if (nChanged > 0) {
       fc->Update();
-      // O = overwrite existing dataset
-      // T = trust information (i.e. don't reset STAGED and CORRUPTED bits):
-      //     the dataset manager must be configured to allow so (it is by
-      //     default on PROOF)
       TString group, user, dsName;
       mgr->ParseUri(dsUri, &group, &user, &dsName);
       Int_t r = mgr->WriteDataSet(group, user, dsName, fc);
 
       if (r == 0) {
+        Printf(">> Can't write back dataset %s, check permissions",
+          dsUri.Data());
         regErrors++;
+      }
+      else {
+        Printf(">> Dataset %s written back with success", dsUri.Data());
       }
     }
 
@@ -244,9 +279,6 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "") {
     Printf("%d error(s) writing back datasets encountered, check permissions",
       regErrors);
   }
-  //else {
-  //  Printf("Success, no errors");
-  //}
 }
 
 /** Repair datasets: this function gives the possibility to take actions on
@@ -259,9 +291,16 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "") {
  *  Actions can be combined, separe them with colon ':'. Actions "unlist" and
  *  "uncorrupt" can not be combined.
  *
+ *  For instance, to remove files both from the list and from the disk, you can
+ *  use "unlist:unstage".
+ *
  *  If no valid action is given, corrupted files are only listed.
+ *
+ *  The dataset(s) to be repaired are limited by the dsMask parameter, which can
+ *  be both a single dataset name and a mask.
  */
-void afRepairDs(const TString action = "", const TString listOutFile = "") {
+void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
+  const TString listOutFile = "") {
 
   Bool_t aUncorrupt = kFALSE;
   Bool_t aUnstage = kFALSE;
@@ -304,7 +343,7 @@ void afRepairDs(const TString action = "", const TString listOutFile = "") {
   }
 
   TDataSetManagerFile *mgr = afCreateDsMgr();
-  TList *listOfDs = afGetListOfDs();
+  TList *listOfDs = afGetListOfDs(dsMask);
   TObjString *dsUriObj;
   TIter iDs(listOfDs);
 
@@ -403,4 +442,30 @@ void afRepairDs(const TString action = "", const TString listOutFile = "") {
   if (outList.is_open()) {
     outList.close();
   }
+}
+
+/** Shows on the screen the list of datasets that match the search mask.
+ */
+void afShowListOfDs(const char *dsMask = "/*/*") {
+
+  TList *dsList = afGetListOfDs(dsMask);
+  TObjString *nameObj;
+  TIter i(dsList);
+
+  while (nameObj = dynamic_cast<TObjString *>(i.Next())) {
+    Printf(nameObj->GetString().Data());
+  }
+
+  Printf(">> There are %d dataset(s) matching your criteria",
+    dsList->GetSize());
+
+  delete dsList;
+}
+
+
+/** A shortcut to mark every file on a specified dataset mask as nonstaged and
+ *  noncorrupted.
+ */
+void afResetDataSet(const char *dsMask = "/*/*") {
+  afMarkUrlAs("*", "sc", dsMask);
 }
