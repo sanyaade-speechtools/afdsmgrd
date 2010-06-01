@@ -58,14 +58,16 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
   TIter i(fc->GetList());
   TFileInfo *inf;
-  UInt_t count = 1;
+  UInt_t count = 0;
 
   while ( inf = dynamic_cast<TFileInfo *>(i.Next()) ) {
+    count++;
+
     Bool_t s = inf->TestBit(TFileInfo::kStaged);
     Bool_t c = inf->TestBit(TFileInfo::kCorrupted);
 
     if ( ((s && bS) || (!s && bs)) && ((c && bC) || (!c && bc)) ) {
-      Printf("% 4u. %c%c | %s", count++, (s ? 'S' : 's'), (c ? 'C' : 'c'),
+      Printf("% 4u. %c%c | %s", count, (s ? 'S' : 's'), (c ? 'C' : 'c'),
         inf->GetCurrentUrl()->GetUrl());
       TUrl *url;
       inf->NextUrl();
@@ -80,6 +82,8 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
   delete fc;
   delete mgr;
+
+  Printf(">> There are %d file(s) in the dataset", count);
 }
 
 /** Gets a flattened TList of datasets. The list must be destroyed by the user,
@@ -240,59 +244,78 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "") {
     Printf("%d error(s) writing back datasets encountered, check permissions",
       regErrors);
   }
-  else {
-    Printf("Success, no errors");
-  }
+  //else {
+  //  Printf("Success, no errors");
+  //}
 }
 
 /** Repair datasets: this function gives the possibility to take actions on
  *  corrupted files. Possible actions are:
  *
- *   - ignore:  corrupted files are just listed
- *   - unlist:  they are removed from dataset
- *   - unstage: they are removed from dataset and they are deleted from storage
- *   - uncorrupt: files are marked as uncorrupted (and unstaged)
+ *   - unlist:    files are removed from dataset
+ *   - unstage:   files are deleted from storage and marked as unstaged
+ *   - uncorrupt: files are marked as unstaged/uncorrupted
  *
- *  TODO:
+ *  Actions can be combined, separe them with colon ':'. Actions "unlist" and
+ *  "uncorrupt" can not be combined.
  *
- *   - implement unstage
- *   - save the list of "bad" files somewhere (by removing duplicates)
+ *  If no valid action is given, corrupted files are only listed.
  */
-void afRepairDs(TString action = "ignore") {
+void afRepairDs(const TString action = "", const TString listOutFile = "") {
 
-  // What to do?
-  char a;
+  Bool_t aUncorrupt = kFALSE;
+  Bool_t aUnstage = kFALSE;
+  Bool_t aUnlist = kFALSE;
 
-  if (action == "uncorrupt") {
-    a = 'C';
+  TObjArray *tokens = action.Tokenize(":");
+
+  for (Int_t i=0; i<tokens->GetEntries(); i++) {
+
+   TObjString *tok = tokens->At(i);
+
+    if (tok->GetString() == "uncorrupt") {
+      aUncorrupt = kTRUE;
+    }
+    else if (tok->GetString() == "unstage") {
+      aUnstage = kTRUE;
+    }
+    else if (tok->GetString() == "unlist") {
+      aUnlist = kTRUE;
+    }
+
   }
-  else if (action == "unstage") {
-    a = 'S';
-  }
-  else if (action == "unlist") {
-    a = 'L';
-  }
-  else if (action == "ignore") {
-    a = 'I';
-  }
-  else {
-    Printf("Action may only be one of uncorrupt, unstage, unlist or ignore.");
+
+  delete tokens;
+
+  // Check for incompatible options
+  if (aUncorrupt && aUnlist) {
+    Printf("Can't mark as uncorrupted and unlist at the same time.");
     return;
+  }
+
+  // Output a text file with the list of "bad" files
+  ofstream outList;
+  if (listOutFile != "") {
+    outList.open(listOutFile.Data());
+    if (!outList) {
+      Printf("The desired output text file can not be opened, aborting.");
+      return;
+    }
   }
 
   TDataSetManagerFile *mgr = afCreateDsMgr();
   TList *listOfDs = afGetListOfDs();
   TObjString *dsUriObj;
-  TIter i(listOfDs);
+  TIter iDs(listOfDs);
 
   // Loop over datasets
-  while (dsUriObj = dynamic_cast<TObjString *>(i.Next())) {
+  while (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) {
 
     TString dsUri = dsUriObj->GetString();
     TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
-    TFileCollection *newFc;
+    TFileCollection *newFc = NULL;
     
-    if (a != 'I') {
+    if (aUncorrupt || aUnstage || aUnlist) {
       newFc = new TFileCollection();
       newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
     }
@@ -309,34 +332,37 @@ void afRepairDs(TString action = "ignore") {
 
       if (c) {
 
-        if (a == 'C') {
-          Printf(">> Marking as uncorrupted: %s", fi->GetFirstUrl()->GetUrl());
-          fi->ResetBit(TFileInfo::kCorrupted);
-          fi->ResetBit(TFileInfo::kStaged);
-          TFileInfo *newFi = new TFileInfo(*fi);
-          newFc->Add(newFi);
-          nChanged++;
+        TUrl *url = fi->GetFirstUrl();
+
+        Printf(">> CORRUPTED: %s", url->GetUrl());
+        if (outList.is_open()) {
+          outList << url->GetUrl() << endl;
         }
-        else if (a == 'L') {
-          Printf(">> Unlisting: %s", fi->GetFirstUrl()->GetUrl());
+
+        if (aUncorrupt || aUnstage || aUnlist) {
+
+          if (aUncorrupt) {
+            fi->ResetBit(TFileInfo::kCorrupted);
+            fi->ResetBit(TFileInfo::kStaged);
+          }
+
+          if (aUnstage) {
+            TString cmd = Form("xrd %s:%d rm %s", url->GetHost(),
+              url->GetPort(), url->GetFile());
+            Printf(">>>> Unstaging: %s", cmd.Data());
+            fi->ResetBit(TFileInfo::kStaged);
+            gSystem->Exec( cmd );
+          }
+
+          if (!aUnlist) {
+            TFileInfo *newFi = new TFileInfo(*fi);
+            newFc->Add(newFi);
+          }
+
           nChanged++;
-        }
-        else if (a == 'S') {
-          Printf(">> Unstaging (not yet implemented): %s",
-            fi->GetFirstUrl()->GetUrl());
-          nChanged++;
-        }
-        else {
-          Printf(">> Corrupted: %s", fi->GetFirstUrl()->GetUrl());
         }
 
       }
-      else if (a != 'I') {
-        // If file is good, put it in the new TFileCollection
-        TFileInfo *newFi = new TFileInfo(*fi);
-        newFc->Add(newFi);
-      }
-
     }
 
     delete fc;
@@ -350,9 +376,11 @@ void afRepairDs(TString action = "ignore") {
       Int_t r = mgr->WriteDataSet(group, user, dsName, newFc);
 
       if (r != 0) {
+        char *defTree = newFc->GetDefaultTreeName();
         Printf("");
-        Printf("*** The dataset %s has effectively changed! ***", dsUri.Data());
-        Printf(">> Default tree: %s", newFc->GetDefaultTreeName());
+        Printf("*** The dataset %s has changed! ***", dsUri.Data());
+        Printf(">> Default tree: %s", (defTree ? defTree :
+          "(no default tree)"));
         Printf(">> Number of files: %ld (%.2f%% staged)", newFc->GetNFiles(),
           newFc->GetStagedPercentage());
       }
@@ -363,7 +391,7 @@ void afRepairDs(TString action = "ignore") {
       Printf("");
     }
 
-    if (a != 'I') {
+    if (newFc) {
       delete newFc;
     }
 
@@ -371,4 +399,8 @@ void afRepairDs(TString action = "ignore") {
 
   delete mgr;
   delete listOfDs;
+
+  if (outList.is_open()) {
+    outList.close();
+  }
 }
