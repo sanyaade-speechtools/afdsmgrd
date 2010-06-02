@@ -181,13 +181,19 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
       StgStatus_t st = fParentManager->GetStageStatus(surl);
 
       if (st == kStgDone) {
-        fi->SetBit( TFileInfo::kStaged );  // info is changed in dataset
 
-        AddRealUrlAndMetaData(fi);
+        if (!AddRealUrlAndMetaData(fi)) {
+          // If it is impossible to verify, file is marked as corrupted
+          fi->SetBit( TFileInfo::kCorrupted );
+          AfLogError("Dequeued and marked as corrupted (can't read): %s", surl);
+        }
+        else {
+          fi->SetBit( TFileInfo::kStaged );
+          AfLogDebug(10, "Dequeued (staged): %s", surl);
+        }
 
         fParentManager->DequeueUrl(surl);
-        changed = kTRUE;
-        AfLogDebug(10, "Dequeued (staged): %s", surl);
+        changed = kTRUE;  // info is changed in dataset
       }
       else if (st == kStgFail) {
         fParentManager->DequeueUrl(surl);  // removed from current position
@@ -431,7 +437,7 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   //AfLogInfo("Opened %s...", url->GetUrl());
 
   if (!f) {
-    AfLogWarning("Can't fill meta information for %s, file unaccessible - "
+    AfLogError("Can't fill meta information for %s, file unaccessible - "
       "server went down?", url->GetUrl());
     return kFALSE;
   }
@@ -461,8 +467,11 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
         //delete tree;  // CHECK: should I delete it or not?
       }
       else {
-        AfLogWarning("In file %s, can't read TTree %s - server went down?",
+        AfLogError("In file %s, can't read TTree %s - server went down?",
           url->GetUrl(), key->GetName());
+        f->Close();
+        delete f;
+        return kFALSE;
       }
 
     }
