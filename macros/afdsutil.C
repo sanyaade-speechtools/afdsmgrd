@@ -163,9 +163,12 @@ TList *afGetListOfDs(const char *dsMask = "/*/*") {
  *  The URL is searched in the dataset(s) specified by dsMask.
  *
  *  If "*" is used as URL, it applies to every entry in the dataset.
+ *
+ *  If keepOnlyLastUrl is kTRUE, it removes every URL in each TFileInfo but the
+ *  last one.
  */
 void afMarkUrlAs(const char *fileUrl, TString bits = "",
-  const char *dsMask = "/*/*") {
+  const char *dsMask = "/*/*", Bool_t keepOnlyLastUrl = kFALSE) {
 
   Bool_t allFiles = kFALSE;
 
@@ -218,39 +221,30 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
     TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
 
-    if (allFiles) {
-      if (bC)      fc->SetBitAll(TFileInfo::kCorrupted);
-      else if (bc) fc->ResetBitAll(TFileInfo::kCorrupted);
+    TIter j(fc->GetList());
+    TFileInfo *fi;
 
-      if (bS)      fc->SetBitAll(TFileInfo::kStaged);
-      else if (bs) fc->ResetBitAll(TFileInfo::kStaged);
+    while (fi = dynamic_cast<TFileInfo *>(j.Next())) {
 
-      nChanged = fc->GetNFiles();
-    }
-    else {
+      if ((allFiles) || (fi->FindByUrl(fileUrl))) {
 
-      TIter j(fc->GetList());
-      TFileInfo *fi;
-
-      while (fi = dynamic_cast<TFileInfo *>(j.Next())) {
-
-        if (fi->FindByUrl(fileUrl)) {
-
-          if (!allFiles) {
-            Printf(">> Found on dataset %s", dsUri.Data());
-          }
-
-          if (bC)      fi->SetBit(TFileInfo::kCorrupted);
-          else if (bc) fi->ResetBit(TFileInfo::kCorrupted);
-
-          if (bS)      fi->SetBit(TFileInfo::kStaged);
-          else if (bs) fi->ResetBit(TFileInfo::kStaged);
-
-          nChanged++;
-
+        if (!allFiles) {
+          Printf(">> Found on dataset %s", dsUri.Data());
         }
-      }
 
+        if (bC)      fi->SetBit(TFileInfo::kCorrupted);
+        else if (bc) fi->ResetBit(TFileInfo::kCorrupted);
+
+        if (bS)      fi->SetBit(TFileInfo::kStaged);
+        else if (bs) fi->ResetBit(TFileInfo::kStaged);
+
+        if (keepOnlyLastUrl) {
+          afKeepOnlyLastUrl(fi);
+        }
+
+        nChanged++;
+
+      }
     }
 
     if (nChanged > 0) {
@@ -385,12 +379,8 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
             fi->ResetBit(TFileInfo::kStaged);
           }
 
-          if (aUnstage) {
-            TString cmd = Form("xrd %s:%d rm %s", url->GetHost(),
-              url->GetPort(), url->GetFile());
-            Printf(">>>> Unstaging: %s", cmd.Data());
+          if ((aUnstage) && (afUnstage(url, kTRUE))) {
             fi->ResetBit(TFileInfo::kStaged);
-            gSystem->Exec( cmd );
           }
 
           if (!aUnlist) {
@@ -462,10 +452,58 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   delete dsList;
 }
 
-
 /** A shortcut to mark every file on a specified dataset mask as nonstaged and
  *  noncorrupted.
  */
 void afResetDataSet(const char *dsMask = "/*/*") {
-  afMarkUrlAs("*", "sc", dsMask);
+  afMarkUrlAs("*", "sc", dsMask, kTRUE);
+}
+
+/** Reads the list of URLs inside a TFileInfo and keeps only the last URL in the
+ *  list.
+ */
+Int_t afKeepOnlyLastUrl(TFileInfo *fi) {
+
+  TList *urlList = new TList();
+  urlList->SetOwner();
+  Int_t count = 0;
+  Int_t nUrls = fi->GetNUrls();
+  TUrl *url;
+
+  fi->ResetUrl();
+
+  while (url = fi->NextUrl()) {
+    if (++count < nUrls) {
+      urlList->Add( new TObjString(url->GetUrl()) );
+    }
+  }
+
+  TIter i(urlList);
+  TObjString *s;
+  while ( s = dynamic_cast<TObjString *>(i.Next()) ) {
+    fi->RemoveUrl( s->GetString().Data() );
+  }
+
+  fi->ResetUrl();
+
+  delete urlList;
+}
+
+/** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
+ *  output is not suppressed.
+ *
+ *  Returns kTRUE on success, kFALSE otherwise.
+ */
+Bool_t afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
+
+  TString cmd = Form("xrd %s:%d rm %s", url->GetHost(), url->GetPort(),
+    url->GetFile());
+
+  if (suppressOutput) {
+    cmd.Append(" > /dev/null 2>&1");
+  }
+
+  Printf(">>>> Unstaging: %s", cmd.Data());
+
+  gSystem->Exec( cmd );
 }
