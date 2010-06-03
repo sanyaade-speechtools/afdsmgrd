@@ -574,7 +574,8 @@ void *AfDataSetsManager::Stage(void *args) {
   }
 
   if (tfn != "/dev/null") {
-    unlink( tfn.Data() );  // gSystem->Unlink() causes problems...
+    // Can't use gSystem->Unlink(), see https://savannah.cern.ch/bugs/?68276
+    unlink(tfn.Data());
   }
 
   return retVal;
