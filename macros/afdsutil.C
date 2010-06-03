@@ -11,7 +11,7 @@ void afdsutil() {
  *  inside the user's ~/.rootrc.
  */
 void afSetDsPath(const char *dsPath) {
-  gEnv->SetValue("af.dspath", gDsPath.Data());
+  gEnv->SetValue("af.dspath", dsPath);
   gEnv->SaveLevel(kEnvUser);
 }
 

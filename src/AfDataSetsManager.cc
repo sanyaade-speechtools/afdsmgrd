@@ -508,6 +508,7 @@ void AfDataSetsManager::ProcessTransferQueue() {
 }
 
 void *AfDataSetsManager::Stage(void *args) {
+
   TObjArray *o = (TObjArray *)args;
   TString url = dynamic_cast<TObjString *>( o->At(0) )->GetString();
   TString cmd = dynamic_cast<TObjString *>( o->At(1) )->GetString();
@@ -556,7 +557,7 @@ void *AfDataSetsManager::Stage(void *args) {
 
       AfLogDebug(10, "Staging of URL %s failed, stderr of stagecmd follows",
         url.Data());
-      AfLogDebug(10, "[stagecmd] ----------------- CUT HERE -----------------");
+      AfLogDebug(10, "[stagecmd] -8<-------------- CUT HERE -----------------");
       while ( fgets(buf, 1000, errFp) ) {
         Int_t l = strlen(buf);
         while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
@@ -564,7 +565,7 @@ void *AfDataSetsManager::Stage(void *args) {
         }
         AfLogDebug(10, "[stagecmd] %s", buf);
       }
-      AfLogDebug(10, "[stagecmd] ----------------- CUT HERE -----------------");
+      AfLogDebug(10, "[stagecmd] -8<-------------- CUT HERE -----------------");
 
       TThread::UnLock();
 
@@ -573,7 +574,7 @@ void *AfDataSetsManager::Stage(void *args) {
   }
 
   if (tfn != "/dev/null") {
-    gSystem->Unlink(tfn.Data());
+    unlink( tfn.Data() );  // gSystem->Unlink() causes problems...
   }
 
   return retVal;
