@@ -182,17 +182,18 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
       if (st == kStgDone) {
 
-        if (!AddRealUrlAndMetaData(fi)) {
-          // If it is impossible to verify, file is marked as corrupted
-          fi->SetBit( TFileInfo::kCorrupted );
-          AfLogError("Dequeued and marked as corrupted (can't read): %s", surl);
-        }
-        else {
+        fParentManager->DequeueUrl(surl);
+
+        if (AddRealUrlAndMetaData(fi)) {
           fi->SetBit( TFileInfo::kStaged );
           AfLogDebug(10, "Dequeued (staged): %s", surl);
         }
+        else {
+          fi->SetBit( TFileInfo::kCorrupted );
+          AfLogError("Dequeued and marked as corrupted (can't verify): %s",
+            surl);
+        }
 
-        fParentManager->DequeueUrl(surl);
         changed = kTRUE;  // info is changed in dataset
       }
       else if (st == kStgFail) {
@@ -210,7 +211,7 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
       }
       else if (st == kStgAbsent) {
         if (c) {
-          AfLogInfo("Not queuing (marked as corrupted): %s", surl);
+          AfLogDebug(10, "Not queuing (marked as corrupted): %s", surl);
         }
         else {
           // Try to push at the end with status Q
@@ -432,21 +433,29 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   fi->RemoveMetaData();
 
   TUrl *url = fi->GetCurrentUrl();
-  //AfLogInfo("Checking %s...", url->GetUrl());
+  AfLogDebug(20, "Verifying %s", url->GetUrl());
+
   TFile *f = TFile::Open(url->GetUrl());
-  //AfLogInfo("Opened %s...", url->GetUrl());
 
   if (!f) {
-    AfLogError("Can't fill meta information for %s, file unaccessible - "
-      "server went down?", url->GetUrl());
+    AfLogError("Can't open file %s, server went down?", url->GetUrl());
     return kFALSE;
   }
 
+  AfLogDebug(20, ">> Opened successfully");
+
   // Get the real URL
-  TUrl *realUrl = new TUrl( const_cast<TUrl *>(f->GetEndpointUrl())->GetUrl() );
-  realUrl->SetAnchor(url->GetAnchor());
-  fi->AddUrl( realUrl->GetUrl(), kTRUE );  // kTRUE = first elm of list
-  delete realUrl;
+  const TUrl *realUrl = f->GetEndpointUrl();
+
+  if (realUrl) {
+    TUrl *newUrl = new TUrl(*realUrl);
+    newUrl->SetAnchor(url->GetAnchor());
+    fi->AddUrl(newUrl->GetUrl(), kTRUE);  // kTRUE = added as first URL
+    delete newUrl;
+  }
+  else {
+    AfLogWarning("Can't read endpoint URL of %s", url->GetUrl());
+  }
 
   // Get the associated metadata
   TIter k( f->GetListOfKeys() );
@@ -478,9 +487,10 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   }
 
   f->Close();
-  delete f;
 
-  //AfLogInfo("Closed %s...", url->GetUrl());
+  AfLogDebug(20, ">> File closed");
+
+  delete f;
 
   return kTRUE;
 }
