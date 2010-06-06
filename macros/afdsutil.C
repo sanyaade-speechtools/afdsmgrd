@@ -392,6 +392,11 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
         }
 
       }
+      else if (newFc) {
+        TFileInfo *newFi = new TFileInfo(*fi);
+        newFc->Add(newFi);
+      }
+
     }
 
     delete fc;
