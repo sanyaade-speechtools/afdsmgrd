@@ -1,10 +1,320 @@
-/** Init function, it only prints a welcome message with the default parameters.
+#if !defined(__CINT__) || defined (__MAKECINT__)
+
+#include <Getline.h>
+#include <Riostream.h>
+#include <TDataSetManagerFile.h>
+#include <TEnv.h>
+#include <TError.h>
+#include <TFileCollection.h>
+#include <TFileInfo.h>
+#include <TGrid.h>
+#include <TGridResult.h>
+#include <THashList.h>
+#include <TList.h>
+#include <TObjArray.h>
+#include <TObjString.h>
+#include <TPRegexp.h>
+#include <TProof.h>
+
+#endif
+
+/* ========================================================================== *
+ *                            "PRIVATE" FUNCTIONS                             *
+ * ========================================================================== */
+
+/** Return kTRUE if PROOF mode is active, and connects to PROOF (masteronly) if
+ *  no PROOF connection is active.
  */
-void afdsutil() {
-  const char *dsPath = gEnv->GetValue("af.dspath", "/tmp");
-  Printf("Dataset management utilities loaded.");
-  Printf("Available functions start with \"af\", use autocompletion to list");
-  Printf(">> Datasets path: %s - change it with afSetDsPath()", dsPath);
+Bool_t _afProofMode() {
+  Bool_t proofMode = gEnv->GetValue("af.proofmode", 0);
+  if ((proofMode) && (!gProof)) {
+    TProof::Open(gEnv->GetValue("af.userhost", "localhost"), "masteronly");
+  }
+  return proofMode;
+}
+
+/** A TDataSetManagerFile object is created using default parameters.
+ */
+TDataSetManagerFile *_afCreateDsMgr() {
+  TDataSetManagerFile *mgr = new TDataSetManagerFile( NULL, NULL,
+    Form("dir:%s", gEnv->GetValue("af.dspath", "/pool/datasets")) );
+  return mgr;
+}
+
+/** Gets a flattened TList of datasets. The list must be destroyed by the user,
+ *  and it is owner of its content. The list is alphabetically ordered.
+ *
+ *  The dsMask parameter can both specify a single dataset name or a mask which
+ *  must be understandable by the TDataSetManagerFile::GetDataSets() function.
+ */
+TList *_afGetListOfDs(const char *dsMask = "/*/*") {
+
+  TDataSetManagerFile *mgr = NULL;
+  TList *listOfDs = new TList();
+  listOfDs->SetOwner();
+
+  if (!_afProofMode()) {
+    mgr = _afCreateDsMgr();
+  }
+
+  // First of all it tries to open a dataset named "mask"; if does not succeed,
+  // it considers it a mask.
+  Int_t oldErrorIgnoreLevel = gErrorIgnoreLevel;
+  gErrorIgnoreLevel = 10000;
+  TFileCollection *fc = NULL;
+  if (mgr) {
+    fc = mgr->GetDataSet(dsMask);
+  }
+  else {
+    fc = gProof->GetDataSet(dsMask);
+  }
+  gErrorIgnoreLevel = oldErrorIgnoreLevel;
+
+  if (fc) {
+    listOfDs->Add( new TObjString(dsMask) );
+    delete fc;
+    if (mgr) {
+      delete mgr;
+    }
+    return listOfDs;
+  }
+
+  // Not a single dataset: let's try with a mask
+  TMap *groups = NULL;
+  if (mgr) {
+    groups = mgr->GetDataSets(dsMask, TDataSetManager::kReadShort);
+  }
+  else {
+    groups = gProof->GetDataSets(dsMask);
+  }
+
+  if (!groups) {
+    if (mgr) {
+      delete mgr;
+    }
+    return listOfDs;  // will be empty
+  }
+
+  groups->SetOwnerKeyValue();  // important to avoid leaks!
+  TIter gi(groups);
+  TObjString *gn;
+
+  if (mgr) {
+
+    // TDataSetManagerFile mode
+
+    while ((gn = dynamic_cast<TObjString *>(gi.Next()))) {
+
+      TMap *users = dynamic_cast<TMap *>( groups->GetValue( gn->String() ) );
+      users->SetOwnerKeyValue();
+      TIter ui(users);
+      TObjString *un;
+
+      while ((un = dynamic_cast<TObjString *>(ui.Next()))) {
+
+        TMap *dss = dynamic_cast<TMap *>( users->GetValue( un->String() ) );
+        dss->SetOwnerKeyValue();
+        TIter di(dss);
+        TObjString *dn;
+
+        while ((dn = dynamic_cast<TObjString *>(di.Next()))) {
+
+          // No COMMON user/group mapping is done here...
+          TString dsUri = TDataSetManager::CreateUri( gn->String(), un->String(),
+            dn->String() );
+
+          listOfDs->Add( new TObjString(dsUri.Data()) );
+
+        }
+      }
+    }
+
+    delete mgr;
+  }
+  else {
+    // PROOF mode
+    while ((gn = dynamic_cast<TObjString *>(gi.Next()))) {
+      listOfDs->Add( new TObjString( gn->String().Data() ) );
+    }
+  }
+
+  delete groups;
+
+  listOfDs->Sort();
+
+  return listOfDs;
+}
+
+/** Reads the list of URLs inside a TFileInfo and keeps only the last URL in the
+ *  list.
+ */
+void _afKeepOnlyLastUrl(TFileInfo *fi) {
+
+  TList *urlList = new TList();
+  urlList->SetOwner();
+  Int_t count = 0;
+  Int_t nUrls = fi->GetNUrls();
+  TUrl *url;
+
+  fi->ResetUrl();
+
+  while ((url = fi->NextUrl())) {
+    if (++count < nUrls) {
+      urlList->Add( new TObjString(url->GetUrl()) );
+    }
+  }
+
+  TIter i(urlList);
+  TObjString *s;
+  while ((s = dynamic_cast<TObjString *>(i.Next()))) {
+    fi->RemoveUrl( s->String().Data() );
+  }
+
+  fi->ResetUrl();
+
+  delete urlList;
+}
+
+/** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
+ *  output is not suppressed.
+ *
+ *  Returns kTRUE on success, kFALSE otherwise.
+ */
+Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
+
+  TString cmd = Form("xrd %s:%d rm %s", url->GetHost(), url->GetPort(),
+    url->GetFile());
+
+  if (suppressOutput) {
+    cmd.Append(" > /dev/null 2>&1");
+  }
+
+  Printf(">> Unstaging: %s", cmd.Data());
+
+  gSystem->Exec( cmd );
+
+  return kTRUE;
+}
+
+/** Formats a file size returning the new size and the unit of measurement.
+ */
+void _afNiceSize(Long64_t bytes, TString &um, Double_t &size) {
+
+  const char *ums[] = { "bytes", "KiB", "MiB", "GiB", "TiB" };
+  Int_t maxDiv = sizeof(ums)/sizeof(const char *);
+  Int_t nDiv = 0;
+  Double_t b = bytes;
+
+  while ((b >= 1024.) && (nDiv+1 < maxDiv)) {
+    b /= 1024.;
+    nDiv++;
+  }
+
+  um = ums[nDiv];
+  size = b;
+}
+
+/** Saves a dataset to the disk or on PROOF, depending on the opened connection.
+ *  It returns kTRUE on success, kFALSE on failure. If quiet is kTRUE, it does
+ *  print messages on success/failure.
+ */
+Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
+  Bool_t quiet = kFALSE) {
+
+  Bool_t regSuccess;
+
+  if (!_afProofMode()) {
+    TDataSetManagerFile *mgr = _afCreateDsMgr();
+    TString group, user, name;
+    mgr->ParseUri(dsUri, &group, &user, &name);
+    if (mgr->WriteDataSet(group, user, name, fc) == 0) {
+      regSuccess = kFALSE;
+    }
+    else {
+      regSuccess = kTRUE;
+    }
+    delete mgr;
+  }
+  else {
+    TString opts = "T";
+    if (overwrite) {
+      opts.Append("O");
+    }
+    regSuccess = gProof->RegisterDataSet(dsUri.Data(), fc, opts.Data());
+  }
+
+  if (regSuccess) {
+    if (!quiet) {
+      Printf(">> Dataset %s written with success", dsUri.Data());
+    }
+    return kTRUE;
+  }
+
+  if (!quiet) {
+    Printf(">> Can't write dataset %s, check permissions", dsUri.Data());
+  }
+
+  return kFALSE;
+}
+
+/** Makes a collection from AliEn find. This is equivalent to the AliEn command:
+ *
+ *    find <basePath> <fileName>
+ *
+ *  An "anchor" is added to every file, if specified. The default tree of the
+ *  collection can also be set.
+ */
+TFileCollection *_afAliEnFind(TString basePath, TString fileName,
+  TString anchor, TString defaultTree) {
+
+  if (!gGrid) {
+    if (!TGrid::Connect("alien:")) {
+      Printf("Can't connect to AliEn.");
+      return NULL;
+    }
+  }
+
+  TFileCollection *fc = new TFileCollection();
+
+  TGridResult *res = gGrid->Query(basePath.Data(), fileName.Data());
+  Int_t nEntries = res->GetEntries();
+
+  for (Int_t i=0; i<nEntries; i++) {
+
+    Long64_t size = TString(res->GetKey(i, "size")).Atoll();
+
+    TString tUrl = res->GetKey(i, "turl");
+    if (anchor != "") {
+      tUrl.Append("#");
+      tUrl.Append(anchor);
+    }
+
+    fc->Add( new TFileInfo( tUrl, size, res->GetKey(i, "guid"),
+      res->GetKey(i,"md5") ) );
+  }
+
+  if (defaultTree != "") {
+    fc->SetDefaultTreeName(defaultTree.Data());
+  }
+
+  fc->Update();  // needed
+
+  return fc;
+}
+
+/* ========================================================================== *
+ *                             "PUBLIC" FUNCTIONS                             *
+ * ========================================================================== */
+
+/** Print current dataset utilities settings.
+ */
+void afPrintSettings() {
+  Printf(">> Datasets path: %s - change it with afSetDsPath()",
+    gEnv->GetValue("af.dspath", "/tmp"));
+  Printf(">> PROOF connect string: %s - change it with afSetProofUserHost()", 
+    gEnv->GetValue("af.userhost", "localhost"));
+  Printf(">> PROOF mode is active? %s - toggle it with afSetProofMode()",
+    (gEnv->GetValue("af.proofmode", 0) ? "YES" : "NO"));
 }
 
 /** Sets the path of the dataset source, and saves it to the af.dspath variable
@@ -15,12 +325,19 @@ void afSetDsPath(const char *dsPath) {
   gEnv->SaveLevel(kEnvUser);
 }
 
-/** A TDataSetManagerFile object is created using default parameters.
+/** Sets the default PROOF connection parameters and saves them.
  */
-TDataSetManagerFile *_afCreateDsMgr() {
-  TDataSetManagerFile *mgr = new TDataSetManagerFile( NULL, NULL,
-    Form("dir:%s", gEnv->GetValue("af.dspath", "/pool/datasets")) );
-  return mgr;
+void afSetProofUserHost(const char *userHost = "localhost") {
+  gEnv->SetValue("af.userhost", userHost);
+  gEnv->SaveLevel(kEnvUser);
+}
+
+/** Sets the PROOF mode: do not use the TDataSetManagerFile directly, but use a
+ *  PROOF connection. Useful for users who are not administrators.
+ */
+void afSetProofMode(Bool_t proofMode = kTRUE) {
+  gEnv->SetValue("af.proofmode", (Int_t)proofMode);
+  gEnv->SaveLevel(kEnvUser);
 }
 
 /** A content of a dataset is shown. There is the possibility to show only files
@@ -36,12 +353,22 @@ TDataSetManagerFile *_afCreateDsMgr() {
  */
 void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
-  TDataSetManagerFile *mgr = _afCreateDsMgr();
-  TFileCollection *fc = mgr->GetDataSet(dsUri);
+  TDataSetManagerFile *mgr = NULL;
+  TFileCollection *fc;
+
+  if (_afProofMode()) {
+    fc = gProof->GetDataSet(dsUri);
+  }
+  else {
+    mgr = _afCreateDsMgr();
+    fc = mgr->GetDataSet(dsUri);
+  }
 
   if (!fc) {
     Printf("Error opening dataset URI %s", dsUri);
-    delete mgr;
+    if (mgr) {
+      delete mgr;
+    }
     return;
   }
 
@@ -62,98 +389,34 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
   UInt_t count = 0;
   UInt_t countMatching = 0;
 
-  while ( inf = dynamic_cast<TFileInfo *>(i.Next()) ) {
+  while ((inf = dynamic_cast<TFileInfo *>(i.Next()))) {
     count++;
 
     Bool_t s = inf->TestBit(TFileInfo::kStaged);
     Bool_t c = inf->TestBit(TFileInfo::kCorrupted);
 
     if ( ((s && bS) || (!s && bs)) && ((c && bC) || (!c && bc)) ) {
-      Printf("% 4u. %c%c | %s", count, (s ? 'S' : 's'), (c ? 'C' : 'c'),
+      Printf("% 4u. %c%c | %s", ++countMatching, (s ? 'S' : 's'), (c ? 'C' : 'c'),
         inf->GetCurrentUrl()->GetUrl());
       TUrl *url;
       inf->NextUrl();
 
       // Every URL is shown, not only first
-      while (url = inf->NextUrl()) {
+      while ((url = inf->NextUrl())) {
         Printf("         | %s", url->GetUrl());
       }
       inf->ResetUrl();
-
-      countMatching++;
     }
   }
 
   delete fc;
-  delete mgr;
+
+  if (mgr) {
+    delete mgr;
+  }
 
   Printf(">> There are %u file(s) in the dataset, %u matched your criteria",
     count, countMatching);
-}
-
-/** Gets a flattened TList of datasets. The list must be destroyed by the user,
- *  and it is owner of its content.
- *
- *  The dsMask parameter can both specify a single dataset name or a mask which
- *  must be understandable by the TDataSetManagerFile::GetDataSets() function.
- */
-TList *_afGetListOfDs(const char *dsMask = "/*/*") {
-
-  TDataSetManagerFile *mgr = _afCreateDsMgr();
-  TList *listOfDs = new TList();
-  listOfDs->SetOwner();
-
-  // First of all it tries to open a dataset named "mask"; if does not succeed,
-  // it considers it a mask.
-  Int_t oldErrorIgnoreLevel = gErrorIgnoreLevel;
-  gErrorIgnoreLevel = 10000;
-  TFileCollection *fc = mgr->GetDataSet(dsMask);
-  gErrorIgnoreLevel = oldErrorIgnoreLevel;
-  if (fc) {
-    listOfDs->Add( new TObjString(dsMask) );
-    delete fc;
-    return listOfDs;
-  }
-
-  // Not a single dataset: let's try with a mask
-  TMap *groups = mgr->GetDataSets(dsMask, TDataSetManager::kReadShort);
-  if (!groups) {
-    return listOfDs;
-  }
-  groups->SetOwnerKeyValue();  // important to avoid leaks!
-  TIter gi(groups);
-  TObjString *gn;
-
-  while (gn = dynamic_cast<TObjString *>(gi.Next())) {
-
-    TMap *users = dynamic_cast<TMap *>( groups->GetValue( gn->String() ) );
-    users->SetOwnerKeyValue();
-    TIter ui(users);
-    TObjString *un;
-
-    while (un = dynamic_cast<TObjString *>(ui.Next())) {
-
-      TMap *dss = dynamic_cast<TMap *>( users->GetValue( un->String() ) );
-      dss->SetOwnerKeyValue();
-      TIter di(dss);
-      TObjString *dn;
-
-      while (dn = dynamic_cast<TObjString *>(di.Next())) {
-
-        // No COMMON user/group mapping is done here...
-        TString dsUri = TDataSetManager::CreateUri( gn->String(), un->String(),
-          dn->String() );
-
-        listOfDs->Add( new TObjString(dsUri.Data()) );
-
-      }
-    }
-  }
-
-  delete groups;
-  delete mgr;
-
-  return listOfDs;
 }
 
 /** Marks a file matching the URL as (un)staged or (un)corrupted: choose mode
@@ -209,23 +472,34 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     return;
   }
 
-  TDataSetManagerFile *mgr = _afCreateDsMgr();
+  TDataSetManagerFile *mgr = NULL;
+
+  if (!_afProofMode()) {
+    mgr = _afCreateDsMgr();
+  }
+
   TList *listOfDs = _afGetListOfDs(dsMask);
   Int_t regErrors = 0;
   TIter i(listOfDs);
   TObjString *dsUriObj;
 
-  while (dsUriObj = dynamic_cast<TObjString *>(i.Next())) {
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
 
-    TString dsUri = dsUriObj->GetString();
+    TString dsUri = dsUriObj->String();
     Int_t nChanged = 0;
 
-    TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
+    TFileCollection *fc;
+    if (mgr) {
+      fc = mgr->GetDataSet(dsUri.Data());
+    }
+    else {
+      fc = gProof->GetDataSet(dsUri.Data());
+    }
 
     TIter j(fc->GetList());
     TFileInfo *fi;
 
-    while (fi = dynamic_cast<TFileInfo *>(j.Next())) {
+    while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
 
       if ((allFiles) || (fi->FindByUrl(fileUrl))) {
 
@@ -250,24 +524,15 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
     if (nChanged > 0) {
       fc->Update();
-      TString group, user, dsName;
-      mgr->ParseUri(dsUri, &group, &user, &dsName);
-      Int_t r = mgr->WriteDataSet(group, user, dsName, fc);
-
-      if (r == 0) {
-        Printf(">> Can't write back dataset %s, check permissions",
-          dsUri.Data());
-        regErrors++;
-      }
-      else {
-        Printf(">> Dataset %s written back with success", dsUri.Data());
-      }
+      _afSaveDs(dsUri, fc, kTRUE);
     }
 
     delete fc;
   }
 
-  delete mgr;
+  if (mgr) {
+    delete mgr;
+  }
   delete listOfDs;
 
   if (regErrors > 0) {
@@ -308,15 +573,15 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
   for (Int_t i=0; i<tokens->GetEntries(); i++) {
 
-   TObjString *tok = tokens->At(i);
+   TObjString *tok = dynamic_cast<TObjString *>(tokens->At(i));
 
-    if (tok->GetString() == "uncorrupt") {
+    if (tok->String() == "uncorrupt") {
       aUncorrupt = kTRUE;
     }
-    else if (tok->GetString() == "unstage") {
+    else if (tok->String() == "unstage") {
       aUnstage = kTRUE;
     }
-    else if (tok->GetString() == "unlist") {
+    else if (tok->String() == "unlist") {
       aUnlist = kTRUE;
     }
 
@@ -340,18 +605,29 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     }
   }
 
-  TDataSetManagerFile *mgr = _afCreateDsMgr();
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) {
+    mgr = _afCreateDsMgr();
+  }
+
   TList *listOfDs = _afGetListOfDs(dsMask);
   TObjString *dsUriObj;
   TIter iDs(listOfDs);
 
   // Loop over datasets
-  while (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) {
+  while ( (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
 
-    TString dsUri = dsUriObj->GetString();
-    TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
+    TString dsUri = dsUriObj->String();
+    TFileCollection *fc;
     TFileCollection *newFc = NULL;
-    
+
+    if (mgr) {
+      fc = mgr->GetDataSet(dsUri.Data());
+    }
+    else {
+      fc = gProof->GetDataSet(dsUri.Data());
+    }
+
     if (aUncorrupt || aUnstage || aUnlist) {
       newFc = new TFileCollection();
       newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
@@ -363,7 +639,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     TFileInfo *fi;
     Int_t nChanged = 0;
 
-    while (fi = dynamic_cast<TFileInfo *>(j.Next())) {
+    while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
 
       Bool_t c = fi->TestBit(TFileInfo::kCorrupted);
 
@@ -406,27 +682,14 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     delete fc;
 
     if (nChanged > 0) {
-
       newFc->Update();
-
-      TString group, user, dsName;
-      mgr->ParseUri(dsUri, &group, &user, &dsName);
-      Int_t r = mgr->WriteDataSet(group, user, dsName, newFc);
-
-      if (r != 0) {
-        char *defTree = newFc->GetDefaultTreeName();
-        Printf("");
-        Printf("*** The dataset %s has changed! ***", dsUri.Data());
-        Printf(">> Default tree: %s", (defTree ? defTree :
-          "(no default tree)"));
-        Printf(">> Number of files: %ld (%.2f%% staged)", newFc->GetNFiles(),
-          newFc->GetStagedPercentage());
+      if ( _afSaveDs(dsUri, newFc, kTRUE, kTRUE) ) {
+        Printf("Dataset %s has changed - # of files: %ld (%.2f%% staged)",
+          dsUri.Data(), newFc->GetNFiles(), newFc->GetStagedPercentage());
       }
       else {
-        Printf("*** Can't write back modified dataset %s! ***", dsUri.Data());
+        Printf("Error while writing dataset %s", dsUri.Data());
       }
-
-      Printf("");
     }
 
     if (newFc) {
@@ -435,7 +698,9 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
   }
 
-  delete mgr;
+  if (mgr) {
+    delete mgr;
+  }
   delete listOfDs;
 
   if (outList.is_open()) {
@@ -448,11 +713,13 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 void afShowListOfDs(const char *dsMask = "/*/*") {
 
   TList *dsList = _afGetListOfDs(dsMask);
+
   TObjString *nameObj;
   TIter i(dsList);
+  Int_t count = 0;
 
-  while (nameObj = dynamic_cast<TObjString *>(i.Next())) {
-    Printf(nameObj->GetString().Data());
+  while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
+    Printf("% 4d. %s", ++count, nameObj->String().Data());
   }
 
   Printf(">> There are %d dataset(s) matching your criteria",
@@ -464,57 +731,64 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
 /** A shortcut to mark every file on a specified dataset mask as nonstaged and
  *  noncorrupted.
  */
-void afResetDataSet(const char *dsMask = "/*/*") {
+void afResetDs(const char *dsMask = "/*/*") {
   afMarkUrlAs("*", "sc", dsMask, kTRUE);
 }
 
-/** Reads the list of URLs inside a TFileInfo and keeps only the last URL in the
- *  list.
- */
-Int_t _afKeepOnlyLastUrl(TFileInfo *fi) {
-
-  TList *urlList = new TList();
-  urlList->SetOwner();
-  Int_t count = 0;
-  Int_t nUrls = fi->GetNUrls();
-  TUrl *url;
-
-  fi->ResetUrl();
-
-  while (url = fi->NextUrl()) {
-    if (++count < nUrls) {
-      urlList->Add( new TObjString(url->GetUrl()) );
-    }
-  }
-
-  TIter i(urlList);
-  TObjString *s;
-  while ( s = dynamic_cast<TObjString *>(i.Next()) ) {
-    fi->RemoveUrl( s->GetString().Data() );
-  }
-
-  fi->ResetUrl();
-
-  delete urlList;
-}
-
-/** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
- *  output is not suppressed.
+/** Scans a given dataset (or a list of datasets through a mask), filling
+ *  information about the number of events, etc. Run with quiet = kTRUE to have
+ *  cleaner output.
  *
- *  Returns kTRUE on success, kFALSE otherwise.
+ *  Please note that the Grid connection is not opened automatically!
  */
-Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
+void afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
 
-  TString cmd = Form("xrd %s:%d rm %s", url->GetHost(), url->GetPort(),
-    url->GetFile());
-
-  if (suppressOutput) {
-    cmd.Append(" > /dev/null 2>&1");
+  if (_afProofMode()) {
+    // PROOF mode: simply call VerifyDataSet after a reset
+    afResetDs(dsMask);
+    gProof->VerifyDataSet(dsMask);
+    return;
   }
 
-  Printf(">>>> Unstaging: %s", cmd.Data());
+  Int_t oldErrorIgnoreLevel = gErrorIgnoreLevel;
 
-  gSystem->Exec( cmd );
+  if (quiet) {
+    oldErrorIgnoreLevel = gErrorIgnoreLevel;
+    gErrorIgnoreLevel = 10000;
+  }
+
+  TDataSetManagerFile *mgr = _afCreateDsMgr();
+  TList *listOfDs = _afGetListOfDs(dsMask);
+  TObjString *dsUriObj;
+  TIter iDs(listOfDs);
+
+  while ( (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
+
+    TString dsUri = dsUriObj->String();
+
+    TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
+    fc->ResetBitAll(TFileInfo::kStaged);
+    fc->ResetBitAll(TFileInfo::kCorrupted);
+
+    if (!fc) {
+      Printf("Can't find dataset %s", dsUri.Data());
+      return;
+    }
+    else {
+      Printf("Scanning dataset %s, be patient...", dsUri.Data());
+    }
+
+    if (mgr->ScanDataSet(fc, 0) == 2) {
+      _afSaveDs(dsUri, fc, kTRUE);
+    }
+
+  }
+
+  delete mgr;
+
+  if (quiet) {
+    gErrorIgnoreLevel = oldErrorIgnoreLevel;
+  }
 }
 
 /** Creates a collection directly from AliEn and registers it as a dataset. If
@@ -542,20 +816,13 @@ Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
  *  used, so if a file is unavailable for some reason, the file is marked as
  *  unstaged.
  *
- *  If you want to try the search WITHOUT SAVING THE DATASETS, set dryRun to
+ *  If you want to test the search WITHOUT SAVING THE DATASETS, set dryRun to
  *  kTRUE.
  *
  */
-void afCreateCollectionFromAliEn(TString basePath, TString runList,
+void afCreateDsFromAliEn(TString basePath, TString runList,
   TString dataType = "zip#esd", Int_t passNum = 1, Bool_t verifyDs = kFALSE,
   Bool_t dryRun = kFALSE) {
-
-  if (!gGrid) {
-    if (!TGrid::Connect("alien:")) {
-      Printf("Can't connect to AliEn.");
-      return;
-    }
-  }
 
   // What to search for
   dataType.ToLower();
@@ -611,23 +878,36 @@ void afCreateCollectionFromAliEn(TString basePath, TString runList,
   }
 
   // Guess name of the dataset
-  TString baseDsPath = "";
   TString dsNameFormat = "";
+  TString lhcPeriod = "";
+  if (_afProofMode()) {
+    dsNameFormat = Form("/%s/%s/", gProof->GetGroup(), gProof->GetUser());
+  }
+
   Bool_t guessed = kTRUE;
   if (basePath.Contains("data")) {
-    baseDsPath = "/alice/data/";
-    dsNameFormat = "%s%s_%09d_p%d";
+    if (dsNameFormat == "") {
+      dsNameFormat = "/alice/data/";
+    }
+    else {
+      dsNameFormat.Append("DATA_");
+    }
+    dsNameFormat.Append("%s_%09d_p%d");
   }
   else if (basePath.Contains("sim")) {
-    baseDsPath = "/alice/sim/";
-    dsNameFormat = "%s%s_%06d";
+    if (dsNameFormat == "") {
+      dsNameFormat = "/alice/sim/";
+    }
+    else {
+      dsNameFormat.Append("SIM_");
+    }
+    dsNameFormat.Append("%s_%06d");
   }
   else {
     guessed = kFALSE;
   }
 
   // Guess LHC period
-  TString lhcPeriod = "";
   if (guessed) {
     TPMERegexp reLhc("/(LHC[^/]+)");
     if (reLhc.Match(basePath) == 2) {
@@ -651,7 +931,7 @@ void afCreateCollectionFromAliEn(TString basePath, TString runList,
 
   // The dataset manager
   TDataSetManagerFile *mgr = NULL;
-  if (!dryRun) {
+  if ((!dryRun) && (!_afProofMode())) {
     mgr = _afCreateDsMgr();
   }
 
@@ -663,87 +943,58 @@ void afCreateCollectionFromAliEn(TString basePath, TString runList,
   TIter run(runs);
   TObjString *runOs;
 
-  while (runOs = dynamic_cast<TObjString *>(run.Next())) {
+  while ( (runOs = dynamic_cast<TObjString *>(run.Next())) ) {
 
-    TFileCollection *fc = new TFileCollection("dummy", "dummy");
-
-    Int_t runNum = runOs->GetString().Atoi();
+    Int_t runNum = runOs->String().Atoi();
 
     TString searchPtn = Form("%09d/%s/pass%d/*%d*/%s", runNum, dataType.Data(),
       passNum, runNum, filePtn.Data());
 
     //Printf("basePath=%s searchPtn=%s", basePath.Data(), searchPtn.Data());
 
-    TGridResult *res = gGrid->Query(basePath.Data(), searchPtn.Data());
-    Int_t nEntries = res->GetEntries();
+    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, fileAnchor,
+      treeName);
 
-    if (nEntries < 1) {
-      Printf("No results found in basedir %s matching pattern %s, skipping",
+    if (fc->GetNFiles() == 0) {
+      Printf("No results found for basePath=%s searchPtn=%s, skipping",
         basePath.Data(), searchPtn.Data());
-      delete res;
+      delete fc;
       continue;
     }
-
-    for (Int_t i=0; i<nEntries; i++) {
-
-      Long64_t size = TString(res->GetKey(i, "size")).Atoll();
-
-      TString tUrl = res->GetKey(i, "turl");
-      if (fileAnchor != "") {
-        tUrl.Append("#");
-        tUrl.Append(fileAnchor);
-      }
-
-      fc->Add( new TFileInfo( tUrl, size, res->GetKey(i,"guid"),
-        res->GetKey(i,"md5") ) );
-
-      //Printf(">> %s (%lld bytes)", tUrl.Data(), size);
-    }
-
-    fc->Update();
 
     TString um;
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
 
-    TString dsName;
+    TString dsUri;
 
     if (guessed) {
       // Form the guessed ds name
-      dsName = Form(dsNameFormat.Data(), baseDsPath.Data(), lhcPeriod.Data(),
-        runNum, passNum);
+      dsUri = Form(dsNameFormat.Data(), lhcPeriod.Data(), runNum, passNum);
     }
     else {
       // Ask user
       TString ask = Form("Found %d files (%.1lf %s total). Dataset name? ",
         fc->GetNFiles(), fmtSize, um.Data());
       char *buf = Getline(ask);
-      Int_t l = strlen(ret);
+      Int_t l = strlen(buf);
       while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
         buf[l] = '\0';
       }
-      dsName = buf;
+      dsUri = buf;
     }
 
-    writtenDsList->Add(new TObjString(dsName.Data()));
-
-    if (treeName != "") {
-      fc->SetDefaultTreeName(treeName.Data());
-    }
+    writtenDsList->Add(new TObjString(dsUri.Data()));
 
     TString opStatus;
 
-    if (mgr) {
+    if (!dryRun) {
 
-      TString group, user, name;
-      mgr->ParseUri(dsName, &group, &user, &name);
-      Int_t r = mgr->WriteDataSet(group, user, name, fc);
-
-      if (r == 0) {
-        opStatus = "can't write!";
+      if ( _afSaveDs(dsUri, fc, kFALSE, kTRUE) ) {
+        opStatus = "saved";
       }
       else {
-        opStatus = "saved";
+        opStatus = "can't write!";
       }
 
     }
@@ -751,10 +1002,9 @@ void afCreateCollectionFromAliEn(TString basePath, TString runList,
       opStatus = "not saved";
     }
 
-    Printf(">> %- 45s : % 4d files, %6.1lf %s total size [%s]", dsName.Data(),
+    Printf(">> %- 45s : % 4d files, %6.1lf %s total size [%s]", dsUri.Data(),
       fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
-    delete res;
     delete fc;
 
   }
@@ -768,11 +1018,11 @@ void afCreateCollectionFromAliEn(TString basePath, TString runList,
   // Eventually verify the datasets
   if (verifyDs) {
     Printf("\n*** Starting verification phase ***\n");
-    TObjString *dsNameObj;
+    TObjString *dsUriObj;
     TIter iDs(writtenDsList);
-    while (dsNameObj = dynamic_cast<TObjString *>(iDs.Next())) {
-      TString dsName = dsNameObj->GetString();
-      afScanDs(dsName);
+    while ( (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
+      TString dsUri = dsUriObj->String();
+      afScanDs(dsUri);
     }
   }
 
@@ -783,93 +1033,51 @@ void afCreateCollectionFromAliEn(TString basePath, TString runList,
  *  removed.
  */
 void afRemoveDs(TString dsUri) {
-  TString path = Form("%s/%s.root", gEnv->GetValue("af.dspath", "/tmp"),
-    dsUri.Data());
-  if (gSystem->Unlink(path.Data()) < 0) {
-    Printf("Can't remove %s from disk", path.Data());
+  if (_afProofMode()) {
+    gProof->RemoveDataSet(dsUri.Data());
   }
   else {
-    Printf("Dataset removed: %s", dsUri.Data());
+    TString path = Form("%s/%s.root", gEnv->GetValue("af.dspath", "/tmp"),
+      dsUri.Data());
+    if (gSystem->Unlink(path.Data()) < 0) {
+      Printf("Can't remove %s from disk", path.Data());
+    }
+    else {
+      Printf("Dataset removed: %s", dsUri.Data());
+    }
   }
 }
 
-/** Formats a file size returning the new size and the unit of measurement.
- */
-void _afNiceSize(Long64_t bytes, TString &um, Double_t &size) {
-
-  const char *ums[] = { "bytes", "KiB", "MiB", "GiB", "TiB" };
-  Int_t maxDiv = sizeof(ums)/sizeof(const char *);
-  Int_t nDiv = 0;
-  Double_t b = bytes;
-
-  while ((b >= 1024.) && (nDiv+1 < maxDiv)) {
-    b /= 1024.;
-    nDiv++;
-  }
-
-  um = ums[nDiv];
-  size = b;
-}
-
-/** Scans a given dataset (or a list of datasets through a mask), filling
- *  information about the number of events, etc. Run with quiet = kTRUE to have
- *  cleaner output.
+/** Creates a single dataset taking standard AliEn find parameters.
  *
- *  Please note that the Grid connection is not opened automatically!
+ *  NOT YET IMPLEMENTED.
  */
-void afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
+/*void afCreateDsFromAliEn(TString basePath,
+  TString fileName = "root_archive.zip", TString anchor = "AliESDs.root",
+  TString defaultTree = "/esdTree") {
 
-  Int_t oldErrorIgnoreLevel = gErrorIgnoreLevel;
+  TFileCollection *fc = _afAliEnFind(basePath, fileName, anchor, defaultTree);
 
-  if (quiet) {
-    oldErrorIgnoreLevel = gErrorIgnoreLevel;
-    gErrorIgnoreLevel = 10000;
+  if ((!fc) || (fc->GetNFiles() == 0)) {
+    Printf("Can't find any file.");
+    if (fc) {
+      delete fc;
+    }
+    return;
   }
+}*/
 
-  TDataSetManagerFile *mgr = _afCreateDsMgr();
-  TList *listOfDs = _afGetListOfDs(dsMask);
-  TObjString *dsUriObj;
-  TIter iDs(listOfDs);
+/* ========================================================================== *
+ *                                ENTRY POINT                                 *
+ * ========================================================================== */
 
-  while (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) {
-
-    TString dsUri = dsUriObj->GetString();
-
-    TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
-    fc->ResetBitAll(TFileInfo::kStaged);
-    fc->ResetBitAll(TFileInfo::kCorrupted);
-
-    if (!fc) {
-      Printf("Can't find dataset %s", dsUri.Data());
-      return;
-    }
-    else {
-      Printf("Scanning dataset %s, be patient...", dsUri.Data());
-    }
-
-    Int_t s = mgr->ScanDataSet(fc, 0);
-
-    if (s == 2) {
-      TString group, user, dsName;
-      mgr->ParseUri(dsUri, &group, &user, &dsName);
-      Int_t r = mgr->WriteDataSet(group, user, dsName, fc);
-
-      if (r == 0) {
-        Printf(">> Can't write back dataset %s, check permissions",
-          dsUri.Data());
-      }
-      else {
-        Printf(">> Dataset %s written back with success", dsUri.Data());
-      }
-    }
-    else {
-      Printf(">> Dataset %s not modified", dsUri.Data());
-    }
-  }
-
-  delete mgr;
-
-  if (quiet) {
-    gErrorIgnoreLevel = oldErrorIgnoreLevel;
-  }
+/** Init function, it only prints a welcome message with the default parameters.
+ */
+void afdsutil() {
+  Printf("");
+  Printf("Dataset management utilities loaded.");
+  Printf("Available functions start with \"af\", use autocompletion to list.");
+  Printf("");
+  afPrintSettings();
+  Printf("");
 }
