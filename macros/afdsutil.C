@@ -741,7 +741,7 @@ void afResetDs(const char *dsMask = "/*/*") {
  *
  *  Please note that the Grid connection is not opened automatically!
  */
-void afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
+Bool_t afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
 
   if (_afProofMode()) {
     // PROOF mode: simply call VerifyDataSet after a reset
@@ -822,7 +822,7 @@ void afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
  */
 void afCreateDsFromAliEn(TString basePath, TString runList,
   TString dataType = "zip#esd", Int_t passNum = 1, Bool_t verifyDs = kFALSE,
-  Bool_t dryRun = kFALSE) {
+  Bool_t preMarkAsStaged = kFALSE, Bool_t dryRun = kFALSE) {
 
   // What to search for
   dataType.ToLower();
@@ -929,15 +929,17 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     }
   }
 
-  // The dataset manager
+  // If verifying the dataset, pre-mark files as staged in order to prevent the
+  // dataset manager to stage them
+  if (verifyDs) {
+    preMarkAsStaged = kTRUE;
+  }
+
+  // The dataset manager, if running locally
   TDataSetManagerFile *mgr = NULL;
   if ((!dryRun) && (!_afProofMode())) {
     mgr = _afCreateDsMgr();
   }
-
-  // The final list of written datasets
-  TList *writtenDsList = new TList();
-  writtenDsList->SetOwner(kTRUE);
 
   TObjArray *runs = runList.Tokenize(":");
   TIter run(runs);
@@ -962,6 +964,11 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
       continue;
     }
 
+    if (preMarkAsStaged) {
+      fc->SetBitAll(TFileInfo::kStaged);
+      fc->Update();
+    }
+
     TString um;
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
@@ -984,19 +991,41 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
       dsUri = buf;
     }
 
-    writtenDsList->Add(new TObjString(dsUri.Data()));
+    Bool_t verified = kFALSE;
+
+    // Eventually verify the dataset *before* registering it (if mgr)
+    if ((verifyDs) && (mgr)) {
+      Printf("*** Verifying the dataset %s before saving it ***", dsUri.Data());
+      fc->ResetBitAll(TFileInfo::kStaged);  // to allow verification
+      if (mgr->ScanDataSet(fc, 0) == 2) {
+        verified = kTRUE;
+      }
+    }
+
+    Bool_t saved;
+
+    if ((!dryRun) && ( _afSaveDs(dsUri, fc, kFALSE, kTRUE) )) {
+      saved = kTRUE;
+    }
+    else {
+      saved = kFALSE;
+    }
+
+    if ((saved) && (verifyDs) && (!mgr)) {
+      Printf("*** Verifying the dataset %s after saving it ***", dsUri.Data());
+      afScanDs(dsUri.Data());  // reset "S" bit automatically by afScanDs()
+    }
 
     TString opStatus;
 
-    if (!dryRun) {
-
-      if ( _afSaveDs(dsUri, fc, kFALSE, kTRUE) ) {
-        opStatus = "saved";
-      }
-      else {
-        opStatus = "can't write!";
-      }
-
+    if ((verified) && (saved)) {
+      opStatus = "verified";
+    }
+    else if (verified) {
+      opStatus = "can't write!";
+    }
+    else if (saved) {
+      opStatus = "saved";
     }
     else {
       opStatus = "not saved";
@@ -1014,19 +1043,6 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
   if (mgr) {
     delete mgr;
   }
-
-  // Eventually verify the datasets
-  if (verifyDs) {
-    Printf("\n*** Starting verification phase ***\n");
-    TObjString *dsUriObj;
-    TIter iDs(writtenDsList);
-    while ( (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
-      TString dsUri = dsUriObj->String();
-      afScanDs(dsUri);
-    }
-  }
-
-  delete writtenDsList;
 }
 
 /** Removes a dataset from the disk. Files associated to the dataset are not
