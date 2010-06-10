@@ -868,25 +868,42 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     treeName = "/aodTree";
   }
   else if (dataType == "zip") {
-    dataType = "ESDs";
-    filePtn  = "root_archive.zip";
+
+    if (fileAnchor == "esd") {
+      filePtn = "root_archive.zip";
+      dataType = "ESDs";
+      fileAnchor = "AliESDs.root";
+      treeName = "/esdTree";
+    }
+    else if (fileAnchor == "esd.tag") {
+      filePtn = "root_archive.zip";
+      dataType = "ESDs";
+      fileAnchor = "AliESDs.tag.root";
+    }
+    else if (fileAnchor == "aod") {
+      filePtn = "aod_archive.zip";
+      dataType = "AODs";
+      fileAnchor = "AliAOD.root";
+    }
+    else if (fileAnchor != "") {
+      Printf("Unsupported anchor: %s", fileAnchor.Data());
+      return;
+    }
+
   }
   else {
     Printf("Unsupported data type: %s", dataType.Data());
     return;
   }
 
-  if (fileAnchor == "esd") {
-    fileAnchor = "AliESDs.root";
-    treeName = "/esdTree";
-  }
-  else if (fileAnchor == "esd.tag") {
-    fileAnchor = "AliESDs.tag.root";
-  }
-  else if (fileAnchor != "") {
-    Printf("Unsupported anchor: %s", fileAnchor.Data());
+  // No anchor allowed except for archives
+  if (!filePtn.EndsWith(".zip") && (fileAnchor != "")) {
+    Printf("Anchor not supported for types different from zip.");
     return;
   }
+
+  //Printf("==> dataType=%s, fileAnchor=%s, filePtn=%s", dataType.Data(),
+  //  fileAnchor.Data(), filePtn.Data());
 
   // Guess name of the dataset
   TString dsNameFormat = "";
