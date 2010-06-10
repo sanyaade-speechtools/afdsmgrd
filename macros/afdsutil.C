@@ -302,6 +302,17 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
   return fc;
 }
 
+/** Obtains user's input without the final '\n'.
+ */
+TString _afGetLine(const char *prompt) {
+  char *buf = Getline(prompt);
+  Int_t l = strlen(buf);
+  while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
+    buf[l] = '\0';
+  }
+  return TString(buf);
+}
+
 /* ========================================================================== *
  *                             "PUBLIC" FUNCTIONS                             *
  * ========================================================================== */
@@ -853,7 +864,7 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
   }
   else if (dataType == "aod") {
     dataType = "AODs";
-    filePtn  = "AliAODs.root";
+    filePtn  = "AliAOD.root";
     treeName = "/aodTree";
   }
   else if (dataType == "zip") {
@@ -922,8 +933,9 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
   if (!guessed) {
     Printf("Warning: can't guess the final name of the datasets!");
     Printf("Dataset names will be asked one by one.");
-    const char *ret = Getline("Do you want to proceed [y|n]? ");
-    if ( *ret != 'y' ) {
+    TString ret = _afGetLine("Do you want to proceed [y|n]? ");
+    ret.ToLower();
+    if ( !ret.BeginsWith("y") ) {
       Printf("Aborting.");
       return;
     }
@@ -981,14 +993,8 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     }
     else {
       // Ask user
-      TString ask = Form("Found %d files (%.1lf %s total). Dataset name? ",
-        fc->GetNFiles(), fmtSize, um.Data());
-      char *buf = Getline(ask);
-      Int_t l = strlen(buf);
-      while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
-        buf[l] = '\0';
-      }
-      dsUri = buf;
+      dsUri = _afGetLine(Form("Found %d files (%.1lf %s total). Dataset name? ",
+        fc->GetNFiles(), fmtSize, um.Data()));
     }
 
     Bool_t verified = kFALSE;
