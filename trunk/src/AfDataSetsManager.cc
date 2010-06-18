@@ -12,12 +12,23 @@ AfDataSetsManager::AfDataSetsManager() {
   fStageCmds = new TList();  // not owner, threads must be cancelled manually
 
   fLastQueue = fLastStaging = fLastFail = fLastDone = -1;
+
+  kDefaultApMonDsPrefix = "PROOF::CAF::STORAGE_datasets";
+
+  #ifndef __CINT__
+  fApMon = NULL;
+  #endif
 }
 
 AfDataSetsManager::~AfDataSetsManager() {
   delete fSrcList;
   delete fStageQueue;
   delete fStageCmds;
+  #ifndef __CINT__
+  if (fApMon) {
+    delete fApMon;
+  }
+  #endif
 }
 
 Bool_t AfDataSetsManager::ReadConf(const char *cf) {
@@ -128,6 +139,49 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     AfLogInfo("Dataset mask to process: %s", o->GetString().Data());
   }
 
+  // MonALISA configuration: it is possible to specify either the URL where to
+  // retrieve the config file or directly the server given in the custom form
+  // apmon://mymonserver[:8884] 
+  TString *monRawUrl = cfr->GetDir("dsmgrd.apmonurl");
+  if (monRawUrl) {
+    TUrl monUrl(monRawUrl->Data());
+    delete monRawUrl;
+    const char *prot = monUrl.GetProtocol();
+    if ((strcmp(prot, "http") == 0) || (strcmp(prot, "http") == 0)) {
+      AfLogInfo("Retrieving MonALISA configuration from %s", monUrl.GetUrl());
+      CreateApMon(&monUrl);
+    }
+    else if (strcmp(prot, "apmon") == 0) {
+      if (monUrl.GetPort() == 0) {
+        monUrl.SetPort(8884);  // default
+      }
+      AfLogInfo("Using MonALISA server %s:%d", monUrl.GetHost(),
+        monUrl.GetPort());
+      CreateApMon(&monUrl);
+    }
+    else {
+      AfLogError("Unsupported protocol in dsmgrd.apmonurl, MonALISA "
+        "monitoring disabled");
+    }
+  }
+  else {
+    AfLogWarning("No dsmgrd.apmonurl given, MonALISA monitoring disabled");
+  }
+
+  // MonALISA prefix (prefix of the so-called "cluster name")
+  TString *clusterPrefix = cfr->GetDir("dsmgrd.apmondsprefix");
+  if (clusterPrefix) {
+    fApMonDsPrefix = *clusterPrefix;
+    AfLogInfo("MonALISA notifications will be under cluster prefix %s",
+      fApMonDsPrefix.Data());
+  }
+  else {
+    AfLogWarning("No MonALISA cluster prefix specified, using default (%s)",
+      kDefaultApMonDsPrefix.Data());
+    fApMonDsPrefix = kDefaultApMonDsPrefix;
+  }
+  delete clusterPrefix;
+
   // Parse dataset sources
 
   TPMERegexp reMss("([ \t]|^)mss:([^ \t]*)");  // regex that matches mss:
@@ -136,8 +190,8 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   TPMERegexp reDsp("([ \t]|^)destpath:([^ \t]*)");
   TPMERegexp reRw("([ \t]|^)rw=1([^ \t]*)");
 
-  // Watch out: getDirs returns a poiter to a TList that must be deleted, and it
-  // is owner of its content!
+  // Watch out: getDirs returns a poiter to a TList that must be deleted, and
+  // it is owner of its content!
   TList *dsSrcList = cfr->GetDirs("xpd.datasetsrc");
   TIter i( dsSrcList );
 
@@ -505,6 +559,57 @@ void AfDataSetsManager::ProcessTransferQueue() {
     fLastFail = nFail;
   }
 
+}
+
+void AfDataSetsManager::NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
+  Float_t pctCorrupted) {
+#ifndef __CINT__
+
+  if (!fApMon) {
+    return;
+  }
+
+  try {
+
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)dsName,
+      (char *)"stagedpct", pctStaged);
+
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)dsName,
+      (char *)"corruptedpct", pctCorrupted);
+
+  }
+  catch (runtime_error &e) {
+    AfLogError("Error sending information to MonALISA");
+  }
+
+  //AfLogInfo("NOTIFY CALLED: dataset=%s prefix=%s staged=%d corrupted=%d", dsName,
+  //  "prefixo", pctStaged, pctCorrupted);
+
+#endif
+}
+
+void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
+#ifndef __CINT__
+
+  try {
+    if (strcmp(monUrl->GetProtocol(), "apmon") == 0) {
+      char *host = (char *)monUrl->GetHost();
+      Int_t port = monUrl->GetPort();
+      char *pwd = (char *)monUrl->GetPasswd();
+      fApMon = new ApMon(1, &host, &port, &pwd);
+    }
+    else {
+      fApMon = new ApMon((char *)monUrl->GetUrl());
+    }
+  }
+  catch (runtime_error &e) {
+    AfLogError("Can't create ApMon object from URL %s, error was: %s",
+      monUrl->GetUrl(), e.what());
+    delete fApMon;
+    fApMon = NULL;
+  }
+
+#endif
 }
 
 void *AfDataSetsManager::Stage(void *args) {

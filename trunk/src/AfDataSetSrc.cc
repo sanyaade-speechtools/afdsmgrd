@@ -259,6 +259,10 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     AfLogDebug(10, "Dataset unmod: %s", uri);
   }
 
+  // Always notify via manager method (it usually uses MonALISA)
+  fParentManager->NotifyDataSetStatus(uri, fc->GetStagedPercentage(),
+    fc->GetCorruptedPercentage());
+  
   ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
 
   delete fc;
