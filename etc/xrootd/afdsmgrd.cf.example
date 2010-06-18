@@ -41,6 +41,22 @@ dsmgrd.stagecmd /path/to/xrootd/bin/xrdstagetool -d 0 $URLTOSTAGE
 # order to control the memory consumption.
 dsmgrd.maxfilesinqueue 500
 
+# This variable tells afdsmgrd how to contact one or more MonALISA server(s) to
+# activate monitoring via ApMon. It supports two kinds of URLs:
+#
+#   http[s]://host/path/configuration_file.conf
+#   apmon://[:password@]monalisahost[:8884]
+#
+# This means that you may pass either a file where to fetch the list of servers
+# or directly a single server.
+# If the variable is not set, MonALISA monitoring is disabled.
+#dsmgrd.apmonurl apmon://193.206.184.58
+
+# Since MonALISA organizes information in "clusters" and "hosts", here you can
+# specify what to use as cluster prefix for monitoring datasets information. A
+# default value is used if not given (see source code).
+#dsmgrd.apmondsprefix PROOF::CAF::STORAGE_datasets
+
 # Which datasets to process? Supports the wildcards syntax as implemented in the
 # TDataSetManager class. This setting applies to all the dataset sources. Rarely
 # used, you probably don't have to use it! 

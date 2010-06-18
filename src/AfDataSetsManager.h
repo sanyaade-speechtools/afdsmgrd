@@ -11,6 +11,10 @@
 #include <TObjString.h>
 #include <TObjectTable.h>
 
+#ifndef __CINT__
+#include "apmon/ApMon.h"
+#endif
+
 class AfDataSetsManager {
 
   public:
@@ -29,16 +33,21 @@ class AfDataSetsManager {
     void ProcessTransferQueue();
     void PrintStageList(const char *header, Bool_t debug);
 
+    void NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
+      Float_t pctCorrupted);
+
   private:
 
     // Private methods
     static void *Stage(void *args);
+    void CreateApMon(TUrl *monUrl);
 
     // Private variables
     static const Int_t  kDefaultParallelXfrs = 1;
     static const Int_t  kDefaultLoopSleep_s = 3600;
     static const Int_t  kDefaultScanDsEvery = 10;
     static const Int_t  kDefaultMaxFilesInQueue = 0;
+    TString             kDefaultApMonDsPrefix;
 
     TList              *fSrcList;
     Bool_t              fSuid;
@@ -57,6 +66,12 @@ class AfDataSetsManager {
     Int_t               fLastFail;
     Int_t               fLastDone;
     Int_t               fMaxFilesInQueue;
+
+    TString             fApMonDsPrefix;
+
+    #ifndef __CINT__
+    ApMon              *fApMon;
+    #endif
 };
 
 #endif // AFDATASETSMANAGER_H

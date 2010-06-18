@@ -22,6 +22,7 @@ export OBJEXT = .o
 export CXXEXT = .cc
 export HEXT = .h
 
+# Commented because version number is now hardcoded
 #export SVNREV = $(shell svnversion 2>/dev/null|cut -f2 -d:|tr -d '[:alpha:]')
 #export CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g -DSVNREV=$(SVNREV)
 export CXXFLAGS = $(shell $(ROOTCFG) --cflags) -g
@@ -41,6 +42,8 @@ export INSTALLPATH = $(PREFIX)/usr/bin
 
 SRCDIR = src
 ETCDIR = etc
+
+export APMONDIR = $(shell pwd)/$(SRCDIR)/apmon
 
 ### END OF THE CUSTOMIZABLE SECTION ###
 
