@@ -145,7 +145,9 @@ int main(int argc, char *argv[]) {
     }
 
     //umask(0);
-    chdir("/");
+    if (chdir("/") != 0) {
+      gSystem->Exit(33);
+    }
 
     close(STDIN_FILENO);
     close(STDOUT_FILENO);

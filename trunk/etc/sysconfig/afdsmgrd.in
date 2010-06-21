@@ -5,15 +5,15 @@
 #
 
 # Full path to the afdsmgrd executable
-export AFDSMGRD_PROG=/usr/bin/afdsmgrd
+export AFDSMGRD_PROG=@CMAKE_INSTALL_PREFIX@/bin/afdsmgrd
 
 # The configuration file - configuration may be shared with xrootd, cmsd and
 # proof without conflicts
-export AFDSMGRD_CONF=/etc/xrootd/afdsmgrd.cf
+export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/xrootd/afdsmgrd.cf
 
 # Library paths required by afdsmgrd: it should contain both ROOT libraries and
 # eventually the xrootd libraries to run the custom staging command
-export AFDSMGRD_LIBS=/path/to/rootsys/lib:/path/to/xrootd/lib
+export AFDSMGRD_LIBS=@Root_LIBDIR@:/path/to/xrootd/lib
 
 # The log directory
 export AFDSMGRD_LOGDIR=/var/log/afdsmgrd

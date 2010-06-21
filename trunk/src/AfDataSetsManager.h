@@ -12,7 +12,7 @@
 #include <TObjectTable.h>
 
 #ifndef __CINT__
-#include "apmon/ApMon.h"
+#include "ApMon.h"
 #endif
 
 class AfDataSetsManager {
