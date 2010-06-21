@@ -2,7 +2,9 @@
 
 = afdsmgrd =
 
-To report any bug, please use *[https://savannah.cern.ch/projects/aaf/ CERN Savannah]*:
+To report any bug or request a feature, please use *[https://savannah.cern.ch/projects/aaf/ CERN Savannah]*:
 
- * [https://savannah.cern.ch/bugs/?group=aaf&func=additem Report a new bug] _(specify _*afdsmgrd*_ in the _*Category*_ field)_
- * [https://savannah.cern.ch/bugs/?group=aaf&func=browse&set=open View the list of open bugs] _(to avoid the submission of already known problems)_
+ * [https://savannah.cern.ch/bugs/?group=aaf&func=additem Report a new item] _(specify _*afdsmgrd*_ in the _*Category*_ field)_
+ * [https://savannah.cern.ch/bugs/?group=aaf&func=browse&set=open View the list of open items] _(to avoid the submission of already known problems)_
+
+Thank you!
