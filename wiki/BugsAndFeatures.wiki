@@ -1,6 +1,6 @@
-#summary Bug reporting and feature requests
+#summary Bug reporting and feature request
 
-= Bug reporting and feature requests =
+= Bug reporting and feature request =
 
 To report any bug or to request a feature, please use *[https://savannah.cern.ch/projects/aaf/ CERN Savannah]*:
 
