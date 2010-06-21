@@ -1,6 +1,6 @@
 #summary afdsmgrd - Dataset management for PROOF-based analysis facilities
 
-= afdsmgrd =
+= Bugs reportings and features requests =
 
 To report any bug or request a feature, please use *[https://savannah.cern.ch/projects/aaf/ CERN Savannah]*:
 
