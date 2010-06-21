@@ -1,8 +1,8 @@
-#summary Bugs reporting and features requests
+#summary Bug reporting and feature requests
 
-= Bugs reportings and features requests =
+= Bug reporting and feature requests =
 
-To report any bug or request a feature, please use *[https://savannah.cern.ch/projects/aaf/ CERN Savannah]*:
+To report any bug or to request a feature, please use *[https://savannah.cern.ch/projects/aaf/ CERN Savannah]*:
 
  * [https://savannah.cern.ch/bugs/?group=aaf&func=additem Report a new item] _(specify _*afdsmgrd*_ in the _*Category*_ field)_
  * [https://savannah.cern.ch/bugs/?group=aaf&func=browse&set=open View the list of open items] _(to avoid the submission of already known problems)_
