@@ -1,7 +1,9 @@
 #!/bin/bash
 
 #
-# Simple configure script to fit with the xrd-installer system.
+# Configure script that uses CMake to allow the building of afdsmgrd. This
+# script is designed both to run as a standalone and to fit within the
+# xrd-installer system
 #
 # by Dario Berzano <dario.berzano@gmail.com>
 #
@@ -12,6 +14,7 @@
 
 export PREFIX="/usr/local"
 export ROOTSYS
+export APMON_PREFIX
 
 export BUILD_PREFIX="build"
 
@@ -55,7 +58,7 @@ function Main() {
   local WD=`pwd`
   mkdir "$BUILD_PREFIX"
   cd "$BUILD_PREFIX"
-  cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX
+  cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DApMon_PREFIX=$APMON_PREFIX
   if [ $? != 0 ]; then
     exit 4
   fi
@@ -70,13 +73,15 @@ function PrintHelp() {
   echo "Parameters:"
   echo "  --prefix=<dir>        the installation prefix (default=/usr/local)"
   echo "  --with-rootsys=<dir>  the directory of ROOT (default=\$ROOTSYS)"
-  #echo "  --with-apmon=<dir>    the directory where to search for ApMon lib"
+  echo "  --with-apmon=<dir>    the directory where to search for ApMon " \
+    "libraries and includes (default=<auto>)"
 }
 
 # Prints the configuration
 function PrintConfig() {
   echo "PREFIX=$PREFIX"
   echo "ROOTSYS=$ROOTSYS"
+  echo "APMON_PREFIX=$APMON_PREFIX"
 }
 
 # Checks for the presence of cmake in PATH; returns 1 on success, 0 on failure
@@ -125,6 +130,10 @@ function ConfigCustom() {
 
       --with-rootsys=*)
         ROOTSYS=${1:15}
+      ;;
+
+      --with-apmon=*)
+        APMON_PREFIX=${1:13}
       ;;
 
       *)
