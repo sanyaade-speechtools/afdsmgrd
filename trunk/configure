@@ -59,10 +59,13 @@ function Main() {
   mkdir "$BUILD_PREFIX"
   cd "$BUILD_PREFIX"
   cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DApMon_PREFIX=$APMON_PREFIX
-  if [ $? != 0 ]; then
+  local R=$?
+  cd "$WD"
+  if [ $R != 0 ]; then
+    echo "*** Removing build directory ***"
+    rm -rf "$BUILD_PREFIX"
     exit 4
   fi
-  cd "$WD"
   CreateSteerMake
 
   exit 0
