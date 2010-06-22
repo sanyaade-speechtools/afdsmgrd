@@ -5,6 +5,13 @@
 #
 
 #
+# For out-of-source builds, include the destination dir *before* (default
+# behavior) the others as the search base for includes
+#
+
+include_directories (${CMAKE_CURRENT_BINARY_DIR})
+
+#
 # List of the libraries to build
 #
 

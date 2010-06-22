@@ -47,8 +47,12 @@ find_package (Root REQUIRED)
 include_directories (${Root_INCDIR})
 
 # ApMon
-find_package(ApMon REQUIRED)
-include_directories(${ApMon_INCDIR})
+find_package (ApMon)
+
+if (ApMon_FOUND)
+  include_directories (${ApMon_INCDIR})
+  set (WITH_APMON TRUE)
+endif ()
 
 #
 # Imports subdirectories
@@ -59,6 +63,11 @@ add_subdirectory (src)
 #
 # Auto-generate the configuration files with proper variables
 #
+
+configure_file (
+  "${PROJECT_SOURCE_DIR}/src/AfConfigure.h.in"
+  "${PROJECT_BINARY_DIR}/src/AfConfigure.h"
+)
 
 configure_file (
   "${PROJECT_SOURCE_DIR}/etc/sysconfig/afdsmgrd.in"

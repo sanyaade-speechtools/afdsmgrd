@@ -53,6 +53,10 @@ fi
 RETVAL=0
 PROG=afdsmgrd
 
+cleanup() {
+  rm -rf /tmp/afdsmgrd-stagecmd-err-*
+}
+
 start() {
   echo -n "Starting $PROG..."
   pidofproc "$AFDSMGRD_PROG" > /dev/null 2>&1
@@ -60,6 +64,9 @@ start() {
     echo "done (already running)"
     return 0
   fi
+
+  # Cleans up remaining trash from previous runs in /tmp
+  cleanup
 
   # Creates proper environment and logdir
   export LD_LIBRARY_PATH=$AFDSMGRD_LIBS:$LD_LIBRARY_PATH

@@ -1,6 +1,8 @@
 #ifndef AFSTAGEURL_H
 #define AFSTAGEURL_H
 
+#include "AfConfigure.h"
+
 #include <TUrl.h>
 
 typedef enum { kStgDone = 'D', kStgFail = 'F', kStgQueue = 'Q',
