@@ -170,7 +170,7 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     Bool_t c = fi->TestBit(TFileInfo::kCorrupted);
 
     if (!s) {
-      // Only AliEn URLs are translated properly
+      // Only AliEn URLs are translated
       if (TranslateUrl(fi, AfDataSetSrc::kUrlAliEn) > 0) {
         changed = kTRUE;
       }
@@ -300,6 +300,12 @@ Int_t AfDataSetSrc::KeepOnlyLastUrl(TFileInfo *fi) {
 
 Int_t AfDataSetSrc::TranslateUrl(TFileInfo *fi, Int_t whichUrls) {
 
+  // We are *not* staging on a xrootd pool
+  if ( strcmp(fRedirUrl->GetProtocol(), "root") != 0 ) {
+    AfLogWarning("Can't translate URLs: redirector protocol \"%s\" is not" \
+      "supported, only xrootd protocol is allowed", fRedirUrl->GetProtocol());
+  }
+
   fi->ResetUrl();
   TUrl *url;
   Int_t countChanged = 0;
@@ -307,33 +313,32 @@ Int_t AfDataSetSrc::TranslateUrl(TFileInfo *fi, Int_t whichUrls) {
   Bool_t doAliEn = kUrlAliEn & whichUrls;
   Bool_t doRoot = kUrlRoot & whichUrls;
 
-  while (url = fi->NextUrl()) {
+  TUrl *curUrl = fi->GetCurrentUrl();
+  TUrl *newUrl = NULL;
 
-    // We are staging on a xrootd pool
-    if ( strcmp(fRedirUrl->GetProtocol(), "root") == 0 ) {
+  // Only the current URL is translated; the eventually-created new URL is
+  // inserted before the others in the TFileInfo's URL list
 
-      if ((doAliEn) && (strcmp(url->GetProtocol(), "alien") == 0)) {
-        url->SetProtocol( fRedirUrl->GetProtocol() );
-        url->SetFile( Form("%s%s", fRedirUrl->GetFile(), url->GetFile()) );
-        url->SetHost( fRedirUrl->GetHost() );
-        url->SetPort( fRedirUrl->GetPort() );
-        //AfLogInfo(">>>> [A] Changed: %s", url->GetUrl());
-        countChanged++;
-      }
-      else if ((doRoot) && (strcmp(url->GetProtocol(), "root") == 0)) {
-        url->SetHost( fRedirUrl->GetHost() );
-        url->SetPort( fRedirUrl->GetPort() );
-        //AfLogInfo(">>>> [R] Changed: %s", url->GetUrl());
-        countChanged++;
-      }
+  if ((doAliEn) && (strcmp(curUrl->GetProtocol(), "alien") == 0)) {
+    newUrl = new TUrl(*curUrl);
+    newUrl->SetProtocol( fRedirUrl->GetProtocol() );
+    newUrl->SetFile( Form("%s%s", fRedirUrl->GetFile(), curUrl->GetFile()) );
+    newUrl->SetHost( fRedirUrl->GetHost() );
+    newUrl->SetPort( fRedirUrl->GetPort() );
 
-    }
-    else {
-      AfLogWarning("Can't change URL %s: redirector protocol \"%s\" is not" \
-        "supported, only xrootd protocol is", url->GetUrl(),
-        fRedirUrl->GetProtocol());
-    }
+    countChanged++;
+  }
+  else if ((doRoot) && (strcmp(curUrl->GetProtocol(), "root") == 0)) {
+    newUrl = new TUrl(*curUrl);
+    newUrl->SetHost( fRedirUrl->GetHost() );
+    newUrl->SetPort( fRedirUrl->GetPort() );
 
+    countChanged++;
+  }
+
+  if (newUrl) {
+    fi->AddUrl( newUrl->GetUrl(), kTRUE );  // kTRUE --> insert *before*
+    delete newUrl;
   }
 
   fi->ResetUrl();
