@@ -1,0 +1,34 @@
+#
+# Configuration options to launch the afdsmgrd daemon.
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+
+# Full path to the afdsmgrd executable
+export AFDSMGRD_PROG=@CMAKE_INSTALL_PREFIX@/bin/afdsmgrd
+
+# The configuration file - configuration may be shared with xrootd, cmsd and
+# proof without conflicts
+export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/xrootd/afdsmgrd.cf
+
+# Library paths required by afdsmgrd: it should contain both ROOT libraries and
+# eventually the xrootd libraries to run the custom staging command
+export AFDSMGRD_LIBS=@Root_LIBDIR@:/path/to/xrootd/lib
+
+# The log directory
+export AFDSMGRD_LOGDIR=/var/log/afdsmgrd
+
+# The log file
+export AFDSMGRD_LOGFILE=$AFDSMGRD_LOGDIR/afdsmgrd.log
+
+# The PID file
+export AFDSMGRD_PIDFILE=/var/run/afdsmgrd.pid
+
+# Unprivileged user that launches the daemon
+export AFDSMGRD_USER=xrd
+
+# Files created by the init.d script will belong to AFDSMGRD_USER and this group
+export AFDSMGRD_GROUP=xrd
+
+# Set to 1 to enable verbose debug output
+export AFDSMGRD_DEBUG=0
