@@ -541,7 +541,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
       if ((allFiles) || (fi->FindByUrl(fileUrl))) {
 
         if (!allFiles) {
-          Printf(">> Found on dataset %s", dsUri.Data());
+          Printf(">> Found in dataset %s", dsUri.Data());
         }
 
         if (bC)      fi->SetBit(TFileInfo::kCorrupted);
@@ -580,6 +580,67 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     Printf("%d error(s) writing back datasets encountered, check permissions",
       regErrors);
   }
+}
+
+/** Finds the exact match of a given URL within the mask of datasets given (by
+ *  default in all datasets).
+ */
+void afFindUrl(const char *fileUrl, const char *dsMask = "/*/*") {
+
+  TDataSetManagerFile *mgr = NULL;
+
+  if (!_afProofMode()) {
+    mgr = _afCreateDsMgr();
+  }
+
+  TList *listOfDs = _afGetListOfDs(dsMask);
+  TIter i(listOfDs);
+  TObjString *dsUriObj;
+  Int_t nFoundDs = 0;
+  Int_t nFoundTotal = 0;
+
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+
+    TString dsUri = dsUriObj->String();
+
+    TFileCollection *fc;
+    if (mgr) {
+      fc = mgr->GetDataSet(dsUri.Data());
+    }
+    else {
+      fc = gProof->GetDataSet(dsUri.Data());
+    }
+
+    TIter j(fc->GetList());
+    TFileInfo *fi;
+    Int_t nFoundIntoDs = 0;
+
+    while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
+      if (fi->FindByUrl(fileUrl)) {
+        nFoundIntoDs++;
+        nFoundTotal++;
+      }
+    }
+
+    if (nFoundIntoDs) {
+      if (nFoundIntoDs == 1) {
+        Printf(">> Found in dataset %s once", dsUri.Data());
+      }
+      else {
+        Printf(">> Found in dataset %s (%d times)", dsUri.Data(), nFoundIntoDs);
+      }
+      nFoundDs++;
+    }
+
+    delete fc;
+  }
+
+  if (mgr) {
+    delete mgr;
+  }
+  delete listOfDs;
+
+  Printf("Found %d time(s) in %d different dataset(s)", nFoundTotal, nFoundDs);
 }
 
 /** Repair datasets: this function gives the possibility to take actions on
