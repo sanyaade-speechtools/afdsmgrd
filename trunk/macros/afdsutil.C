@@ -175,6 +175,27 @@ void _afKeepOnlyLastUrl(TFileInfo *fi) {
   delete urlList;
 }
 
+/** Appends an alien:// URL at the end of the URL list, if it is able to guess
+ *  it from the current URL.
+ *
+ *  It returns kTRUE on success (i.e. URL appended) and kFALSE if it was
+ *  impossible to determine the alien:// URL.
+ */
+Bool_t _afAppendRecoveredAliEnUrl(TFileInfo *fi) {
+
+  TString curUrl = fi->GetCurrentUrl()->GetUrl();
+  TString newUrl;
+
+  TPMERegexp reAliEn("/alice/.*");
+  if (reAliEn.Match( curUrl ) == 1) {
+    newUrl = "alien://" + reAliEn[0];
+    fi->AddUrl( newUrl.Data() );  // by default it is appended to the end
+    return kTRUE;
+  }
+
+  return kFALSE;
+}
+
 /** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
  *  output is not suppressed.
  *
@@ -441,9 +462,14 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
  *
  *  If keepOnlyLastUrl is kTRUE, it removes every URL in each TFileInfo but the
  *  last one.
+ *
+ *  If told to do so, it appends an eventually guessed AliEn path *before*
+ *  removing all the other URLs. Useful if the dataset was created without
+ *  keeping the originating URL in each TFileInfo (afdsmgrd <= v0.1.7).
  */
 void afMarkUrlAs(const char *fileUrl, TString bits = "",
-  const char *dsMask = "/*/*", Bool_t keepOnlyLastUrl = kFALSE) {
+  const char *dsMask = "/*/*", Bool_t keepOnlyLastUrl = kFALSE,
+  Bool_t appendRecoveredAliEnPath = kFALSE) {
 
   Bool_t allFiles = kFALSE;
 
@@ -523,6 +549,10 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
         if (bS)      fi->SetBit(TFileInfo::kStaged);
         else if (bs) fi->ResetBit(TFileInfo::kStaged);
+
+        if (appendRecoveredAliEnPath) {
+          _afAppendRecoveredAliEnUrl(fi);
+        }
 
         if (keepOnlyLastUrl) {
           _afKeepOnlyLastUrl(fi);
@@ -741,9 +771,15 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
 
 /** A shortcut to mark every file on a specified dataset mask as nonstaged and
  *  noncorrupted.
+ *
+ *  Also, only the last URL of each file is kept, which should be the
+ *  originating one.
+ *
+ *  If the dataset was staged by afdsmgrd <= v0.1.7, then you can set
+ *  recoverAliEnUrl = kTRUE to try to restore the originating alien:// URL.
  */
-void afResetDs(const char *dsMask = "/*/*") {
-  afMarkUrlAs("*", "sc", dsMask, kTRUE);
+void afResetDs(const char *dsMask = "/*/*", Bool_t recoverAliEnUrl = kFALSE) {
+  afMarkUrlAs("*", "sc", dsMask, kTRUE, recoverAliEnUrl);
 }
 
 /** Scans a given dataset (or a list of datasets through a mask), filling
