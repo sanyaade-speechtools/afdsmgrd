@@ -11,6 +11,8 @@
 typedef enum { kMsgOk, kMsgInfo, kMsgWarning, kMsgError, kMsgFatal, kMsgDebug }
   MsgType_t;
 
+#include "AfConfigure.h"
+
 #include <Riostream.h>
 #include <Varargs.h>
 #include <TDatime.h>

@@ -15,20 +15,24 @@ AfDataSetsManager::AfDataSetsManager() {
 
   kDefaultApMonDsPrefix = "PROOF::CAF::STORAGE_datasets";
 
-  #ifndef __CINT__
+  #ifdef WITH_APMON
   fApMon = NULL;
-  #endif
+  #endif // WITH_APMON
 }
 
 AfDataSetsManager::~AfDataSetsManager() {
   delete fSrcList;
   delete fStageQueue;
   delete fStageCmds;
-  #ifndef __CINT__
-  if (fApMon) {
+
+  #ifdef WITH_APMON
+  // It causes a segfault?!?!
+  /*if (fApMon) {
     delete fApMon;
   }
-  #endif
+  fApMon = NULL;
+  */
+  #endif // WITH_APMON
 }
 
 Bool_t AfDataSetsManager::ReadConf(const char *cf) {
@@ -147,7 +151,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     TUrl monUrl(monRawUrl->Data());
     delete monRawUrl;
     const char *prot = monUrl.GetProtocol();
-    if ((strcmp(prot, "http") == 0) || (strcmp(prot, "http") == 0)) {
+    if (strcmp(prot, "http") == 0) {
       AfLogInfo("Retrieving MonALISA configuration from %s", monUrl.GetUrl());
       CreateApMon(&monUrl);
     }
@@ -563,33 +567,30 @@ void AfDataSetsManager::ProcessTransferQueue() {
 
 void AfDataSetsManager::NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
   Float_t pctCorrupted) {
-#ifndef __CINT__
+
+  #ifdef WITH_APMON
 
   if (!fApMon) {
     return;
   }
 
   try {
-
     fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)dsName,
       (char *)"stagedpct", pctStaged);
 
     fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)dsName,
       (char *)"corruptedpct", pctCorrupted);
-
   }
   catch (runtime_error &e) {
     AfLogError("Error sending information to MonALISA");
   }
 
-  //AfLogInfo("NOTIFY CALLED: dataset=%s prefix=%s staged=%d corrupted=%d", dsName,
-  //  "prefixo", pctStaged, pctCorrupted);
-
-#endif
+  #endif // WITH_APMON
 }
 
 void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
-#ifndef __CINT__
+
+  #ifdef WITH_APMON
 
   try {
     if (strcmp(monUrl->GetProtocol(), "apmon") == 0) {
@@ -609,7 +610,7 @@ void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
     fApMon = NULL;
   }
 
-#endif
+  #endif // WITH_APMON
 }
 
 void *AfDataSetsManager::Stage(void *args) {

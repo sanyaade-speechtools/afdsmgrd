@@ -1,6 +1,7 @@
 #ifndef AFCONFREADER_H
 #define AFCONFREADER_H
 
+#include "AfConfigure.h"
 #include "AfLog.h"
 
 #include <Riostream.h>

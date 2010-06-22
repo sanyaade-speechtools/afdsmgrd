@@ -1,6 +1,7 @@
 #ifndef AFDATASETSMANAGER_H
 #define AFDATASETSMANAGER_H
 
+#include "AfConfigure.h"
 #include "AfConfReader.h"
 #include "AfDataSetSrc.h"
 #include "AfStageUrl.h"
@@ -11,9 +12,9 @@
 #include <TObjString.h>
 #include <TObjectTable.h>
 
-#ifndef __CINT__
+#ifdef WITH_APMON
 #include "ApMon.h"
-#endif
+#endif // WITH_APMON
 
 class AfDataSetsManager {
 
@@ -69,9 +70,9 @@ class AfDataSetsManager {
 
     TString             fApMonDsPrefix;
 
-    #ifndef __CINT__
+    #ifdef WITH_APMON
     ApMon              *fApMon;
-    #endif
+    #endif // WITH_APMON
 };
 
 #endif // AFDATASETSMANAGER_H

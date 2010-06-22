@@ -3,6 +3,7 @@
 
 typedef enum { kDsReset, kDsProcess } DsAction_t;
 
+#include "AfConfigure.h"
 #include "AfLog.h"
 #include "AfDataSetsManager.h"
 
