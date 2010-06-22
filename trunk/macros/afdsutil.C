@@ -830,6 +830,18 @@ Bool_t afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
  *  If you want to test the search WITHOUT SAVING THE DATASETS, set dryRun to
  *  kTRUE.
  *
+ *  ==========================================================================
+ *
+ *  Some examples of basePath and the resulting name of the dataset:
+ *
+ *  Simulation in PDC (run number is 6 digits, zero-padded):
+ *    /alice/sim/PDC_09/LHC09a9/* --> /alice/sim/PDC09_LHC09a9_082002
+ *
+ *  Simulation not in PDC (run number is still 6 digits, zero-padded):
+ *    /alice/sim/LHC10b4/*        --> /alice/sim/LHC10b4_114933
+ *
+ *  Real data (we include the pass number and the run is 9 digits, zero-padded):
+ *    /alice/data/2010/LHC10b/*   --> /alice/data/LHC10b_000117113_p1
  */
 void afCreateDsFromAliEn(TString basePath, TString runList,
   TString dataType = "zip#esd", Int_t passNum = 1, Bool_t verifyDs = kFALSE,
@@ -908,11 +920,15 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
   // Guess name of the dataset
   TString dsNameFormat = "";
   TString lhcPeriod = "";
+  TString pdcPeriod = "";
+
   if (_afProofMode()) {
     dsNameFormat = Form("/%s/%s/", gProof->GetGroup(), gProof->GetUser());
   }
 
   Bool_t guessed = kTRUE;
+  Bool_t isSim = kFALSE;
+
   if (basePath.Contains("data")) {
     if (dsNameFormat == "") {
       dsNameFormat = "/alice/data/";
@@ -920,6 +936,7 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     else {
       dsNameFormat.Append("DATA_");
     }
+    isSim = kFALSE;
     dsNameFormat.Append("%s_%09d_p%d");
   }
   else if (basePath.Contains("sim")) {
@@ -929,6 +946,7 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     else {
       dsNameFormat.Append("SIM_");
     }
+    isSim = kTRUE;
     dsNameFormat.Append("%s_%06d");
   }
   else {
@@ -943,6 +961,14 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     }
     else {
       guessed = kFALSE;
+    }
+  }
+
+  // Guess PDC period
+  if ((isSim) && (guessed)) {
+    TPMERegexp rePdc("/PDC_([^/]+)");
+    if (rePdc.Match(basePath) == 2) {
+      lhcPeriod = "PDC" + rePdc[1] + "_" + lhcPeriod;
     }
   }
 
@@ -978,8 +1004,17 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
 
     Int_t runNum = runOs->String().Atoi();
 
-    TString searchPtn = Form("%09d/%s/pass%d/*%d*/%s", runNum, dataType.Data(),
-      passNum, runNum, filePtn.Data());
+    TString searchPtn;
+
+    if (!isSim) { // data
+      searchPtn = Form("%09d/%s/pass%d/*%d*/%s", runNum, dataType.Data(),
+        passNum, runNum, filePtn.Data());
+    }
+    else {
+      // Any other case, inc. sim: the search mask should be big enough to
+      // suit custom patterns
+      searchPtn = Form("*%d*/*/%s", runNum, filePtn.Data());
+    }
 
     //Printf("basePath=%s searchPtn=%s", basePath.Data(), searchPtn.Data());
 
