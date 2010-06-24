@@ -15,6 +15,7 @@
 export PREFIX="/usr/local"
 export ROOTSYS
 export APMON_PREFIX
+export APMON_DISABLED=0
 
 export BUILD_PREFIX="build"
 
@@ -58,7 +59,10 @@ function Main() {
   local WD=`pwd`
   mkdir "$BUILD_PREFIX"
   cd "$BUILD_PREFIX"
-  cmake .. -DCMAKE_INSTALL_PREFIX=$PREFIX -DApMon_PREFIX=$APMON_PREFIX
+  cmake .. \
+    -DCMAKE_INSTALL_PREFIX=$PREFIX \
+    -DApMon_PREFIX=$APMON_PREFIX \
+    -DApMon_DISABLED=$APMON_DISABLED
   local R=$?
   cd "$WD"
   if [ $R != 0 ]; then
@@ -78,13 +82,16 @@ function PrintHelp() {
   echo "  --with-rootsys=<dir>  the directory of ROOT (default=\$ROOTSYS)"
   echo "  --with-apmon=<dir>    the directory where to search for ApMon " \
     "libraries and includes (default=<auto>)"
+  echo "  --disable-apmon       disable support for ApMon"
 }
 
 # Prints the configuration
 function PrintConfig() {
   echo "PREFIX=$PREFIX"
   echo "ROOTSYS=$ROOTSYS"
-  echo "APMON_PREFIX=$APMON_PREFIX"
+  if [ $APMON_DISABLED == 0 ] && [ "$APMON_PREFIX" != "" ] ; then
+    echo "APMON_PREFIX=$APMON_PREFIX"
+  fi
 }
 
 # Checks for the presence of cmake in PATH; returns 1 on success, 0 on failure
@@ -137,6 +144,10 @@ function ConfigCustom() {
 
       --with-apmon=*)
         APMON_PREFIX=${1:13}
+      ;;
+
+      --disable-apmon)
+        APMON_DISABLED=1
       ;;
 
       *)
