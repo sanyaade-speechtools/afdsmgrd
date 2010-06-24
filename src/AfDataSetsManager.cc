@@ -143,6 +143,8 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     AfLogInfo("Dataset mask to process: %s", o->GetString().Data());
   }
 
+  #ifdef WITH_APMON
+
   // MonALISA configuration: it is possible to specify either the URL where to
   // retrieve the config file or directly the server given in the custom form
   // apmon://mymonserver[:8884] 
@@ -185,6 +187,12 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     fApMonDsPrefix = kDefaultApMonDsPrefix;
   }
   delete clusterPrefix;
+
+  #else
+
+  AfLogWarning("Daemon compiled without ApMon (MonALISA) support");
+
+  #endif // WITH_APMON
 
   // Parse dataset sources
 

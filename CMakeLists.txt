@@ -47,11 +47,15 @@ find_package (Root REQUIRED)
 include_directories (${Root_INCDIR})
 
 # ApMon
-find_package (ApMon)
+if (NOT ApMon_DISABLED)
 
-if (ApMon_FOUND)
-  include_directories (${ApMon_INCDIR})
-  set (WITH_APMON TRUE)
+  find_package (ApMon)
+
+  if (ApMon_FOUND)
+    include_directories (${ApMon_INCDIR})
+    set (WITH_APMON TRUE)
+  endif ()
+
 endif ()
 
 #
