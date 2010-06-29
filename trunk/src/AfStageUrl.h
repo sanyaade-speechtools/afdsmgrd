@@ -25,7 +25,8 @@ class AfStageUrl : public TObject {
 
     // Private variables
     StgStatus_t  fStgStatus;
-    TUrl             *fUrl;
+    TUrl        *fUrl;
+    UInt_t       fStrHash;
 
   // ROOT stuff
   ClassDef(AfStageUrl, 1);

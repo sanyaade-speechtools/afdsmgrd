@@ -33,6 +33,7 @@ class AfDataSetsManager {
     StgStatus_t DequeueUrl(const char *url);
     void ProcessTransferQueue();
     void PrintStageList(const char *header, Bool_t debug);
+    void SetBinPrefix(const char *prefix);
 
     void NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
       Float_t pctCorrupted);
@@ -59,7 +60,7 @@ class AfDataSetsManager {
     TString             fStageCmd;
     Int_t               fParallelXfrs;
 
-    TList              *fStageQueue;
+    THashList          *fStageQueue;
     TList              *fStageCmds;
 
     Int_t               fLastQueue;
@@ -69,6 +70,7 @@ class AfDataSetsManager {
     Int_t               fMaxFilesInQueue;
 
     TString             fApMonDsPrefix;
+    TString             fBinPrefix;
 
     #ifdef WITH_APMON
     ApMon              *fApMon;

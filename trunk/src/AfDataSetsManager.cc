@@ -7,13 +7,15 @@ AfDataSetsManager::AfDataSetsManager() {
   fLoopSleep_s = kDefaultLoopSleep_s;
   fScanDsEvery = kDefaultScanDsEvery;
   fParallelXfrs = kDefaultParallelXfrs;
-  fStageQueue = new TList();
+  fStageQueue = new THashList();
   fStageQueue->SetOwner();
   fStageCmds = new TList();  // not owner, threads must be cancelled manually
 
   fLastQueue = fLastStaging = fLastFail = fLastDone = -1;
 
   kDefaultApMonDsPrefix = "PROOF::CAF::STORAGE_datasets";
+
+  fBinPrefix = ".";  // set with SetBinPrefix();
 
   #ifdef WITH_APMON
   fApMon = NULL;
@@ -33,6 +35,11 @@ AfDataSetsManager::~AfDataSetsManager() {
   fApMon = NULL;
   */
   #endif // WITH_APMON
+}
+
+void AfDataSetsManager::SetBinPrefix(const char *prefix) {
+  AfLogInfo("Helper binaries will be searched under %s", prefix);
+  fBinPrefix = prefix;
 }
 
 Bool_t AfDataSetsManager::ReadConf(const char *cf) {
@@ -119,6 +126,10 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   else {
     AfLogInfo("Queue limited to a maximum of %d file(s)", fMaxFilesInQueue);
     delete maxFilesInQueue;
+  }
+
+  if (fMaxFilesInQueue != 0) {
+    fStageQueue->Rehash( fMaxFilesInQueue );
   }
 
   // Stage command

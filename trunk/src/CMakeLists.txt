@@ -34,6 +34,8 @@ root_generate_dictionaries ( AfDict AfStageUrl.h AfDataSetSrc.h )
 add_executable (afdsmgrd afdsmgrd.cc)
 target_link_libraries(afdsmgrd AfDataSetsManager AfConfReader AfDataSetSrc AfLog AfStageUrl AfDict ${Root_LIBS} ${ApMon_LIBRARY})
 
+add_executable (afdsmgrd-execpid-helper execpid.cc)
+
 #
 # Where to install the stuff
 #
