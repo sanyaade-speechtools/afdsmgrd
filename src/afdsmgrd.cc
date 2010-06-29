@@ -111,6 +111,21 @@ int main(int argc, char *argv[]) {
   // Show debug messages?
   gLog->SetDebugLevel(debugLevel);
 
+  // Determine the full path of the executable
+  TString fullPath;
+  {
+    TString fullPathExec;
+
+    if (*argv[0] == '/') {
+      fullPathExec = argv[0];
+    }
+    else {
+      fullPathExec = Form("%s/%s", gSystem->WorkingDirectory(), argv[0]);
+    }
+
+    fullPath = realpath(gSystem->DirName(fullPathExec.Data()), NULL);
+  }
+
   // Check if log filename is absolute
   if ((!logFile.IsNull()) && (!logFile.BeginsWith("/"))) {
     logFile = Form("%s/%s", gSystem->WorkingDirectory(), logFile.Data());
@@ -251,6 +266,7 @@ int main(int argc, char *argv[]) {
   //AfLogOk("If you are here, everything went fine");
 
   AfDataSetsManager *dsm = new AfDataSetsManager();
+  dsm->SetBinPrefix(fullPath.Data());
 
   if (dropUser) {
     dsm->SetSuid(kTRUE);
