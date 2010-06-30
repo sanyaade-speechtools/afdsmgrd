@@ -22,6 +22,9 @@
  *                            "PRIVATE" FUNCTIONS                             *
  * ========================================================================== */
 
+// A global variable
+Int_t _afOldErrorIgnoreLevel = -1;
+
 /** Return kTRUE if PROOF mode is active, and connects to PROOF (masteronly) if
  *  no PROOF connection is active.
  */
@@ -334,6 +337,95 @@ TString _afGetLine(const char *prompt) {
   return TString(buf);
 }
 
+/** Fills the metadata of the given TFileInfo by reading information from the
+ *  file pointed by the first URL in the list. Information about TTrees and
+ *  classes that inherit thereof are read.
+ *
+ *  In case of success it returns kTRUE. If any failure occurs it returns
+ *  kFALSE.
+ */
+Bool_t _afFillMetaDataFile(TFileInfo *fi, Bool_t quiet = kFALSE) {
+
+  if (quiet) {
+    _afRootQuietOn();
+  }
+
+  // Let's start by removing old metadata
+  fi->RemoveMetaData();
+
+  // Get the URL and eventually open an AliEn connection
+  TUrl *url = fi->GetCurrentUrl();
+
+  if ((!gGrid) && (strcmp(url->GetProtocol(), "alien") == 0)) {
+    if (!TGrid::Connect("alien:")) {
+      _afRootQuietOff();
+      return kFALSE;
+    }
+  }
+
+  // Let us open the file
+  TFile *f = TFile::Open(url->GetUrl());
+
+  if (!f) {
+    Printf("Can't open file %s!", url->GetUrl());
+    _afRootQuietOff();
+    return kFALSE;
+  }
+
+  // Get the ROOT file content
+  TIter k( f->GetListOfKeys() );
+  TKey *key;
+
+  while ( key = dynamic_cast<TKey *>(k.Next()) ) {
+
+    if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
+
+      // Every TTree (or inherited thereof) will be scanned for entries
+      TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
+      TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
+
+      // Maybe the file is now unaccessible for some reason, and the tree is
+      // unreadable!
+      if (tree) {
+        meta->SetEntries( tree->GetEntries() );
+        fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
+        //delete tree;  // CHECK: should I delete it or not?
+      }
+      else {
+        Printf("!! In file %s, can't read TTree %s!",
+          url->GetUrl(), key->GetName());
+        f->Close();
+        delete f;
+        _afRootQuietOff();
+        return kFALSE;
+      }
+
+    }
+  }
+
+  f->Close();
+  delete f;
+
+  _afRootQuietOff();
+  return kTRUE;
+}
+
+/** Switches on the quiet ROOT mode.
+ */
+void _afRootQuietOn() {
+  _afOldErrorIgnoreLevel = gErrorIgnoreLevel;
+  gErrorIgnoreLevel = 10000;
+}
+
+/** Switches off the quiet ROOT mode.
+ */
+void _afRootQuietOff() {
+  if (_afOldErrorIgnoreLevel != -1) {
+    gErrorIgnoreLevel = _afOldErrorIgnoreLevel;
+    _afOldErrorIgnoreLevel = -1;
+  }
+}
+
 /* ========================================================================== *
  *                             "PUBLIC" FUNCTIONS                             *
  * ========================================================================== */
@@ -428,14 +520,18 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
     Bool_t c = inf->TestBit(TFileInfo::kCorrupted);
 
     if ( ((s && bS) || (!s && bs)) && ((c && bC) || (!c && bc)) ) {
-      Printf("% 4u. %c%c | %s", ++countMatching, (s ? 'S' : 's'), (c ? 'C' : 'c'),
+      TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
+      Int_t entries = (meta ? meta->GetEntries() : -1);
+      Printf("% 4u. %c%c | % 7d | %s", ++countMatching,
+        (s ? 'S' : 's'), (c ? 'C' : 'c'),
+        entries,
         inf->GetCurrentUrl()->GetUrl());
       TUrl *url;
       inf->NextUrl();
 
       // Every URL is shown, not only first
       while ((url = inf->NextUrl())) {
-        Printf("         | %s", url->GetUrl());
+        Printf("         |         | %s", url->GetUrl());
       }
       inf->ResetUrl();
     }
@@ -455,6 +551,12 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
  *  with one or more among "SsCc". Clearly, "S" is incompatible with "s" and "C"
  *  is incompatible with "c". The URL may match any URL of a TFileInfo, even not
  *  the first one.
+ *
+ *  A value of "M" refreshes current metadata (i.e. file is "verified"), while
+ *  a value of "m" deletes the metadata from the object.
+ *
+ *  EXAMPLE: to remove metadata and mark as corrupted, use "Cm"; instead, to
+ *  uncorrupt, mark as staged and fill metadata, use "cSm".
  *
  *  The URL is searched in the dataset(s) specified by dsMask.
  *
@@ -481,11 +583,15 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
   Bool_t bs = kFALSE;
   Bool_t bC = kFALSE;
   Bool_t bc = kFALSE;
+  Bool_t bM = kFALSE;
+  Bool_t bm = kFALSE;
 
   if (bits.Index('S') >= 0) bS = kTRUE;
   if (bits.Index('s') >= 0) bs = kTRUE;
   if (bits.Index('C') >= 0) bC = kTRUE;
   if (bits.Index('c') >= 0) bc = kTRUE;
+  if (bits.Index('M') >= 0) bM = kTRUE;
+  if (bits.Index('m') >= 0) bm = kTRUE;
 
   Bool_t err = kFALSE;
 
@@ -499,9 +605,14 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     err = kTRUE;
   }
 
-  if (!bs && !bS && !bc && !bC) {
+  if (bm && bM) {
+    Printf("Cannot REMOVE and REFRESH metadata at the same time!");
+    err = kTRUE;
+  }
+
+  if ( !(bs || bS || bc || bC || bm || bM) ) {
     Printf("Nothing to do: specify sScC as options to (un)mark STAGED or "
-      "CORRUPTED bit");
+      "CORRUPTED bit, add mM to remove/refresh metadata");
     err = kTRUE;
   }
 
@@ -549,6 +660,17 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
         if (bS)      fi->SetBit(TFileInfo::kStaged);
         else if (bs) fi->ResetBit(TFileInfo::kStaged);
+
+        if (bm) {
+          fi->RemoveMetaData();
+        }
+        else if (bM) {
+          if (!_afFillMetaDataFile( fi, kTRUE )) {
+            // The following is non-fatal
+            Printf("There was a problem updating metadata of file %s",
+              fi->GetCurrentUrl()->GetUrl());
+          }
+        }
 
         if (appendRecoveredAliEnPath) {
           _afAppendRecoveredAliEnUrl(fi);
@@ -840,7 +962,7 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
  *  recoverAliEnUrl = kTRUE to try to restore the originating alien:// URL.
  */
 void afResetDs(const char *dsMask = "/*/*", Bool_t recoverAliEnUrl = kFALSE) {
-  afMarkUrlAs("*", "sc", dsMask, kTRUE, recoverAliEnUrl);
+  afMarkUrlAs("*", "scm", dsMask, kTRUE, recoverAliEnUrl);
 }
 
 /** Scans a given dataset (or a list of datasets through a mask), filling
@@ -1219,24 +1341,118 @@ void afRemoveDs(TString dsUri) {
   }
 }
 
-/** Creates a single dataset taking standard AliEn find parameters.
- *
- *  NOT YET IMPLEMENTED.
+/** Returns a shorter version of the supplied string
  */
-/*void afCreateDsFromAliEn(TString basePath,
-  TString fileName = "root_archive.zip", TString anchor = "AliESDs.root",
-  TString defaultTree = "/esdTree") {
-
-  TFileCollection *fc = _afAliEnFind(basePath, fileName, anchor, defaultTree);
-
-  if ((!fc) || (fc->GetNFiles() == 0)) {
-    Printf("Can't find any file.");
-    if (fc) {
-      delete fc;
-    }
-    return;
+TString _afShortStr(const char *str, UInt_t maxlen) {
+  TString s = str;
+  TString o;
+  Int_t ns = 10;          // n. chars from the start
+  Int_t ne = maxlen-3-3;  // n. chars from the end
+  if ((ne >= 3) && (s.Length() > maxlen)) {
+    o = s(0, ns);
+    o += "...";
+    o += s(s.Length()-ne, ne);
   }
-}*/
+  else {
+    o = str;
+  }
+  return o;
+}
+
+/** Fills metadata information inside the TFileInfo for the given dataset or
+ *  list of datasets.
+ *
+ *  Beware that scanning implies a TFile::Open(). AliEn connection is opened
+ *  automatically if needed.
+ *
+ *  By default only files with no metadata are rescanned; if rescanAll, every
+ *  file is rescanned.
+ *
+ *  If corruptIfFail, files whose metadata can't be obtained are marked as
+ *  corrupted.
+ */
+void afFillMetaData(TString dsMask, Bool_t rescanAll = kFALSE,
+  Bool_t corruptIfFail = kFALSE) {
+
+  TList *dsList = _afGetListOfDs(dsMask);
+
+  TObjString *dsUriObj;
+  TIter i(dsList);
+  Int_t count = 0;
+
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+
+    const char *dsUri = dsUriObj->String().Data();
+    TDataSetManagerFile *mgr = NULL;
+    TFileCollection *fc;
+
+    // Gets the current dataset, both in PROOF and "offline" mode
+    if (_afProofMode()) {
+      fc = gProof->GetDataSet(dsUri);
+    }
+    else {
+      mgr = _afCreateDsMgr();
+      fc = mgr->GetDataSet(dsUri);
+    }
+
+    // Dataset may not exist anymore!
+    if (!fc) {
+      Printf("*** Error opening dataset URI %s, skipping ***", dsUri);
+      continue;
+    }
+
+    Printf("*** Processing dataset %s ***", dsUri);
+
+    // Loop over all files in dataset
+    Int_t nChanged = 0;
+    TIter j(fc->GetList());
+    TFileInfo *fi;
+    while (( fi = dynamic_cast<TFileInfo *>(j.Next()) )) {
+
+      TString status;
+
+      // Metadata already present and told not to rescan all?
+      if ((fi->GetMetaData()) && (!rescanAll)) {
+        status = "SKIP";
+      }
+      else {
+
+        if (!_afFillMetaDataFile( fi, kTRUE )) {
+          if (corruptIfFail) {
+            fi->SetBit(TFileInfo::kCorrupted);
+            status = "CORR";
+            nChanged++;
+          }
+          else {
+            status = "FAIL";
+          }
+        }
+        else {
+          status = " OK ";
+          nChanged++;
+        }      
+      }
+
+      // Prints out the status (skipped, marked as corrupted, failed, ok)
+      Printf(">> [%s] %s", status.Data(), fi->GetCurrentUrl()->GetUrl());
+
+    }
+
+    // Save, if necessary
+    if (nChanged > 0) {
+      fc->Update();
+      _afSaveDs(dsUri, fc, kTRUE);
+    }
+
+    delete fc;
+  }
+
+  delete dsList;
+
+  // Deletes the manager, only if created
+  if (mgr) { delete mgr; }
+
+}
 
 /* ========================================================================== *
  *                                ENTRY POINT                                 *
