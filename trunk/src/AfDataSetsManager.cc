@@ -9,7 +9,7 @@ AfDataSetsManager::AfDataSetsManager() {
   fParallelXfrs = kDefaultParallelXfrs;
   fStageQueue = new THashList();
   fStageQueue->SetOwner();
-  fStageCmds = new TList();  // not owner, threads must be cancelled manually
+  fStageCmds = new THashList(); // not owner, threads must be cancelled manually
 
   fLastQueue = fLastStaging = fLastFail = fLastDone = -1;
 
@@ -109,6 +109,8 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     AfLogInfo("Number of parallel staging commands set to %d", fParallelXfrs);
     delete parallelXfrs;
   }
+
+  fStageCmds->Rehash(fParallelXfrs);
 
   // Maximum number of files to place in queue (0 == no limit)
   TString *maxFilesInQueue = cfr->GetDir("dsmgrd.maxfilesinqueue");

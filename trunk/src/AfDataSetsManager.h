@@ -61,7 +61,7 @@ class AfDataSetsManager {
     Int_t               fParallelXfrs;
 
     THashList          *fStageQueue;
-    TList              *fStageCmds;
+    THashList          *fStageCmds;
 
     Int_t               fLastQueue;
     Int_t               fLastStaging;
