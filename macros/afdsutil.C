@@ -224,7 +224,7 @@ void _afKeepOnlyLastUrl(TFileInfo *fi) {
  *  It returns kTRUE on success (i.e. URL appended) and kFALSE if it was
  *  impossible to determine the alien:// URL.
  */
-Bool_t _afAppendRecoveredAliEnUrl(TFileInfo *fi) {
+Bool_t _afAppendAliEnUrlFile(TFileInfo *fi) {
 
   TString curUrl = fi->GetCurrentUrl()->GetUrl();
   TString newUrl;
@@ -237,6 +237,34 @@ Bool_t _afAppendRecoveredAliEnUrl(TFileInfo *fi) {
   }
 
   return kFALSE;
+}
+
+/** Prepends a root://redir URL at the beginning of the URL list, if it is
+ *  possible to find at least one AliEn URL to match.
+ *
+ *  It returns kTRUE on success (i.e. URL appended) and kFALSE if it was
+ *  impossible to find any alien:// URL.
+ */
+Bool_t _afPrependRedirUrlFile(TFileInfo *fi) {
+
+  TUrl *url;
+  const char *redirUrl = gEnv->GetValue("af.redirurl",
+    "root://localhost:1234/$1");
+  TPMERegexp re("^alien:\\/\\/(.*)$");
+  Bool_t found = kFALSE;
+
+  fi->ResetUrl();
+  while (( url = fi->NextUrl() )) {
+    if ( strcmp( url->GetProtocol(), "alien" ) == 0 ) {
+      found = kTRUE;
+      TString buf = url->GetUrl();
+      re.Substitute(buf, redirUrl);
+      fi->AddUrl( buf.Data(), kTRUE );  // kTRUE = at beginning of list
+      break;
+    }
+  }
+
+  return found;
 }
 
 /** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
@@ -481,6 +509,23 @@ void afPrintSettings() {
     gEnv->GetValue("af.userhost", "localhost"));
   Printf(">> PROOF mode is active? %s - toggle it with afSetProofMode()",
     (gEnv->GetValue("af.proofmode", 0) ? "YES" : "NO"));
+  Printf(">> Files path with redirector ($1 is the file path): %s - change " \
+    "it with afSetRedirUrl()", gEnv->GetValue("af.redirurl",
+    "root://localhost:1234/$1"));
+}
+
+/** Sets the URL of the redirector. $1 *must* be present in the string, or else
+ *  it will complain about it without setting the value.
+ */
+void afSetRedirUrl(TString &redirUrl) {
+  if (redirUrl.Index("$1") == kNPOS) {
+    Printf("Error: path *must* contain $1 which will be substituted with the " \
+      "file path, as in root://redir/pool/alien/$1");
+  }
+  else {
+    gEnv->SetValue("af.redirurl", redirUrl);
+    gEnv->SaveLevel(kEnvUser);
+  }
 }
 
 /** Sets the path of the dataset source, and saves it to the af.dspath variable
@@ -612,8 +657,33 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
  *  keeping the originating URL in each TFileInfo (afdsmgrd <= v0.1.7).
  */
 void afMarkUrlAs(const char *fileUrl, TString bits = "",
-  const char *dsMask = "/*/*", Bool_t keepOnlyLastUrl = kFALSE,
-  Bool_t appendRecoveredAliEnPath = kFALSE) {
+  const char *dsMask = "/*/*", TString options = "") {
+
+  // Parse options
+  Bool_t keepOnlyLastUrl = kFALSE;
+  Bool_t appendRecoveredAliEnPath = kFALSE;
+  Bool_t prependRedirectorPath = kFALSE;
+
+  options.ToLower();
+  TObjArray *tokOpts = options.Tokenize(":");
+  TIter opt(tokOpts);
+  TObjString *oopt;
+
+  while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
+    TString &sopt = oopt->String(); 
+    if (sopt == "keeplast") {
+      keepOnlyLastUrl = kTRUE;
+    }
+    else if (sopt == "alien") {
+      appendRecoveredAliEnPath = kTRUE;
+    }
+    else if (sopt == "redir") {
+      prependRedirectorPath = kTRUE;
+    }
+    else {
+      Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
+    }
+  }
 
   Bool_t allFiles = kFALSE;
 
@@ -652,9 +722,9 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     err = kTRUE;
   }
 
-  if ( !(bs || bS || bc || bC || bm || bM) ) {
-    Printf("Nothing to do: specify sScC as options to (un)mark STAGED or "
-      "CORRUPTED bit, add mM to remove/refresh metadata");
+  if ( !(bs || bS || bc || bC || bm || bM) && !(keepOnlyLastUrl ||
+    appendRecoveredAliEnPath || prependRedirectorPath) ) {
+    Printf("Nothing to do, specify some bits to change or some options");
     err = kTRUE;
   }
 
@@ -715,7 +785,11 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
         }
 
         if (appendRecoveredAliEnPath) {
-          _afAppendRecoveredAliEnUrl(fi);
+          _afAppendAliEnUrlFile(fi);
+        }
+
+        if (prependRedirectorPath) {
+          _afPrependRedirUrlFile(fi);
         }
 
         if (keepOnlyLastUrl) {
@@ -1004,8 +1078,20 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
  *  recoverAliEnUrl = kTRUE to try to restore the originating alien:// URL.
  */
 void afResetDs(const char *dsMask = "/*/*", Bool_t recoverAliEnUrl = kFALSE) {
-  afMarkUrlAs("*", "scm", dsMask, kTRUE, recoverAliEnUrl);
+  TString opts = "keeplast:";
+  if (recoverAliEnUrl) {
+    opts.Append("alien");
+  }
+  afMarkUrlAs("*", "scm", dsMask, opts);
 }
+
+/** A shortcut to prepend the redirector path of the file (read from the gEnv)
+ *  to every file in the given dataset(s). No further processing is done.
+ */
+void afPrependRedirUrl(const char *dsMask = "/*/*") {
+  afMarkUrlAs("*", "", dsMask, "redir");
+}
+
 
 /** Creates a collection directly from AliEn and registers it as a dataset. If
  *  the Grid connection does not exist, it creates it.
@@ -1363,6 +1449,8 @@ void afFillMetaData(TString dsMask, TString options = "") {
     }
   }
 
+  Int_t saveEvery = 10;
+
   TList *dsList = _afGetListOfDs(dsMask);
 
   TObjString *dsUriObj;
@@ -1398,15 +1486,27 @@ void afFillMetaData(TString dsMask, TString options = "") {
     Int_t nChanged = 0;
     Int_t nTotal = fc->GetNFiles();
     Int_t nCount = 0;
+    const char *defTree = fc->GetDefaultTreeName();
+
     TIter j(fc->GetList());
     TFileInfo *fi;
+
     while (( fi = dynamic_cast<TFileInfo *>(j.Next()) )) {
 
+      nCount++;
+
+      printf("[% 4d/% 4d] [....] %s", nCount, nTotal,
+        fi->GetCurrentUrl()->GetUrl());
+      cout << flush;
+
       TString status;
+      Int_t nEvts = -1;
+      TFileInfoMeta *meta;
 
       // Metadata already present and told not to rescan all?
       if ((fi->GetMetaData()) && (!rescanAll)) {
         status = "SKIP";
+        nEvts = 0;
       }
       else {
 
@@ -1422,13 +1522,31 @@ void afFillMetaData(TString dsMask, TString options = "") {
         }
         else {
           status = " OK ";
+          nEvts = 0;
           nChanged++;
         }      
       }
 
-      // Prints out the status (skipped, marked as corrupted, failed, ok)
-      Printf("[% 4d/% 4d] [%s] %s", ++nCount, nTotal, status.Data(),
+      // Prints out the status (skipped, marked as corrupted, failed, ok) and
+      // some other info
+      printf("\r[% 4d/% 4d] [%s] %s", nCount, nTotal, status.Data(),
         fi->GetCurrentUrl()->GetUrl());
+
+      // Print event numbers in default tree, if possible
+      if ((nEvts != -1) && (defTree) && (meta = fi->GetMetaData(defTree))) {
+        nEvts = meta->GetEntries();
+        Printf(" (%d evts)", nEvts);
+      }
+      else {
+        cout << endl;
+      }
+
+      // Saves sometimes
+      if ((nChanged) && ((nChanged % saveEvery) == 0)) {
+        fc->Update();
+        _afSaveDs(dsUri, fc, kTRUE);
+        nChanged = 0;
+      }
 
     }
 
