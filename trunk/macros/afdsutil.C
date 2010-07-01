@@ -15,6 +15,9 @@
 #include <TObjString.h>
 #include <TPRegexp.h>
 #include <TProof.h>
+#include <TFile.h>
+#include <TTree.h>
+#include <TKey.h>
 
 #endif
 
@@ -24,6 +27,22 @@
 
 // A global variable
 Int_t _afOldErrorIgnoreLevel = -1;
+
+/** Switches on the quiet ROOT mode.
+ */
+void _afRootQuietOn() {
+  _afOldErrorIgnoreLevel = gErrorIgnoreLevel;
+  gErrorIgnoreLevel = 10000;
+}
+
+/** Switches off the quiet ROOT mode.
+ */
+void _afRootQuietOff() {
+  if (_afOldErrorIgnoreLevel != -1) {
+    gErrorIgnoreLevel = _afOldErrorIgnoreLevel;
+    _afOldErrorIgnoreLevel = -1;
+  }
+}
 
 /** Return kTRUE if PROOF mode is active, and connects to PROOF (masteronly) if
  *  no PROOF connection is active.
@@ -397,7 +416,7 @@ Bool_t _afFillMetaDataFile(TFileInfo *fi, Bool_t quiet = kFALSE) {
   TIter k( f->GetListOfKeys() );
   TKey *key;
 
-  while ( key = dynamic_cast<TKey *>(k.Next()) ) {
+  while (( key = dynamic_cast<TKey *>(k.Next()) )) {
 
     if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
 
@@ -431,20 +450,22 @@ Bool_t _afFillMetaDataFile(TFileInfo *fi, Bool_t quiet = kFALSE) {
   return kTRUE;
 }
 
-/** Switches on the quiet ROOT mode.
+/** Returns a shorter version of the supplied string
  */
-void _afRootQuietOn() {
-  _afOldErrorIgnoreLevel = gErrorIgnoreLevel;
-  gErrorIgnoreLevel = 10000;
-}
-
-/** Switches off the quiet ROOT mode.
- */
-void _afRootQuietOff() {
-  if (_afOldErrorIgnoreLevel != -1) {
-    gErrorIgnoreLevel = _afOldErrorIgnoreLevel;
-    _afOldErrorIgnoreLevel = -1;
+TString _afShortStr(const char *str, Int_t maxlen) {
+  TString s = str;
+  TString o;
+  Int_t ns = 10;          // n. chars from the start
+  Int_t ne = maxlen-3-3;  // n. chars from the end
+  if ((ne >= 3) && (s.Length() > maxlen)) {
+    o = s(0, ns);
+    o += "...";
+    o += s(s.Length()-ne, ne);
   }
+  else {
+    o = str;
+  }
+  return o;
 }
 
 /* ========================================================================== *
@@ -986,62 +1007,6 @@ void afResetDs(const char *dsMask = "/*/*", Bool_t recoverAliEnUrl = kFALSE) {
   afMarkUrlAs("*", "scm", dsMask, kTRUE, recoverAliEnUrl);
 }
 
-/** Scans a given dataset (or a list of datasets through a mask), filling
- *  information about the number of events, etc. Run with quiet = kTRUE to have
- *  cleaner output.
- *
- *  Please note that the Grid connection is not opened automatically!
- */
-Bool_t afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
-
-  if (_afProofMode()) {
-    // PROOF mode: simply call VerifyDataSet after a reset
-    afResetDs(dsMask);
-    gProof->VerifyDataSet(dsMask);
-    return;
-  }
-
-  Int_t oldErrorIgnoreLevel = gErrorIgnoreLevel;
-
-  if (quiet) {
-    oldErrorIgnoreLevel = gErrorIgnoreLevel;
-    gErrorIgnoreLevel = 10000;
-  }
-
-  TDataSetManagerFile *mgr = _afCreateDsMgr();
-  TList *listOfDs = _afGetListOfDs(dsMask);
-  TObjString *dsUriObj;
-  TIter iDs(listOfDs);
-
-  while ( (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
-
-    TString dsUri = dsUriObj->String();
-
-    TFileCollection *fc = mgr->GetDataSet(dsUri.Data());
-    fc->ResetBitAll(TFileInfo::kStaged);
-    fc->ResetBitAll(TFileInfo::kCorrupted);
-
-    if (!fc) {
-      Printf("Can't find dataset %s", dsUri.Data());
-      return;
-    }
-    else {
-      Printf("Scanning dataset %s, be patient...", dsUri.Data());
-    }
-
-    if (mgr->ScanDataSet(fc, 0) == 2) {
-      _afSaveDs(dsUri, fc, kTRUE);
-    }
-
-  }
-
-  delete mgr;
-
-  if (quiet) {
-    gErrorIgnoreLevel = oldErrorIgnoreLevel;
-  }
-}
-
 /** Creates a collection directly from AliEn and registers it as a dataset. If
  *  the Grid connection does not exist, it creates it.
  *
@@ -1062,30 +1027,50 @@ Bool_t afScanDs(TString dsMask, Bool_t quiet = kFALSE) {
  *  The dataset name is guessed automatically in most cases. If not, you will be
  *  prompted for each dataset.
  *
- *  Event information on the datasets is filled at the end if verifyDs = kTRUE.
- *  Please note that the standard TFileCollection::ScanDataSet() function is
- *  used, so if a file is unavailable for some reason, the file is marked as
- *  unstaged.
+ *  Options are a string with flags separated by colons. Flags are:
  *
- *  If you want to test the search WITHOUT SAVING THE DATASETS, set dryRun to
- *  kTRUE.
+ *   - staged : save the dataset with all files marked as staged (to prevent,
+ *              for instance, the dataset daemon to stage them)
+ *
+ *   - dryrun : only test the search but don't write anything on disk or PROOF
  *
  *  ==========================================================================
  *
  *  Some examples of basePath and the resulting name of the dataset:
  *
  *  Simulation in PDC (run number is 6 digits, zero-padded):
- *    /alice/sim/PDC_09/LHC09a9/* --> /alice/sim/PDC09_LHC09a9_082002
+ *    /alice/sim/PDC_09/LHC09a9/... --> /alice/sim/PDC09_LHC09a9_082002
  *
  *  Simulation not in PDC (run number is still 6 digits, zero-padded):
- *    /alice/sim/LHC10b4/*        --> /alice/sim/LHC10b4_114933
+ *    /alice/sim/LHC10b4/...        --> /alice/sim/LHC10b4_114933
  *
  *  Real data (we include the pass number and the run is 9 digits, zero-padded):
- *    /alice/data/2010/LHC10b/*   --> /alice/data/LHC10b_000117113_p1
+ *    /alice/data/2010/LHC10b/...   --> /alice/data/LHC10b_000117113_p1
  */
 void afCreateDsFromAliEn(TString basePath, TString runList,
-  TString dataType = "zip#esd", Int_t passNum = 1, Bool_t verifyDs = kFALSE,
-  Bool_t preMarkAsStaged = kFALSE, Bool_t dryRun = kFALSE) {
+  TString dataType = "zip#esd", Int_t passNum = 1, TString options = "") {
+
+  // Parse options
+  Bool_t preMarkAsStaged = kFALSE;
+  Bool_t dryRun = kFALSE;
+
+  options.ToLower();
+  TObjArray *tokOpts = options.Tokenize(":");
+  TIter opt(tokOpts);
+  TObjString *oopt;
+
+  while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
+    TString &sopt = oopt->String(); 
+    if (sopt == "dryrun") {
+      dryRun = kTRUE;
+    }
+    else if (sopt == "staged") {
+      preMarkAsStaged = kTRUE;
+    }
+    else {
+      Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
+    }
+  }
 
   // What to search for
   dataType.ToLower();
@@ -1224,12 +1209,6 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     }
   }
 
-  // If verifying the dataset, pre-mark files as staged in order to prevent the
-  // dataset manager to stage them
-  if (verifyDs) {
-    preMarkAsStaged = kTRUE;
-  }
-
   // The dataset manager, if running locally
   TDataSetManagerFile *mgr = NULL;
   if ((!dryRun) && (!_afProofMode())) {
@@ -1289,17 +1268,6 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
         fc->GetNFiles(), fmtSize, um.Data()));
     }
 
-    Bool_t verified = kFALSE;
-
-    // Eventually verify the dataset *before* registering it (if mgr)
-    if ((verifyDs) && (mgr)) {
-      Printf("*** Verifying the dataset %s before saving it ***", dsUri.Data());
-      fc->ResetBitAll(TFileInfo::kStaged);  // to allow verification
-      if (mgr->ScanDataSet(fc, 0) == 2) {
-        verified = kTRUE;
-      }
-    }
-
     Bool_t saved;
 
     if ((!dryRun) && ( _afSaveDs(dsUri, fc, kFALSE, kTRUE) )) {
@@ -1309,24 +1277,16 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
       saved = kFALSE;
     }
 
-    if ((saved) && (verifyDs) && (!mgr)) {
-      Printf("*** Verifying the dataset %s after saving it ***", dsUri.Data());
-      afScanDs(dsUri.Data());  // reset "S" bit automatically by afScanDs()
-    }
-
     TString opStatus;
 
-    if ((verified) && (saved)) {
-      opStatus = "verified";
-    }
-    else if (verified) {
-      opStatus = "can't write!";
-    }
-    else if (saved) {
+    if (saved) {
       opStatus = "saved";
     }
-    else {
+    else if (dryRun) {
       opStatus = "not saved";
+    }
+    else {
+      opStatus = "can't write!";
     }
 
     Printf(">> %- 45s : % 4d files, %6.1lf %s total size [%s]", dsUri.Data(),
@@ -1362,58 +1322,68 @@ void afRemoveDs(TString dsUri) {
   }
 }
 
-/** Returns a shorter version of the supplied string
- */
-TString _afShortStr(const char *str, UInt_t maxlen) {
-  TString s = str;
-  TString o;
-  Int_t ns = 10;          // n. chars from the start
-  Int_t ne = maxlen-3-3;  // n. chars from the end
-  if ((ne >= 3) && (s.Length() > maxlen)) {
-    o = s(0, ns);
-    o += "...";
-    o += s(s.Length()-ne, ne);
-  }
-  else {
-    o = str;
-  }
-  return o;
-}
-
 /** Fills metadata information inside the TFileInfo for the given dataset or
  *  list of datasets.
  *
  *  Beware that scanning implies a TFile::Open(). AliEn connection is opened
  *  automatically if needed.
  *
- *  By default only files with no metadata are rescanned; if rescanAll, every
- *  file is rescanned.
+ *  Options may contain, separated by colons:
+ *
+ *   - rescan  : by default only files with no metadata are rescanned; if
+ *               rescan, every file is rescanned
+ *
+ *   - corrupt : files which can't be scanned are marked as corrupted; by
+ *               default they are just ignored
  *
  *  If corruptIfFail, files whose metadata can't be obtained are marked as
  *  corrupted.
  */
-void afFillMetaData(TString dsMask, Bool_t rescanAll = kFALSE,
-  Bool_t corruptIfFail = kFALSE) {
+void afFillMetaData(TString dsMask, TString options = "") {
+
+  // Parse options
+  Bool_t rescanAll = kFALSE;
+  Bool_t corruptIfFail = kFALSE;
+
+  options.ToLower();
+  TObjArray *tokOpts = options.Tokenize(":");
+  TIter opt(tokOpts);
+  TObjString *oopt;
+
+  while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
+    TString &sopt = oopt->String(); 
+    if (sopt == "rescan") {
+      rescanAll = kTRUE;
+    }
+    else if (sopt == "corrupt") {
+      corruptIfFail = kTRUE;
+    }
+    else {
+      Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
+    }
+  }
 
   TList *dsList = _afGetListOfDs(dsMask);
 
   TObjString *dsUriObj;
   TIter i(dsList);
-  Int_t count = 0;
+
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) {
+    mgr = _afCreateDsMgr();
+  }
 
   while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
 
     const char *dsUri = dsUriObj->String().Data();
-    TDataSetManagerFile *mgr = NULL;
     TFileCollection *fc;
 
     // Gets the current dataset, both in PROOF and "offline" mode
-    if (_afProofMode()) {
-      fc = gProof->GetDataSet(dsUri);
+    if (mgr) {
+      fc = mgr->GetDataSet(dsUri);
     }
     else {
-      mgr = _afCreateDsMgr();
-      fc = mgr->GetDataSet(dsUri);
+      fc = gProof->GetDataSet(dsUri);
     }
 
     // Dataset may not exist anymore!
@@ -1426,6 +1396,8 @@ void afFillMetaData(TString dsMask, Bool_t rescanAll = kFALSE,
 
     // Loop over all files in dataset
     Int_t nChanged = 0;
+    Int_t nTotal = fc->GetNFiles();
+    Int_t nCount = 0;
     TIter j(fc->GetList());
     TFileInfo *fi;
     while (( fi = dynamic_cast<TFileInfo *>(j.Next()) )) {
@@ -1455,7 +1427,8 @@ void afFillMetaData(TString dsMask, Bool_t rescanAll = kFALSE,
       }
 
       // Prints out the status (skipped, marked as corrupted, failed, ok)
-      Printf(">> [%s] %s", status.Data(), fi->GetCurrentUrl()->GetUrl());
+      Printf("[% 4d/% 4d] [%s] %s", ++nCount, nTotal, status.Data(),
+        fi->GetCurrentUrl()->GetUrl());
 
     }
 

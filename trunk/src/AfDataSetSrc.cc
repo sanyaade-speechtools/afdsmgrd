@@ -372,6 +372,12 @@ void AfDataSetSrc::FlattenListOfDataSets() {
 
     TMap *groups = fManager->GetDataSets(dsMask.Data(),
       TDataSetManager::kReadShort);
+
+    if (!groups) {
+      AfLogWarning("No dataset found!");
+      return;
+    }
+
     groups->SetOwnerKeyValue();  // important to avoid leaks!
     TIter gi(groups);
     TObjString *gn;
@@ -400,7 +406,7 @@ void AfDataSetSrc::FlattenListOfDataSets() {
           TString dsUri = TDataSetManager::CreateUri( gn->String(),
             un->String(), dn->String() );
           //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
-          //AfLogInfo(">> Dataset URI: %s", dsUri.Data());
+          //AfLogInfo(">>>>>>>> Dataset URI: %s", dsUri.Data());
           fDsUris->Add( new TObjString(dsUri.Data()) );
 
         } // while over datasets
