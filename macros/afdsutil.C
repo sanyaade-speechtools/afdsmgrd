@@ -73,16 +73,37 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
   }
   gErrorIgnoreLevel = oldErrorIgnoreLevel;
 
-  if (fc) {
-    listOfDs->Add( new TObjString(dsMask) );
-    delete fc;
+  if (strchr(dsMask, '*') == NULL) {
+
+    // What to do if it appears to be a single dataset name
+
+    TFileCollection *fc = NULL;
+
+    _afRootQuietOn();
+
     if (mgr) {
-      delete mgr;
+      fc = mgr->GetDataSet(dsMask);
     }
-    return listOfDs;
+    else {
+      fc = gProof->GetDataSet(dsMask);
+    }
+
+    _afRootQuietOff();
+
+    if (fc) {
+      listOfDs->Add( new TObjString(dsMask) );
+      delete fc;
+      if (mgr) {
+        delete mgr;
+      }
+    }
+
+    return listOfDs;  // it contains a single name or nothing if empty
+
   }
 
-  // Not a single dataset: let's try with a mask
+  // Dataset name contains stars: let's consider it a mask
+
   TMap *groups = NULL;
   if (mgr) {
     groups = mgr->GetDataSets(dsMask, TDataSetManager::kReadShort);
@@ -143,7 +164,7 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
 
   delete groups;
 
-  listOfDs->Sort();
+  listOfDs->Sort();  // sorted alphabetically
 
   return listOfDs;
 }
