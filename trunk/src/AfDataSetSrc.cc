@@ -437,7 +437,7 @@ void AfDataSetSrc::UndoSuid() {
   if (!fSuid) {
     return;
   }
-  if (!((setegid(fUnpUid) == 0) && (seteuid(fUnpGid) == 0))) {
+  if (!((setegid(fUnpGid) == 0) && (seteuid(fUnpUid) == 0))) {
     AfLogFatal("Can't drop privileges!");
     gSystem->Exit(51);
   }
