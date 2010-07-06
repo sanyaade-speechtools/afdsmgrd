@@ -179,32 +179,51 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
       if (st == kStgDone) {
 
-        fParentManager->DequeueUrl(surl);
-
         if (AddRealUrlAndMetaData(fi)) {
+          // Verification succeeded
           fi->SetBit( TFileInfo::kStaged );
+          fParentManager->DequeueUrl(surl);
           AfLogDebug(10, "Dequeued (staged): %s", surl);
+          changed = kTRUE;  // info has changed in dataset
         }
         else {
-          fi->SetBit( TFileInfo::kCorrupted );
-          AfLogError("Dequeued and marked as corrupted (can't verify): %s",
-            surl);
+          // If verification fails, requeue until limit is reached
+          Int_t nPrevFail = fParentManager->RequeueUrl(surl, kTRUE);
+          if (nPrevFail ==  kRequeueLimitReached) {
+            fi->SetBit( TFileInfo::kCorrupted );
+            AfLogError("Dequeued and marked as corrupted (too many failures, "
+              "now failed to verify): %s", surl);
+            changed = kTRUE;  // info has changed in dataset
+          }
+          else {
+            AfLogWarning("Requeued, failed %d time(s) (now failed "
+              "to verify): %s", nPrevFail, surl);
+          }
         }
 
-        changed = kTRUE;  // info is changed in dataset
       }
       else if (st == kStgFail) {
-        fParentManager->DequeueUrl(surl);  // removed from current position
+
         if (c) {
           // After download has started the file may have been marked as corr.
+          fParentManager->DequeueUrl(surl);
           AfLogInfo("Dequeued after failure (marked as corrupted): %s", surl);
         }
         else {
           // Not corrupted, retry but as the last file in queue
-          if ( fParentManager->EnqueueUrl(surl) != kStgQueueFull ) {
-            AfLogInfo("Requeued (has failed): %s", surl);
+          Int_t nPrevFail = fParentManager->RequeueUrl(surl, kTRUE);
+          if (nPrevFail ==  kRequeueLimitReached) {
+            fi->SetBit( TFileInfo::kCorrupted );
+            AfLogError("Dequeued and marked corrupted (too many "
+              "failures): %s", surl);
+            changed = kTRUE;
+          }
+          else {
+            AfLogWarning("Requeued, failed %d time(s): %s", nPrevFail,
+              surl);
           }
         }
+
       }
       else if (st == kStgAbsent) {
         if (c) {
@@ -452,7 +471,8 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   TKey *key;
 
   while ( key = dynamic_cast<TKey *>(k.Next()) ) {
-    if ( strcmp(key->GetClassName(), "TTree") == 0 ) {
+
+    if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
 
       // Every tree will be filled with data
       TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
@@ -474,6 +494,7 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
       }
 
     }
+
   }
 
   f->Close();

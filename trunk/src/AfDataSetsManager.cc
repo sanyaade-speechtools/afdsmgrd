@@ -93,6 +93,29 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   }
 
   // Number of parallel staging command on the whole facility
+  TString *maxFails = cfr->GetDir("dsmgrd.corruptafterfails");
+  if (!maxFails) {
+    AfLogWarning("Variable dsmgrd.corruptafterfails not set, using default "
+      "(%d)", kDefaultMaxFails);
+    fMaxFails = kDefaultMaxFails;
+  }
+  else if ( (fMaxFails = maxFails->Atoi()) < 0 )  {
+    AfLogWarning("Invalid value for dsmgrd.corruptafterfails (%s), using "
+      "default (%d)", maxFails->Data(), kDefaultMaxFails);
+    fMaxFails = kDefaultMaxFails;
+    delete maxFails;
+  }
+  else {
+    if (fMaxFails == 0) {
+      AfLogInfo("Failed downloads are retried forever");
+    }
+    else {
+      AfLogInfo("Files are marked as corrupted after %d failure(s)", fMaxFails);
+    }
+    delete maxFails;
+  }
+
+  // Number of parallel staging command on the whole facility
   TString *parallelXfrs = cfr->GetDir("dsmgrd.parallelxfrs");
   if (!parallelXfrs) {
     AfLogWarning("Variable dsmgrd.parallelxfrs not set, using default (%d)",
@@ -419,6 +442,32 @@ StgStatus_t AfDataSetsManager::DequeueUrl(const char *url) {
   }
 
   return kStgQueue;  // error indicator
+}
+
+Int_t AfDataSetsManager::RequeueUrl(const char *url, Bool_t hasFailed) {
+
+  AfStageUrl search(url);
+  AfStageUrl *removed;
+
+  if (removed = dynamic_cast<AfStageUrl *>( fStageQueue->Remove(&search) )) {
+
+    if (hasFailed) {
+
+      removed->IncreaseFailures();
+
+      if ((fMaxFails != 0) && (removed->GetFailures() >= fMaxFails)) {
+        delete removed;
+        return kRequeueLimitReached;  // threshold reached
+      }
+
+      removed->SetStageStatus(kStgQueue);
+    }
+
+    fStageQueue->AddLast(removed);
+    return removed->GetFailures();
+  }
+
+  return kRequeueNotFound;  // url not in queue
 }
 
 void AfDataSetsManager::PrintStageList(const char *header, Bool_t debug) {
