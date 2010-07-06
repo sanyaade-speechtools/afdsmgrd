@@ -48,9 +48,10 @@ void _afRootQuietOff() {
  *  no PROOF connection is active.
  */
 Bool_t _afProofMode() {
-  Bool_t proofMode = gEnv->GetValue("af.proofmode", 0);
+  Bool_t proofMode = gEnv->GetValue("af.proofmode", 1);
   if ((proofMode) && (!gProof)) {
-    TProof::Open(gEnv->GetValue("af.userhost", "localhost"), "masteronly");
+    TProof::Open(gEnv->GetValue("af.userhost", "alice-caf.cern.ch"),
+      "masteronly");
   }
   return proofMode;
 }
@@ -506,9 +507,9 @@ void afPrintSettings() {
   Printf(">> Datasets path: %s - change it with afSetDsPath()",
     gEnv->GetValue("af.dspath", "/tmp"));
   Printf(">> PROOF connect string: %s - change it with afSetProofUserHost()", 
-    gEnv->GetValue("af.userhost", "localhost"));
+    gEnv->GetValue("af.userhost", "alice-caf.cern.ch"));
   Printf(">> PROOF mode is active? %s - toggle it with afSetProofMode()",
-    (gEnv->GetValue("af.proofmode", 0) ? "YES" : "NO"));
+    (gEnv->GetValue("af.proofmode", 1) ? "YES" : "NO"));
   Printf(">> Files path with redirector ($1 is the file path): %s - change " \
     "it with afSetRedirUrl()", gEnv->GetValue("af.redirurl",
     "root://localhost:1234/$1"));
@@ -1387,6 +1388,80 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
   if (mgr) {
     delete mgr;
   }
+}
+
+/** Creates a dataset starting from files found with AliEn find command. Options
+ *  basePath and fileName are the same as:
+ *
+ *    find <basePath> <fileName>
+ *
+ *  If you create a collection of files inside zip archives, remember to specify
+ *  the real file name in the anchor parameter.
+ *
+ *  The defaultTree is needed to PROOF to count the number of events, so set it
+ *  correctly.
+ *
+ *  If you don't want your files to be staged (and for instance you want to
+ *  run your macros directly on AliEn files), just pre-mark them as staged and
+ *  they will just be ignored by the dataset manager.
+ */
+void afCreateGenericDsFromAliEn(TString basePath,
+  TString fileName = "*ESDs.root", TString defaultTree = "/esdTree",
+  Bool_t preMarkAsStaged = kFALSE, TString anchor = "") {
+
+  if (defaultTree == "") {
+    Printf("Warning: you did not specify a default tree.");
+  }
+
+  TFileCollection *fc = _afAliEnFind(basePath, fileName, anchor, defaultTree);
+
+  if (fc->GetNFiles() == 0) {
+    Printf("No results found");
+    delete fc;
+    return;
+  }
+
+  if (preMarkAsStaged) {
+    fc->SetBitAll(TFileInfo::kStaged);
+    fc->Update();
+  }
+
+  TString um;
+  Double_t fmtSize;
+  _afNiceSize(fc->GetTotalSize(), um, fmtSize);
+
+  Printf("Found %d files (%.1lf %s total).", fc->GetNFiles(), fmtSize,
+    um.Data());
+
+  TString dsUri;
+
+  while (kTRUE) {
+
+    dsUri = _afGetLine("Dataset name (leave empty if you don't want to "
+      "save it)? ");
+
+    if (dsUri == "") {
+      break;
+    }
+    else if (dsUri.Index("/") == kNPOS) {
+      Printf("Please specify the full path in the form /GROUP/user/dataset");
+    }
+    else {
+
+      if (_afSaveDs(dsUri, fc, kFALSE, kTRUE)) {
+        Printf("Dataset saved");
+        break;
+      }
+      else {
+        Printf("Problem saving the dataset, check the name and try again");
+      }
+
+    }
+
+  }
+
+  delete fc;
+
 }
 
 /** Removes a dataset from the disk. Files associated to the dataset are not

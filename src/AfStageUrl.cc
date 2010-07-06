@@ -10,6 +10,7 @@ AfStageUrl::AfStageUrl(const char *url, StgStatus_t status) {
   const char *u = fUrl->GetUrl(); // may be different from the initial url...
   Int_t len = strlen(u);
   fStrHash = TString::Hash(u, len);  // once for all
+  fFailures = 0;
 }
 
 AfStageUrl::~AfStageUrl() {

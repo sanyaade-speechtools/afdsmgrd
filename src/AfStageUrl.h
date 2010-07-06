@@ -19,6 +19,9 @@ class AfStageUrl : public TObject {
     const TUrl *GetUrlObj() { return fUrl; }
     TString GetUrl() const { return fUrl->GetUrl(); };
     virtual Bool_t IsEqual(const TObject* obj) const;
+    virtual void ResetFailures() { fFailures = 0; };
+    virtual Int_t IncreaseFailures() { return ++fFailures; };
+    virtual Int_t GetFailures() { return fFailures; };
     virtual ~AfStageUrl();
 
   private:
@@ -27,6 +30,7 @@ class AfStageUrl : public TObject {
     StgStatus_t  fStgStatus;
     TUrl        *fUrl;
     UInt_t       fStrHash;
+    UInt_t       fFailures;
 
   // ROOT stuff
   ClassDef(AfStageUrl, 1);

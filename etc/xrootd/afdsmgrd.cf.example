@@ -41,6 +41,11 @@ dsmgrd.stagecmd /path/to/xrootd/bin/xrdstagetool -d 0 $URLTOSTAGE
 # order to control the memory consumption.
 dsmgrd.maxfilesinqueue 500
 
+# Set this to a number above zero to tell the daemon to mark files as corrupted
+# after a certain number of either download or verification failures. A value of
+# zero tells the daemon to retry forever.
+#dsmgrd.corruptafterfails 0
+
 # This variable tells afdsmgrd how to contact one or more MonALISA server(s) to
 # activate monitoring via ApMon. It supports two kinds of URLs:
 #

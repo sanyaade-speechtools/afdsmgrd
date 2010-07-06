@@ -16,21 +16,26 @@
 #include "ApMon.h"
 #endif // WITH_APMON
 
+const Int_t kRequeueNotFound = -1;
+const Int_t kRequeueLimitReached = -2;
+
 class AfDataSetsManager {
 
   public:
 
     AfDataSetsManager();
     ~AfDataSetsManager();
-    Int_t  ProcessAllDataSetsOnce(DsAction_t action);
-    void   Loop();
-    void   Reset();
+    Int_t ProcessAllDataSetsOnce(DsAction_t action);
+    void Loop();
+    void Reset();
     Bool_t ReadConf(const char *cf);
-    void   SetSuid(bool suid = kTRUE) { fSuid = suid; }
+    void SetSuid(bool suid = kTRUE) { fSuid = suid; }
 
     StgStatus_t GetStageStatus(const char *url);
     StgStatus_t EnqueueUrl(const char *url);
     StgStatus_t DequeueUrl(const char *url);
+    Int_t       RequeueUrl(const char *url, Bool_t resetFail);
+
     void ProcessTransferQueue();
     void PrintStageList(const char *header, Bool_t debug);
     void SetBinPrefix(const char *prefix);
@@ -52,6 +57,7 @@ class AfDataSetsManager {
     static const Int_t  kDefaultLoopSleep_s = 3600;
     static const Int_t  kDefaultScanDsEvery = 10;
     static const Int_t  kDefaultMaxFilesInQueue = 0;
+    static const Int_t  kDefaultMaxFails = 0;
     TString             kDefaultApMonDsPrefix;
 
     TList              *fSrcList;
@@ -76,6 +82,7 @@ class AfDataSetsManager {
     Int_t               fMaxFilesInQueue;
 
     Int_t               fDsNotifCounter;
+    Int_t               fMaxFails;
 
     TString             fApMonDsPrefix;
     TString             fBinPrefix;
