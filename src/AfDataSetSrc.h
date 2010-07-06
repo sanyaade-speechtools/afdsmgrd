@@ -27,7 +27,7 @@ class AfDataSetSrc : public TObject {
 
     AfDataSetSrc();
     AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-      Bool_t suid, AfDataSetsManager *parentManager);
+      AfDataSetsManager *parentManager);
     Int_t Process(DsAction_t action);
     void SetDsProcessList(TList *dsList);
     ~AfDataSetSrc();
@@ -45,8 +45,6 @@ class AfDataSetSrc : public TObject {
     Int_t  TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
     Int_t  KeepOnlyLastUrl(TFileInfo *fi);
     Bool_t AddRealUrlAndMetaData(TFileInfo *fi);
-    void   DoSuid();
-    void   UndoSuid();
 
     // Private variables
     TDataSetManagerFile *fManager;
@@ -54,9 +52,6 @@ class AfDataSetSrc : public TObject {
     TUrl                *fRedirUrl;
     TString              fUrl;
     TString              fOpts;
-    Bool_t               fSuid;
-    Int_t                fUnpUid;
-    Int_t                fUnpGid;
     TList               *fDsToProcess;
     AfDataSetsManager   *fParentManager;  //!
 
