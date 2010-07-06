@@ -3,7 +3,7 @@
 AfDataSetsManager::AfDataSetsManager() {
   fSrcList = new TList();
   fSrcList->SetOwner();
-  fSuid = false;
+  fSuid = kFALSE;
   fLoopSleep_s = kDefaultLoopSleep_s;
   fScanDsEvery = kDefaultScanDsEvery;
   fParallelXfrs = kDefaultParallelXfrs;
@@ -292,7 +292,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     if (dsValid) {
       redirUrl->SetFile( destPath.Data() );
       AfDataSetSrc *dsSrc = new AfDataSetSrc(dsUrl.Data(), redirUrl,
-        opts.Data(), fSuid, this);
+        opts.Data(), this);
       if (procDs->GetSize() > 0) {
         dsSrc->SetDsProcessList(procDs);  // Set... makes a copy of the list
       }
@@ -321,6 +321,8 @@ Int_t AfDataSetsManager::ProcessAllDataSetsOnce(DsAction_t action) {
   TIter i(fSrcList);
   AfDataSetSrc *dsSrc;
   Int_t nChanged = 0;
+
+  fDsNotifCounter = 0;
 
   AfLogDebug(20, "++++ Started loop over dataset sources ++++");
   while ( dsSrc = dynamic_cast<AfDataSetSrc *>(i.Next()) ) {
@@ -586,8 +588,8 @@ void AfDataSetsManager::ProcessTransferQueue() {
 
 }
 
-void AfDataSetsManager::NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
-  Float_t pctCorrupted) {
+void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
+  Float_t pctStaged, Float_t pctCorrupted) {
 
   #ifdef WITH_APMON
 
@@ -595,11 +597,17 @@ void AfDataSetsManager::NotifyDataSetStatus(const char *dsName, Float_t pctStage
     return;
   }
 
+  char buf[10];
+  snprintf(buf, 10, "%d", ++fDsNotifCounter);
+
   try {
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)dsName,
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
+      (char *)"dsname", (char *)dsName);
+
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
       (char *)"stagedpct", pctStaged);
 
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)dsName,
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
       (char *)"corruptedpct", pctCorrupted);
   }
   catch (runtime_error &e) {
@@ -632,6 +640,28 @@ void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
   }
 
   #endif // WITH_APMON
+}
+
+void AfDataSetsManager::DoSuid() {
+  if (!fSuid) {
+    return;
+  }
+  fUnpUid = geteuid();
+  fUnpGid = getegid();
+  if (!((seteuid(0) == 0) && (setegid(0) == 0))) {
+    AfLogFatal("Failed to obtain superuser privileges");
+    gSystem->Exit(51);
+  }
+}
+
+void AfDataSetsManager::UndoSuid() {
+  if (!fSuid) {
+    return;
+  }
+  if (!((setegid(fUnpGid) == 0) && (seteuid(fUnpUid) == 0))) {
+    AfLogFatal("Can't drop privileges!");
+    gSystem->Exit(51);
+  }
 }
 
 void *AfDataSetsManager::Stage(void *args) {

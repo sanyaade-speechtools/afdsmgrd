@@ -5,13 +5,10 @@ ClassImp(AfDataSetSrc);
 AfDataSetSrc::AfDataSetSrc() {}
 
 AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-  Bool_t suid, AfDataSetsManager *parentManager) {
+  AfDataSetsManager *parentManager) {
 
   fUrl  = url;
   fOpts = opts;
-  fSuid = suid;
-  fUnpUid = 0;
-  fUnpGid = 0;
   fRedirUrl = redirUrl;
   fParentManager = parentManager;
 
@@ -127,10 +124,10 @@ Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
   // Save the modified dataset
   TString group, user, dsName;
   fManager->ParseUri(uri, &group, &user, &dsName);
-  DoSuid();
+  fParentManager->DoSuid();
   Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
     TDataSetManager::kFileMustExist);
-  UndoSuid();
+  fParentManager->UndoSuid();
 
   delete fc;
 
@@ -239,11 +236,11 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     TString group, user, dsName;
     fManager->ParseUri(uri, &group, &user, &dsName);
 
-    DoSuid();
+    fParentManager->DoSuid();
     // With kFileMustExist it saves ds only if it already exists: it updates it
     Int_t r = fManager->WriteDataSet(group, user, dsName, fc, \
       TDataSetManager::kFileMustExist);
-    UndoSuid();
+    fParentManager->UndoSuid();
 
     AfLogDebug(20, "WriteDataSet() for %s has returned %d", uri, r);
 
@@ -419,28 +416,6 @@ void AfDataSetSrc::FlattenListOfDataSets() {
 
   } // while over datasets mask (e.g. /*/*)
 
-}
-
-void AfDataSetSrc::DoSuid() {
-  if (!fSuid) {
-    return;
-  }
-  fUnpUid = geteuid();
-  fUnpGid = getegid();
-  if (!((seteuid(0) == 0) && (setegid(0) == 0))) {
-    AfLogFatal("Failed obtaining privileges");
-    gSystem->Exit(51);
-  }
-}
-
-void AfDataSetSrc::UndoSuid() {
-  if (!fSuid) {
-    return;
-  }
-  if (!((setegid(fUnpGid) == 0) && (seteuid(fUnpUid) == 0))) {
-    AfLogFatal("Can't drop privileges!");
-    gSystem->Exit(51);
-  }
 }
 
 Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {

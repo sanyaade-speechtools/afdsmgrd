@@ -35,6 +35,9 @@ class AfDataSetsManager {
     void PrintStageList(const char *header, Bool_t debug);
     void SetBinPrefix(const char *prefix);
 
+    void DoSuid();
+    void UndoSuid();
+
     void NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
       Float_t pctCorrupted);
 
@@ -53,6 +56,9 @@ class AfDataSetsManager {
 
     TList              *fSrcList;
     Bool_t              fSuid;
+    Int_t               fUnpUid;
+    Int_t               fUnpGid;
+
     TString             fRedirHost;
     UShort_t            fRedirPort;
     Int_t               fLoopSleep_s;
@@ -68,6 +74,8 @@ class AfDataSetsManager {
     Int_t               fLastFail;
     Int_t               fLastDone;
     Int_t               fMaxFilesInQueue;
+
+    Int_t               fDsNotifCounter;
 
     TString             fApMonDsPrefix;
     TString             fBinPrefix;
