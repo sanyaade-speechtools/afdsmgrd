@@ -184,22 +184,16 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
           fi->SetBit( TFileInfo::kStaged );
           fParentManager->DequeueUrl(surl);
           AfLogDebug(10, "Dequeued (staged): %s", surl);
-          changed = kTRUE;  // info has changed in dataset
         }
         else {
-          // If verification fails, requeue until limit is reached
-          Int_t nPrevFail = fParentManager->RequeueUrl(surl, kTRUE);
-          if (nPrevFail ==  kRequeueLimitReached) {
-            fi->SetBit( TFileInfo::kCorrupted );
-            AfLogError("Dequeued and marked as corrupted (too many failures, "
-              "now failed to verify): %s", surl);
-            changed = kTRUE;  // info has changed in dataset
-          }
-          else {
-            AfLogWarning("Requeued, failed %d time(s) (now failed "
-              "to verify): %s", nPrevFail, surl);
-          }
+          // If verification fails, immediately dequeue it and mark as corrupted
+          fParentManager->DequeueUrl(surl);
+          fi->SetBit( TFileInfo::kCorrupted );
+          AfLogError("Dequeued and marked as corrupted (failed to verify): %s",
+            surl);
         }
+
+        changed = kTRUE;  // info has changed in dataset
 
       }
       else if (st == kStgFail) {
