@@ -44,7 +44,8 @@ class AfDataSetsManager {
     void UndoSuid();
 
     void NotifyDataSetStatus(const char *dsName, Float_t pctStaged,
-      Float_t pctCorrupted);
+      Float_t pctCorrupted, const char *treeName, Long64_t nEvts,
+      Long64_t totalSizeBytes);
 
   private:
 

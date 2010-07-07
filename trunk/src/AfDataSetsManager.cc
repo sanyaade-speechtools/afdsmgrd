@@ -638,7 +638,8 @@ void AfDataSetsManager::ProcessTransferQueue() {
 }
 
 void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
-  Float_t pctStaged, Float_t pctCorrupted) {
+  Float_t pctStaged, Float_t pctCorrupted, const char *treeName,
+  Long64_t nEvts, Long64_t totalSizeBytes) {
 
   #ifdef WITH_APMON
 
@@ -650,6 +651,7 @@ void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
   snprintf(buf, 10, "%d", ++fDsNotifCounter);
 
   try {
+
     fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
       (char *)"dsname", (char *)dsName);
 
@@ -658,6 +660,16 @@ void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
 
     fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
       (char *)"corruptedpct", pctCorrupted);
+
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
+      (char *)"treename", (char *)treeName);
+
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
+      (char *)"nevts", (Int_t)nEvts);
+
+    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
+      (char *)"totsizebytes", (Int_t)totalSizeBytes);
+
   }
   catch (runtime_error &e) {
     AfLogError("Error sending information to MonALISA");

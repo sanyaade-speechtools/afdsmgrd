@@ -1,3 +1,8 @@
+/* ========================================================================== *
+ * afdsmgrd -- by Dario Berzano <dario.berzano@gmail.com>                     *
+ * Source code available on http://code.google.com/p/afdsmgrd                 *
+ * ========================================================================== */
+
 #if !defined(__CINT__) || defined (__MAKECINT__)
 
 #include <Getline.h>
@@ -510,7 +515,7 @@ void afPrintSettings() {
     gEnv->GetValue("af.userhost", "alice-caf.cern.ch"));
   Printf(">> PROOF mode is active? %s - toggle it with afSetProofMode()",
     (gEnv->GetValue("af.proofmode", 1) ? "YES" : "NO"));
-  Printf(">> Files path with redirector ($1 is the file path): %s - change " \
+  Printf(">> Files path with redirector ($1 is the file path): %s - change "
     "it with afSetRedirUrl()", gEnv->GetValue("af.redirurl",
     "root://localhost:1234/$1"));
 }
@@ -520,7 +525,7 @@ void afPrintSettings() {
  */
 void afSetRedirUrl(TString &redirUrl) {
   if (redirUrl.Index("$1") == kNPOS) {
-    Printf("Error: path *must* contain $1 which will be substituted with the " \
+    Printf("Error: path *must* contain $1 which will be substituted with the "
       "file path, as in root://redir/pool/alien/$1");
   }
   else {
