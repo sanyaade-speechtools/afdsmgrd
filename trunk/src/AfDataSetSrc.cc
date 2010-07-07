@@ -281,8 +281,6 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     if (nEvts < 0) { nEvts = 0; }
   }
 
-  AfLogInfo(">>>>>>>>>> %d", nEvts);
-
   Long64_t totSize = fc->GetTotalSize();  // it's given in bytes
   if (totSize < 0) { totSize = 0; }
 
