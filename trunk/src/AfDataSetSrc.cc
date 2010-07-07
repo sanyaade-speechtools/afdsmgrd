@@ -271,19 +271,19 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
   // Always notify via manager method (it usually uses MonALISA)
   TFileInfoMeta *meta = fc->GetMetaData();
-  Long64_t nEvts = -1;
-  if (meta) {
-    nEvts = meta->GetEntries();
-  }
+  Long64_t nEvts = 0;
+  if (meta) { nEvts = meta->GetEntries(); }
+  if (nEvts < 0) { nEvts = 0; }
 
   const char *treeName = fc->GetDefaultTreeName();
   const char *fallbackTreeName = "";
-  if (!treeName) {
-    treeName = fallbackTreeName;
-  }
+  if (!treeName) { treeName = fallbackTreeName; }
+
+  Long64_t totSize = fc->GetTotalSize();  // it's given in bytes
+  if (totSize < 0) { totSize = 0; }
 
   fParentManager->NotifyDataSetStatus(uri, fc->GetStagedPercentage(),
-    fc->GetCorruptedPercentage(), treeName, nEvts, fc->GetTotalSize());
+    fc->GetCorruptedPercentage(), treeName, nEvts, totSize);
   
   ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
 
