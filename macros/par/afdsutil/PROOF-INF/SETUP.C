@@ -1,6 +1,6 @@
 /**
- *  Special PARFile to always download the latest version of the afdsutil.C
- *  macro
+ *  This PARfile contains the afdsutil.C macro which is loaded and built when
+ *  needed only on the client.
  *
  *  by Dario Berzano <dario.berzano@gmail.com>
  */
@@ -8,7 +8,7 @@
 void SETUP() {
   if ((gProof) && (gProof->TestBit(TProof::kIsClient))) {
     // We are on client
-    gROOT->LoadMacro("/tmp/afdsutil.C+");
+    gROOT->LoadMacro("afdsutil.C+");
     afdsutil();
   }
 }
