@@ -284,8 +284,8 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
   Long64_t totSize = fc->GetTotalSize();  // it's given in bytes
   if (totSize < 0) { totSize = 0; }
 
-  fParentManager->NotifyDataSetStatus(uri, fc->GetStagedPercentage(),
-    fc->GetCorruptedPercentage(), treeName, nEvts, totSize);
+  fParentManager->NotifyDataSetStatus(uri, fc->GetNFiles(),
+    fc->GetNStagedFiles(), fc->GetNCorruptFiles(), treeName, nEvts, totSize);
   
   ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
 

@@ -638,8 +638,8 @@ void AfDataSetsManager::ProcessTransferQueue() {
 }
 
 void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
-  Float_t pctStaged, Float_t pctCorrupted, const char *treeName,
-  Long64_t nEvts, Long64_t totalSizeBytes) {
+  Int_t nFiles, Int_t nStaged, Int_t nCorrupted, const char *treeName,
+  Int_t nEvts, Int_t totalSizeBytes) {
 
   #ifdef WITH_APMON
 
@@ -650,25 +650,56 @@ void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
   char buf[10];
   snprintf(buf, 10, "%d", ++fDsNotifCounter);
 
+  Float_t pctStaged = 100. * nStaged / nFiles;
+  Float_t pctCorrupted = 100. * nCorrupted / nFiles;
+
+  char *paramNames[] = {
+    (char *)"dsname",
+    (char *)"filescount",
+    (char *)"stagecount",
+    (char *)"corruptedcount",
+    (char *)"stagedpct",
+    (char *)"corruptedpct",
+    (char *)"treename",
+    (char *)"nevts",
+    (char *)"totsizebytes"
+  };
+
+  Int_t valueTypes[] = {
+    XDR_STRING,
+    XDR_INT32,
+    XDR_INT32,
+    XDR_INT32,
+    XDR_REAL32,
+    XDR_REAL32,
+    XDR_STRING,
+    XDR_INT32,
+    XDR_INT32
+  };
+
+  char *paramValues[] = {
+    (char *)dsName,
+    (char *)&nFiles,
+    (char *)&nStaged,
+    (char *)&nCorrupted,
+    (char *)&pctStaged,
+    (char *)&pctCorrupted,
+    (char *)treeName,
+    (char *)&nEvts,
+    (char *)&totalSizeBytes
+  };
+
+  Int_t nParams = sizeof(paramNames) / sizeof(char *);
+
   try {
 
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
-      (char *)"dsname", (char *)dsName);
+    Int_t r = fApMon->sendParameters( (char *)fApMonDsPrefix.Data(),
+      (char *)buf, nParams, paramNames, valueTypes, paramValues);
 
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
-      (char *)"stagedpct", pctStaged);
-
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
-      (char *)"corruptedpct", pctCorrupted);
-
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
-      (char *)"treename", (char *)treeName);
-
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
-      (char *)"nevts", (Int_t)nEvts);
-
-    fApMon->sendParameter((char *)fApMonDsPrefix.Data(), (char *)buf,
-      (char *)"totsizebytes", (Int_t)totalSizeBytes);
+    if (r == RET_NOT_SENT) {
+      AfLogWarning("MonALISA notification skipped: maximum number of messages "
+        "per second exceeded");
+    }
 
   }
   catch (runtime_error &e) {
