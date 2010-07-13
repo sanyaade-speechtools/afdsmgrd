@@ -1107,7 +1107,9 @@ void afPrependRedirUrl(const char *dsMask = "/*/*") {
  *  - The basePath of the search, e.g. "/alice/data/2010/LHC10b/".
  *
  *  - A list of runs, separated by colons, as a string, even without initial
- *    zeroes, like "114783:114786:114798".
+ *    zeroes, like "114783:114786:114798". This list may also contain intervals
+ *    like "140007:140010:140001-140005" which will expand to runs 140007,
+ *    140010, 140001, 140002, 140003, 140004 and 140005.
  *
  *  - The files of which you wish to make a collection: one of "esd", "esd.tag",
  *    "aod", "zip". You may also specify an anchor: if you want, for instance,
@@ -1307,13 +1309,48 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     mgr = _afCreateDsMgr();
   }
 
+  // Run numbers: either list or colon-separated
+
+  vector<Int_t> runNums;
+
   TObjArray *runs = runList.Tokenize(":");
+  runs->SetOwner();
   TIter run(runs);
   TObjString *runOs;
 
   while ( (runOs = dynamic_cast<TObjString *>(run.Next())) ) {
 
-    Int_t runNum = runOs->String().Atoi();
+    TString runStr = runOs->String();
+
+    TPMERegexp p("^([0-9]+)-([0-9]+)$");
+    if (p.Match(runStr) == 3) {
+      Int_t r1 = p[1].Atoi();
+      Int_t r2 = p[2].Atoi();
+
+      if (r1 > r2) {
+        // Swap
+        r1 = r1 ^ r2;
+        r2 = r1 ^ r2;
+        r1 = r1 ^ r2;
+      }
+
+      for (Int_t r=r1; r<=r2; r++) {
+        runNums.push_back(r);
+      }
+    }
+    else {
+      runNums.push_back(runStr.Atoi());
+    }
+  }
+
+  delete runs;
+
+  for (UInt_t i=0; i<runNums.size(); i++) {
+
+    Int_t runNum = runNums[i];
+    cout << runNum << endl;
+    if (i == runNums.size()-1) return;
+    continue;
 
     TString searchPtn;
 
@@ -1387,8 +1424,6 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     delete fc;
 
   }
-
-  delete runs;
 
   if (mgr) {
     delete mgr;
