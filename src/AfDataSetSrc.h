@@ -21,6 +21,22 @@ typedef enum { kDsReset, kDsProcess } DsAction_t;
 // following forward declaration
 class AfDataSetsManager;
 
+// Helper class that contains a dataset URI and its Unique ID (calculated as you
+// like
+class AfDsUri : public TObject {
+
+  public:
+    AfDsUri() : fUri(""), fUId(0x0) {}
+    AfDsUri(const char *uri, UInt_t hash) : fUri(uri), fUId(hash) {};
+    const char *GetUri() { return fUri.Data(); }
+    UInt_t GetUId() { return fUId; }
+
+  private:
+    TString fUri;
+    UInt_t  fUId;
+
+};
+
 class AfDataSetSrc : public TObject {
 
   public:
@@ -39,7 +55,7 @@ class AfDataSetSrc : public TObject {
 
     // Private methods
     void   FlattenListOfDataSets();
-    Int_t  ProcessDataSet(const char *uri);
+    Int_t  ProcessDataSet(AfDsUri *dsUri);
     Int_t  ResetDataSet(const char *uri);
     void   ListDataSetContent(const char *uri, const char *header, Bool_t debug);
     Int_t  TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);

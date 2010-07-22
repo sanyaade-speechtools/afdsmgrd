@@ -19,7 +19,7 @@ AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
   fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
     fUrl.Data(), fOpts.Data()) );
 
-  fDsUris = new TList();  // TList of TObjString
+  fDsUris = new TList();  // TList of AfDsUri
   fDsUris->SetOwner();
 }
 
@@ -42,16 +42,16 @@ Int_t AfDataSetSrc::Process(DsAction_t action) {
   Int_t nChanged = 0;
 
   TIter i(fDsUris);
-  TObjString *s;
-  while (s = dynamic_cast<TObjString *>(i.Next())) {
+  AfDsUri *s;
+  while (s = dynamic_cast<AfDsUri *>(i.Next())) {
 
     switch (action) {
       case kDsReset:
-        nChanged = ResetDataSet( s->GetString().Data() );
+        nChanged += ResetDataSet( s->GetUri() );  // will be removed
       break;
 
       case kDsProcess:
-        nChanged = ProcessDataSet( s->GetString().Data() );
+        nChanged += ProcessDataSet( s );
       break;
     }
   }
@@ -146,11 +146,12 @@ Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
   return nChanged;
 }
 
-Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
+Int_t AfDataSetSrc::ProcessDataSet(AfDsUri *dsUri) {
 
-  ListDataSetContent(uri, Form("Dataset %s before processing:", uri), kTRUE);
+  ListDataSetContent(dsUri->GetUri(), Form("Dataset %s before processing:",
+    dsUri->GetUri()), kTRUE);
 
-  TFileCollection *fc = fManager->GetDataSet(uri);
+  TFileCollection *fc = fManager->GetDataSet(dsUri->GetUri());
   Int_t nChanged = 0;
 
   // If you want to do a ScanDataSet here, you need to do fc->GetList() after
@@ -178,19 +179,22 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
       StgStatus_t st = fParentManager->GetStageStatus(surl);
 
       if (st == kStgDone) {
-
+        Int_t nLeft;
         if (AddRealUrlAndMetaData(fi)) {
           // Verification succeeded
           fi->SetBit( TFileInfo::kStaged );
-          fParentManager->DequeueUrl(surl);
-          AfLogDebug(10, "Dequeued (staged): %s", surl);
+
+          // We should save a TFileInfo somewhere to avoid verifying again and
+          // again...
+          fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+          AfLogInfo("Dequeued (staged) [%d left]: %s", nLeft, surl);
         }
         else {
           // If verification fails, immediately dequeue it and mark as corrupted
-          fParentManager->DequeueUrl(surl);
+          fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
           fi->SetBit( TFileInfo::kCorrupted );
-          AfLogError("Dequeued and marked as corrupted (failed to verify): %s",
-            surl);
+          AfLogError("Dequeued last one and marked as corrupted (failed to "
+            "verify) [%d left]: %s", nLeft, surl);
         }
 
         changed = kTRUE;  // info has changed in dataset
@@ -200,12 +204,15 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
 
         if (c) {
           // After download has started the file may have been marked as corr.
-          fParentManager->DequeueUrl(surl);
-          AfLogInfo("Dequeued after failure (marked as corrupted): %s", surl);
+          Int_t nLeft;
+          fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+          AfLogInfo("Dequeued after fail (marked as corrupted) [%d left]: %s",
+            nLeft, surl);
         }
         else {
           // Not corrupted, retry but as the last file in queue
-          Int_t nPrevFail = fParentManager->RequeueUrl(surl, kTRUE);
+          Int_t nPrevFail = fParentManager->RequeueUrl(surl, dsUri->GetUId(),
+            kTRUE);
           if (nPrevFail ==  kRequeueLimitReached) {
             fi->SetBit( TFileInfo::kCorrupted );
             AfLogError("Dequeued and marked corrupted (too many "
@@ -219,21 +226,44 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
         }
 
       }
+      else if (st == kStgDelPending) {
+        Int_t nLeft;
+        fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+        AfLogInfo("Dequeued (marked for dequeuing) [%d left]: %s",
+          nLeft, surl);
+      }
       else if (st == kStgAbsent) {
         if (c) {
           AfLogDebug(10, "Not queuing (marked as corrupted): %s", surl);
         }
         else {
           // Try to push at the end with status Q
-          if ( fParentManager->EnqueueUrl(surl) != kStgQueueFull ) {
+          if ( fParentManager->EnqueueUrl(surl, dsUri->GetUId()) !=
+            kStgQueueFull ) {
             AfLogInfo("Queued: %s", surl);
           }
         }
       }
-      else if ((st == kStgQueue) && (c)) {
-        // After queuing the file may have been marked as corrupted
-        AfLogInfo("Dequeued (marked as corrupted): %s", surl);
-        fParentManager->DequeueUrl(surl);
+      else if (st == kStgQueue) {
+        if (c) {
+          Int_t nLeft;
+          // After queuing the file may have been marked as corrupted
+          fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+          AfLogInfo("Dequeued (marked as corrupted) [%d left]: %s", nLeft,
+            surl);
+        }
+        else {
+          // It's already in queue, but let's add another copy
+          Int_t nQueue;
+          if (fParentManager->EnqueueUrl(surl, dsUri->GetUId(), &nQueue) ==
+            kStgCopyQueued) {
+            AfLogInfo("Queued [%d]: %s", nQueue, surl);
+          }
+          else {
+            AfLogDebug(10, "Not queued (already in queue %d time(s)): %s",
+              nQueue, surl);
+          }
+        }
       }
     }
 
@@ -247,7 +277,7 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
     fc->Update();
 
     TString group, user, dsName;
-    fManager->ParseUri(uri, &group, &user, &dsName);
+    fManager->ParseUri(dsUri->GetUri(), &group, &user, &dsName);
 
     fParentManager->DoSuid();
     // With kFileMustExist it saves ds only if it already exists: it updates it
@@ -255,18 +285,19 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
       TDataSetManager::kFileMustExist);
     fParentManager->UndoSuid();
 
-    AfLogDebug(20, "WriteDataSet() for %s has returned %d", uri, r);
+    AfLogDebug(20, "WriteDataSet() for %s has returned %d", dsUri->GetUri(), r);
 
     if (r == 0) {
-      AfLogError("Dataset modif: %s, but can't write (check permissions)", uri);
+      AfLogError("Dataset modif: %s, but can't write (check permissions)",
+        dsUri->GetUri());
     }
     else {
-      AfLogOk("Dataset saved: %s", uri);
+      AfLogOk("Dataset saved: %s", dsUri->GetUri());
       nChanged++;
     }
   }
   else {
-    AfLogDebug(10, "Dataset unmod: %s", uri);
+    AfLogDebug(10, "Dataset unmod: %s", dsUri->GetUri());
   }
 
   // Always notify via manager method (it usually uses MonALISA)
@@ -284,13 +315,12 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
   Long64_t totSize = fc->GetTotalSize();  // it's given in bytes
   if (totSize < 0) { totSize = 0; }
 
-  TString hashUri(uri);
-
-  fParentManager->NotifyDataSetStatus(hashUri.Hash()+fUrl.Hash(), uri,
+  fParentManager->NotifyDataSetStatus(dsUri->GetUId(), dsUri->GetUri(),
     fc->GetNFiles(), fc->GetNStagedFiles(), fc->GetNCorruptFiles(), treeName,
     nEvts, totSize);
   
-  ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
+  ListDataSetContent(dsUri->GetUri(), Form("Dataset %s after processing:",
+    dsUri->GetUri()), kTRUE);
 
   delete fc;
 
@@ -433,15 +463,15 @@ void AfDataSetSrc::FlattenListOfDataSets() {
           TString dsUri = TDataSetManager::CreateUri( gn->String(),
             un->String(), dn->String() );
           //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
-          //AfLogInfo("[FLATTEN] hash=%08x uri=%s", fUrl.Hash()+dsUri.Hash(),
-          //  dsUri.Data());
-          fDsUris->Add( new TObjString(dsUri.Data()) );
 
-        } // while over datasets
+          UInt_t uid = fUrl.Hash()+dsUri.Hash();
+          fDsUris->Add( new AfDsUri(dsUri, uid) );
 
-      } // while over users
+        } // ds
 
-    } // while over groups
+      } // users
+
+    } // groups
 
     delete groups;  // groups and all other TMaps are owners of Keys and Values
 

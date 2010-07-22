@@ -411,40 +411,68 @@ StgStatus_t AfDataSetsManager::GetStageStatus(const char *url) {
   return found->GetStageStatus();
 }
 
-StgStatus_t AfDataSetsManager::EnqueueUrl(const char *url) {
-
-  // Check if queue is full
-  if ((fMaxFilesInQueue != 0) &&
-    (fStageQueue->GetEntries() >= fMaxFilesInQueue)) {
-    return kStgQueueFull;
-  }
+StgStatus_t AfDataSetsManager::EnqueueUrl(const char *url, UInt_t uid,
+  Int_t *nQueue) {
 
   AfStageUrl search(url);
+  AfStageUrl *match;
 
-  // Only adds elements not already there
-  if ( fStageQueue->FindObject( &search ) == NULL ) {
-    AfStageUrl *u = new AfStageUrl(url);
-    fStageQueue->AddLast(u);
-    return u->GetStageStatus();
+  if (match = dynamic_cast<AfStageUrl *>(fStageQueue->FindObject(&search))) {
+    // Element already in queue: push uid
+    if (match->AddDsId(uid)) {
+      if (nQueue) *nQueue = match->GetNDs();
+      return kStgCopyQueued;
+    }
+    return kStgAlreadyQueued;
+  }
+  else {
+
+    if ((fMaxFilesInQueue != 0) &&
+      (fStageQueue->GetEntries() >= fMaxFilesInQueue)) {
+      return kStgQueueFull;
+    }
+    else {
+      // Element not in queue: create it
+      AfStageUrl *u = new AfStageUrl(url, uid);
+      fStageQueue->AddLast(u);
+      return kStgQueue;
+    }
+
+  }
+
+  return kStgAbsent;  // never reached
+}
+
+StgStatus_t AfDataSetsManager::DequeueUrl(const char *url, UInt_t uid,
+  Int_t *nQueue) {
+
+  AfStageUrl search(url);
+  AfStageUrl *match;
+
+  if (match = dynamic_cast<AfStageUrl *>(fStageQueue->FindObject(&search))) {
+
+    if (match->RemoveDsId(uid)) {
+      Int_t nLeft = match->GetNDs();
+      if (nQueue) *nQueue = nLeft;
+      if (nLeft == 0) {
+        // Last id: remove it
+        fStageQueue->Remove(match);
+        return kStgDeqLast;
+      }
+      return kStgDeqLeft;
+    }
+    else {
+      return kStgNoSuchId;
+    }
+
   }
 
   return kStgAbsent;  // error indicator
+
 }
 
-StgStatus_t AfDataSetsManager::DequeueUrl(const char *url) {
-
-  AfStageUrl search(url);
-  AfStageUrl *removed;
-
-  if (removed = dynamic_cast<AfStageUrl *>( fStageQueue->Remove(&search) )) {
-    delete removed;
-    return kStgAbsent;
-  }
-
-  return kStgQueue;  // error indicator
-}
-
-Int_t AfDataSetsManager::RequeueUrl(const char *url, Bool_t hasFailed) {
+Int_t AfDataSetsManager::RequeueUrl(const char *url, UInt_t uid,
+  Bool_t hasFailed) {
 
   AfStageUrl search(url);
   AfStageUrl *removed;
@@ -456,7 +484,18 @@ Int_t AfDataSetsManager::RequeueUrl(const char *url, Bool_t hasFailed) {
       removed->IncreaseFailures();
 
       if ((fMaxFails != 0) && (removed->GetFailures() >= fMaxFails)) {
-        delete removed;
+
+        removed->RemoveDsId(uid);
+        if (removed->GetNDs() == 0) {
+          delete removed;
+        }
+        else {
+          // If others are left, don't delete it: instead mark for deletion, so
+          // other datasets with the same file will be in sync
+          removed->SetStageStatus(kStgDelPending);
+          fStageQueue->AddLast(removed);
+        }
+
         return kRequeueLimitReached;  // threshold reached
       }
 
