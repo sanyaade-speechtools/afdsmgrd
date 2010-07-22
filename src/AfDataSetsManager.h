@@ -43,8 +43,8 @@ class AfDataSetsManager {
     void DoSuid();
     void UndoSuid();
 
-    void NotifyDataSetStatus(const char *dsName, Int_t nFiles, Int_t nStaged,
-      Int_t nCorrupted, const char *treeName, Int_t nEvts,
+    void NotifyDataSetStatus(UInt_t uniqueId, const char *dsName, Int_t nFiles,
+      Int_t nStaged, Int_t nCorrupted, const char *treeName, Int_t nEvts,
       Int_t totalSizeBytes);
 
   private:

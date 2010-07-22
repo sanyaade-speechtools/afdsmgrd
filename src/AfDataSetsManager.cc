@@ -637,7 +637,7 @@ void AfDataSetsManager::ProcessTransferQueue() {
 
 }
 
-void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
+void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
   Int_t nFiles, Int_t nStaged, Int_t nCorrupted, const char *treeName,
   Int_t nEvts, Int_t totalSizeBytes) {
 
@@ -646,9 +646,6 @@ void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
   if (!fApMon) {
     return;
   }
-
-  char buf[10];
-  snprintf(buf, 10, "%d", ++fDsNotifCounter);
 
   Float_t pctStaged = 100. * nStaged / nFiles;
   Float_t pctCorrupted = 100. * nCorrupted / nFiles;
@@ -690,6 +687,9 @@ void AfDataSetsManager::NotifyDataSetStatus(const char *dsName,
   };
 
   Int_t nParams = sizeof(paramNames) / sizeof(char *);
+
+  char buf[10];
+  snprintf(buf, 10, "%08x", uniqueId);
 
   try {
 

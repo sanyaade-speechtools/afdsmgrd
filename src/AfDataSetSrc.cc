@@ -284,8 +284,11 @@ Int_t AfDataSetSrc::ProcessDataSet(const char *uri) {
   Long64_t totSize = fc->GetTotalSize();  // it's given in bytes
   if (totSize < 0) { totSize = 0; }
 
-  fParentManager->NotifyDataSetStatus(uri, fc->GetNFiles(),
-    fc->GetNStagedFiles(), fc->GetNCorruptFiles(), treeName, nEvts, totSize);
+  TString hashUri(uri);
+
+  fParentManager->NotifyDataSetStatus(hashUri.Hash()+fUrl.Hash(), uri,
+    fc->GetNFiles(), fc->GetNStagedFiles(), fc->GetNCorruptFiles(), treeName,
+    nEvts, totSize);
   
   ListDataSetContent(uri, Form("Dataset %s after processing:", uri), kTRUE);
 
@@ -430,7 +433,8 @@ void AfDataSetSrc::FlattenListOfDataSets() {
           TString dsUri = TDataSetManager::CreateUri( gn->String(),
             un->String(), dn->String() );
           //AfLogInfo(">>>>>> Dataset: %s", dn->String().Data());
-          //AfLogInfo(">>>>>>>> Dataset URI: %s", dsUri.Data());
+          //AfLogInfo("[FLATTEN] hash=%08x uri=%s", fUrl.Hash()+dsUri.Hash(),
+          //  dsUri.Data());
           fDsUris->Add( new TObjString(dsUri.Data()) );
 
         } // while over datasets
