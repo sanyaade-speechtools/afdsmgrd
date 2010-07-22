@@ -32,9 +32,9 @@ class AfDataSetsManager {
     void SetSuid(bool suid = kTRUE) { fSuid = suid; }
 
     StgStatus_t GetStageStatus(const char *url);
-    StgStatus_t EnqueueUrl(const char *url);
-    StgStatus_t DequeueUrl(const char *url);
-    Int_t       RequeueUrl(const char *url, Bool_t resetFail);
+    StgStatus_t EnqueueUrl(const char *url, UInt_t uid, Int_t *nQueue = NULL);
+    StgStatus_t DequeueUrl(const char *url, UInt_t uid, Int_t *nQueue = NULL);
+    Int_t       RequeueUrl(const char *url, UInt_t uid, Bool_t hasFailed);
 
     void ProcessTransferQueue();
     void PrintStageList(const char *header, Bool_t debug);
