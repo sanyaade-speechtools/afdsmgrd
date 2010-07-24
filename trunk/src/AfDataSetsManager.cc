@@ -74,7 +74,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     delete loopSleep_s;
   }
 
-  // Scan dataset every X loops
+  // Scan datasets every X loops
   TString *scanDsEvery = cfr->GetDir("dsmgrd.scandseveryloops");
   if (!scanDsEvery) {
     AfLogWarning("Variable dsmgrd.scandseveryloops not set, using default (%d)",
@@ -90,6 +90,25 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   else {
     AfLogInfo("Datasets are checked every %d loop(s)", fScanDsEvery);
     delete scanDsEvery;
+  }
+
+  // Sync datasets every Y loops
+  TString *syncDsEvery = cfr->GetDir("dsmgrd.syncdseveryloops");
+  if (!syncDsEvery) {
+    AfLogWarning("Datasets synchronization not enabled for all datasets: to "
+      "enable set the dsmgrd.syncdseveryloops variable");
+    fSyncDsEvery = -1;
+  }
+  else if ( (fSyncDsEvery = syncDsEvery->Atoi()) <= 0 )  {
+    AfLogWarning("Invalid value for dsmgrd.syncdseveryloops (%s), "
+      "synchronization not enabled", scanDsEvery->Data());
+    fSyncDsEvery = -1;
+    delete syncDsEvery;
+  }
+  else {
+    AfLogInfo("Synchronizable datasets are synchronized every %d loop(s)",
+      fSyncDsEvery);
+    delete syncDsEvery;
   }
 
   // Number of parallel staging command on the whole facility
@@ -237,6 +256,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   TPMERegexp reOpt("([ \t]|^)opt:([^ \t]*)");  // regex that matches opt:
   TPMERegexp reDsp("([ \t]|^)destpath:([^ \t]*)");
   TPMERegexp reRw("([ \t]|^)rw=1([^ \t]*)");
+  TPMERegexp reSync("([ \t]|^)sync:([^ \t]*)");
 
   // Watch out: getDirs returns a poiter to a TList that must be deleted, and
   // it is owner of its content!
@@ -254,6 +274,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     TString destPath;
     TString dsUrl;
     TString opts;
+    TString syncUrl;
     Bool_t rw = kFALSE;
 
     if (reMss.Match(dir) == 3) {
@@ -312,10 +333,18 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
       opts = rw ? "Ar:Av:" : "-Ar:-Av:";
     }
 
+    if (reSync.Match(dir) == 3) {
+      syncUrl = reSync[2];
+      AfLogInfo(">> Sync with: %s", syncUrl.Data());
+    }
+    else {
+      AfLogInfo(">> No remote synchronization configured");
+    }
+
     if (dsValid) {
       redirUrl->SetFile( destPath.Data() );
       AfDataSetSrc *dsSrc = new AfDataSetSrc(dsUrl.Data(), redirUrl,
-        opts.Data(), this);
+        opts.Data(), (syncUrl.IsNull() ? NULL : syncUrl.Data()), this);
       if (procDs->GetSize() > 0) {
         dsSrc->SetDsProcessList(procDs);  // Set... makes a copy of the list
       }
@@ -358,7 +387,17 @@ Int_t AfDataSetsManager::ProcessAllDataSetsOnce(DsAction_t action) {
 
 void AfDataSetsManager::Loop() {
 
-  Int_t loops = fScanDsEvery;
+  Int_t maxLoops;
+  Int_t loops;
+
+  if (fSyncDsEvery > 0) {
+    maxLoops = fScanDsEvery * fSyncDsEvery;
+  }
+  else {
+    maxLoops = fScanDsEvery;
+  }
+
+  loops = maxLoops;
 
   while (kTRUE) {
 
@@ -368,17 +407,26 @@ void AfDataSetsManager::Loop() {
     PrintStageList("Stage queue after processing:", kTRUE);
     AfLogDebug(20, "++++ Loop over transfer queue completed ++++");
 
-    if (loops == fScanDsEvery) {
+    if ((fSyncDsEvery > 0) && ((loops % fSyncDsEvery) == 0)) {
+      AfLogInfo("Syncing datasets");
+      Int_t nNew = ProcessAllDataSetsOnce(kDsSync);
+      if (nNew) {
+        AfLogOk("%d dataset(s) were added", nNew);
+      }
+      else {
+        AfLogInfo("No new dataset added");
+      }
+    }
+
+    if ((loops % fScanDsEvery) == 0) {
       AfLogInfo("Scanning datasets");
       Int_t nChanged = ProcessAllDataSetsOnce(kDsProcess);
       if (nChanged) {
         AfLogOk("%d dataset(s) were changed", nChanged);
       }
-      loops = 1;
     }
     else {
-      loops++;
-      Int_t scansLeft = fScanDsEvery-loops+1;
+      Int_t scansLeft = fScanDsEvery - (loops%fScanDsEvery);
       if (scansLeft == 1) {
         AfLogInfo("Not scanning datasets now: they will be scanned in the "
           "next loop");
@@ -387,6 +435,13 @@ void AfDataSetsManager::Loop() {
         AfLogInfo("Not scanning datasets now: %d sleep(s) left before a new "
           "dataset scan", scansLeft);
       }
+    }
+
+    if (loops == maxLoops) {
+      loops = 1;
+    }
+    else {
+      loops++;
     }
 
     //if (TObject::GetObjectStat()) {

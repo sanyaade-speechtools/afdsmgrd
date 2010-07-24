@@ -388,7 +388,7 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
     }
 
     fc->Add( new TFileInfo( tUrl, size, res->GetKey(i, "guid"),
-      res->GetKey(i,"md5") ) );
+      res->GetKey(i, "md5") ) );
   }
 
   if (defaultTree != "") {

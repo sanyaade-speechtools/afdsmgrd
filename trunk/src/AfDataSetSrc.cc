@@ -5,7 +5,7 @@ ClassImp(AfDataSetSrc);
 AfDataSetSrc::AfDataSetSrc() {}
 
 AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-  AfDataSetsManager *parentManager) {
+  const char *syncUrl, AfDataSetsManager *parentManager) {
 
   fUrl  = url;
   fOpts = opts;
@@ -18,6 +18,8 @@ AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
 
   fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
     fUrl.Data(), fOpts.Data()) );
+
+  fSyncUrl.SetUrl(syncUrl);
 
   fDsUris = new TList();  // TList of AfDsUri
   fDsUris->SetOwner();
@@ -36,29 +38,145 @@ Int_t AfDataSetSrc::Process(DsAction_t action) {
   AfLogDebug(20, "+++ Started processing of dataset source %s +++",
     fUrl.Data());
 
-  // Creates a flattened list of dataset URIs
-  FlattenListOfDataSets();
-
   Int_t nChanged = 0;
 
-  TIter i(fDsUris);
-  AfDsUri *s;
-  while (s = dynamic_cast<AfDsUri *>(i.Next())) {
+  if (action == kDsSync) {
+    if (!fSyncUrl.IsValid()) return 0;
+    FlattenListOfDataSets();
+    nChanged += Sync();
+  }
+  else {
 
-    switch (action) {
-      case kDsReset:
-        nChanged += ResetDataSet( s->GetUri() );  // will be removed
-      break;
+    FlattenListOfDataSets();
 
-      case kDsProcess:
-        nChanged += ProcessDataSet( s );
-      break;
+    TIter i(fDsUris);
+    AfDsUri *s;
+    while (s = dynamic_cast<AfDsUri *>(i.Next())) {
+
+      switch (action) {
+        case kDsReset:
+          nChanged += ResetDataSet( s->GetUri() );  // will be removed soon
+        break;
+
+        case kDsProcess:
+          nChanged += ProcessDataSet( s );
+        break;
+      }
     }
+
   }
 
   AfLogDebug(20, "+++ Ended processing dataset source %s +++", fUrl.Data());
 
   return nChanged;
+}
+
+Int_t AfDataSetSrc::Sync() {
+
+  if ((!gGrid) || (!gGrid->IsConnected())) {
+    if (TGrid::Connect("alien:") && (gGrid) && (gGrid->IsConnected())) {
+      AfLogDebug(10, "AliEn connection created");
+    }
+    else {
+      AfLogError("Can't open AliEn connection");
+      return 0;
+    }
+  }
+  else {
+    AfLogDebug(10, "Reusing existing AliEn connection");
+  }
+
+  // Do an AliEn "find" on the AliEn datasets directory
+
+  TGridResult *res = gGrid->Query(fSyncUrl.GetFile(), "*.root");
+  if (!res) {
+    AfLogError("Can't search for new datasets: AliEn query error");
+    return 0;
+  }
+
+  Int_t nEntries = res->GetEntries();
+  Int_t nSaved = 0;
+
+  AfLogDebug(10, "Searching AliEn: path=%s, found=%d", fSyncUrl.GetFile(),
+    nEntries);
+  TPMERegexp reDs("alien://.*/(.*)/(.*)/(.*)\\.root$");
+
+  TDataSetManagerFile *tmpMgr = NULL;
+
+  if (nEntries) {
+    TString rmDir = Form("rm -rf \"/tmp/afdsmgrd-tmpds\"");
+    gSystem->Exec(rmDir.Data());
+
+    tmpMgr = new TDataSetManagerFile(NULL, NULL, "dir:/tmp/afdsmgrd-tmpds");
+
+    if (!tmpMgr) {
+      delete res;
+      AfLogError("Can't create the temporary dataset manager");
+      return 0;
+    }
+  }
+
+  for (Int_t i=0; i<nEntries; i++) {
+    TString tUrl = res->GetKey(i, "turl");
+    TString dsUri;
+    if (reDs.Match(tUrl) != 4) {
+      AfLogWarning("Invalid AliEn dataset URL: %s", tUrl.Data());
+      continue;
+    }
+
+    // Compose DS URI
+    dsUri = Form("/%s/%s/%s", reDs[1].Data(), reDs[2].Data(), reDs[3].Data());
+
+    // Search if dataset exists in current list
+    AfDsUri search(dsUri.Data());
+
+    if (fDsUris->FindObject(&search)) {
+      AfLogDebug(10, "Remote dataset skipped (exists): %s", dsUri.Data());
+      continue;
+    }
+
+    // This is to be added
+    AfLogDebug(10, "New remote dataset found: %s", dsUri.Data());
+
+    TString tempDest = Form("%s/%s/%s", "/tmp/afdsmgrd-tmpds/",
+      reDs[1].Data(), reDs[2].Data());
+    gSystem->mkdir(tempDest.Data(), kTRUE);
+
+    tempDest.Append( Form("/%s.root", reDs[3].Data()) );
+
+    // Dataset is copied on the temporary repository
+    TFile::Cp(tUrl.Data(), tempDest.Data());
+
+    // Dataset is read from temporary repository
+    TFileCollection *fc = tmpMgr->GetDataSet(dsUri);
+    if (!fc) {
+      AfLogError("Can't fetch remote dataset: %s", dsUri.Data());
+      continue;
+    }
+
+    TString group, user, dsName;
+    fManager->ParseUri(dsUri, &group, &user, &dsName);
+    fParentManager->DoSuid();
+    Int_t r = fManager->WriteDataSet(group, user, dsName, fc);
+    fParentManager->UndoSuid();
+
+    if (r == 0) {
+      AfLogError("Fetched dataset but can't save: %s [%d] (check permissions)",
+        dsUri.Data(), r);
+    }
+    else {
+      AfLogOk("Fetched and added new dataset: %s [%d items]", dsUri.Data(),
+        fc->GetNFiles());
+      nSaved++;
+    }
+
+    delete fc;
+  }
+
+  delete res;
+  delete tmpMgr;
+
+  return nSaved;
 }
 
 void AfDataSetSrc::ListDataSetContent(const char *uri, const char *header,
@@ -407,7 +525,7 @@ void AfDataSetSrc::SetDsProcessList(TList *dsList) {
   TIter i(dsList);
   TObjString *o;
   fDsToProcess->Clear();
-  // List is copied, so does its content
+  // List is copied, its content too
   while ( o = dynamic_cast<TObjString *>(i.Next()) ) {
     fDsToProcess->Add( new TObjString( o->GetString().Data() ) );
   }

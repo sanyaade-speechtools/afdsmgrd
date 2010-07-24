@@ -70,6 +70,7 @@ class AfDataSetsManager {
     UShort_t            fRedirPort;
     Int_t               fLoopSleep_s;
     Int_t               fScanDsEvery;
+    Int_t               fSyncDsEvery;
     TString             fStageCmd;
     Int_t               fParallelXfrs;
 

@@ -1,7 +1,7 @@
 #ifndef AFDATASETSRC_H
 #define AFDATASETSRC_H
 
-typedef enum { kDsReset, kDsProcess } DsAction_t;
+typedef enum { kDsReset, kDsProcess, kDsSync } DsAction_t;
 
 #include "AfConfigure.h"
 #include "AfLog.h"
@@ -16,6 +16,8 @@ typedef enum { kDsReset, kDsProcess } DsAction_t;
 #include <TFile.h>
 #include <TKey.h>
 #include <TTree.h>
+#include <TGrid.h>
+#include <TGridResult.h>
 
 // Reciprocal inclusions between AfDataSetSrc and AfDataSetsManager require the
 // following forward declaration
@@ -27,9 +29,12 @@ class AfDsUri : public TObject {
 
   public:
     AfDsUri() : fUri(""), fUId(0x0) {}
-    AfDsUri(const char *uri, UInt_t hash) : fUri(uri), fUId(hash) {};
-    const char *GetUri() { return fUri.Data(); }
-    UInt_t GetUId() { return fUId; }
+    AfDsUri(const char *uri, UInt_t uid = 0x0) : fUri(uri), fUId(uid) {};
+    virtual const char *GetUri() { return fUri.Data(); }
+    virtual UInt_t GetUId() { return fUId; }
+    virtual Bool_t IsEqual(const TObject *r) const {
+      return (fUri == dynamic_cast<const AfDsUri *>(r)->fUri);
+    }
 
   private:
     TString fUri;
@@ -43,7 +48,7 @@ class AfDataSetSrc : public TObject {
 
     AfDataSetSrc();
     AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-      AfDataSetsManager *parentManager);
+      const char *syncUrl, AfDataSetsManager *parentManager);
     Int_t Process(DsAction_t action);
     void SetDsProcessList(TList *dsList);
     ~AfDataSetSrc();
@@ -57,6 +62,7 @@ class AfDataSetSrc : public TObject {
     void   FlattenListOfDataSets();
     Int_t  ProcessDataSet(AfDsUri *dsUri);
     Int_t  ResetDataSet(const char *uri);
+    Int_t  Sync();
     void   ListDataSetContent(const char *uri, const char *header, Bool_t debug);
     Int_t  TranslateUrl(TFileInfo *ti, Int_t whichUrls = kUrlRoot | kUrlAliEn);
     Int_t  KeepOnlyLastUrl(TFileInfo *fi);
@@ -68,6 +74,7 @@ class AfDataSetSrc : public TObject {
     TUrl                *fRedirUrl;
     TString              fUrl;
     TString              fOpts;
+    TUrl                 fSyncUrl;
     TList               *fDsToProcess;
     AfDataSetsManager   *fParentManager;  //!
 
