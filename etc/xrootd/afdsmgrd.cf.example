@@ -8,17 +8,10 @@
 # one.
 #
 
-# Datasets management. Additional options, understood only by the dataset
-# manager:
-#
-#   destpath: it is the path that will be prefixed to any URL beginning with
-#             alien://
-#
-#   sync:     the full AliEn URL of the distributed dataset repository, where to
-#             periodically download new datasets if the variable
-#             dsmgrd.syncdseveryloops is properly set. If you don't specify any
-#             sync: value, this dataset won't be synchronized
-xpd.datasetsrc file url:/pool/datasets mss:root://$MASTER:1094 opt:Cq:Av:Ar: destpath:/alien sync:alien:///alice/cern.ch/user/d/dberzano/datasets/ rw=1
+# Datasets management: the destpath: is the path that will be prefixed to any
+# URL beginning with alien://, while dsconf: is the local path to the specific
+# configuration file (actions and synchronization) for this dataset source
+xpd.datasetsrc file url:/pool/datasets mss:root://$MASTER:1094 opt:Cq:Av:Ar: destpath:/alien dsconf:/etc/xrootd/single_dataset_src.cf rw=1
 
 # At each loop the transfer queue is checked: sleep time between each loop, in
 # seconds
@@ -31,7 +24,7 @@ dsmgrd.scandseveryloops 10
 # Every certain number of loops the remote AliEn directory specified on each
 # dataset is checked for new datasets. If this value is not set, no sync is
 # ever performed
-#dsmgrd.syncdseveryloops 10
+dsmgrd.syncdseveryloops 100
 
 # Maximum number of parallel staging commands to launch. For consistency, set it
 # to the number of servers * the number of parallel transfers for each server

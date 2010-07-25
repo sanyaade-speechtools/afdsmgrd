@@ -11,7 +11,7 @@ AfDataSetsManager::AfDataSetsManager() {
   fStageQueue->SetOwner();
   fStageCmds = new THashList(); // not owner, threads must be cancelled manually
 
-  fLastQueue = fLastStaging = fLastFail = fLastDone = -1;
+  fLastQueue = fLastStaging = fLastFail = fLastDone = fLastDelPending -1;
 
   kDefaultApMonDsPrefix = "PROOF::CAF::STORAGE_datasets";
 
@@ -255,8 +255,8 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
   TPMERegexp reUrl("([ \t]|^)url:([^ \t]*)");  // regex that matches url:
   TPMERegexp reOpt("([ \t]|^)opt:([^ \t]*)");  // regex that matches opt:
   TPMERegexp reDsp("([ \t]|^)destpath:([^ \t]*)");
+  TPMERegexp reActConf("([ \t]|^)dsconf:([^ \t]*)");
   TPMERegexp reRw("([ \t]|^)rw=1([^ \t]*)");
-  TPMERegexp reSync("([ \t]|^)sync:([^ \t]*)");
 
   // Watch out: getDirs returns a poiter to a TList that must be deleted, and
   // it is owner of its content!
@@ -274,7 +274,7 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
     TString destPath;
     TString dsUrl;
     TString opts;
-    TString syncUrl;
+    TString actConf;
     Bool_t rw = kFALSE;
 
     if (reMss.Match(dir) == 3) {
@@ -333,18 +333,19 @@ Bool_t AfDataSetsManager::ReadConf(const char *cf) {
       opts = rw ? "Ar:Av:" : "-Ar:-Av:";
     }
 
-    if (reSync.Match(dir) == 3) {
-      syncUrl = reSync[2];
-      AfLogInfo(">> Sync with: %s", syncUrl.Data());
+    if (reActConf.Match(dir) == 3) {
+      actConf = reActConf[2];
+      AfLogInfo(">> Dataset actions config: %s", actConf.Data());
     }
     else {
-      AfLogInfo(">> No remote synchronization configured");
+      AfLogWarning(">> No dataset source configuration file specified: all "
+        "datasets are IGNORED by default!");
     }
 
     if (dsValid) {
       redirUrl->SetFile( destPath.Data() );
       AfDataSetSrc *dsSrc = new AfDataSetSrc(dsUrl.Data(), redirUrl,
-        opts.Data(), (syncUrl.IsNull() ? NULL : syncUrl.Data()), this);
+        opts.Data(), (actConf.IsNull() ? NULL : actConf.Data()), this);
       if (procDs->GetSize() > 0) {
         dsSrc->SetDsProcessList(procDs);  // Set... makes a copy of the list
       }
@@ -414,7 +415,7 @@ void AfDataSetsManager::Loop() {
         AfLogOk("%d dataset(s) were added", nNew);
       }
       else {
-        AfLogInfo("No new dataset added");
+        AfLogInfo("No new datasets added after sync");
       }
     }
 
@@ -453,13 +454,13 @@ void AfDataSetsManager::Loop() {
   }
 }
 
-StgStatus_t AfDataSetsManager::GetStageStatus(const char *url) {
+StgStatus_t AfDataSetsManager::GetStageStatus(const char *url, UInt_t uid) {
 
   AfStageUrl search(url);
   AfStageUrl *found =
     dynamic_cast<AfStageUrl *>( fStageQueue->FindObject(&search) );
 
-  if (found == NULL) {
+  if ((found == NULL) || ((uid != 0) && (!found->HasDsId(uid)))) {
     return kStgAbsent;
   }
 
@@ -474,11 +475,15 @@ StgStatus_t AfDataSetsManager::EnqueueUrl(const char *url, UInt_t uid,
 
   if (match = dynamic_cast<AfStageUrl *>(fStageQueue->FindObject(&search))) {
     // Element already in queue: push uid
+    StgStatus_t ret;
     if (match->AddDsId(uid)) {
-      if (nQueue) *nQueue = match->GetNDs();
-      return kStgCopyQueued;
+      ret = kStgCopyQueued;
     }
-    return kStgAlreadyQueued;
+    else {
+      ret = kStgAlreadyQueued;
+    }
+    if (nQueue) *nQueue = match->GetNDs();
+    return ret;
   }
   else {
 
@@ -490,6 +495,7 @@ StgStatus_t AfDataSetsManager::EnqueueUrl(const char *url, UInt_t uid,
       // Element not in queue: create it
       AfStageUrl *u = new AfStageUrl(url, uid);
       fStageQueue->AddLast(u);
+      if (nQueue) *nQueue = 1;
       return kStgQueue;
     }
 
@@ -675,8 +681,9 @@ void AfDataSetsManager::ProcessTransferQueue() {
   Int_t nQueue;
   Int_t nFail;
   Int_t nDone;
+  Int_t nDelPending;
 
-  nStaging = nQueue = nFail = nDone = 0;
+  nStaging = nQueue = nFail = nDone = nDelPending = 0;
 
   // Second loop: only look for elements "queued" and start thread accordingly
   while ( su = dynamic_cast<AfStageUrl *>(i.Next()) ) {
@@ -706,10 +713,11 @@ void AfDataSetsManager::ProcessTransferQueue() {
     else {
 
       switch( su->GetStageStatus() ) {
-        case kStgQueue:   nQueue++;   break;
-        case kStgStaging: nStaging++; break;
-        case kStgDone:    nDone++;    break;
-        case kStgFail:    nFail++;    break;
+        case kStgQueue:      nQueue++;      break;
+        case kStgStaging:    nStaging++;    break;
+        case kStgDone:       nDone++;       break;
+        case kStgFail:       nFail++;       break;
+        case kStgDelPending: nDelPending++; break;
       }
 
     }
@@ -720,13 +728,15 @@ void AfDataSetsManager::ProcessTransferQueue() {
     (nDone != fLastDone) || (nFail != fLastFail)) {
 
     AfLogInfo("Elements in queue: Total=%d | Queued=%d | Staging=%d | "
-      "Done=%d | Failed=%d", nQueue+nStaging+nDone+nFail, nQueue, nStaging,
-       nDone, nFail);
+      "Done=%d | Failed=%d | Deleting=%d",
+      nQueue+nStaging+nDone+nFail+nDelPending, nQueue, nStaging, nDone, nFail,
+      nDelPending);
 
     fLastStaging = nStaging;
     fLastQueue = nQueue;
     fLastDone = nDone;
     fLastFail = nFail;
+    fLastDelPending = nDelPending;
   }
 
 }

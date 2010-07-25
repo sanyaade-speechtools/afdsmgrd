@@ -31,7 +31,7 @@ class AfDataSetsManager {
     Bool_t ReadConf(const char *cf);
     void SetSuid(bool suid = kTRUE) { fSuid = suid; }
 
-    StgStatus_t GetStageStatus(const char *url);
+    StgStatus_t GetStageStatus(const char *url, UInt_t uid = 0);
     StgStatus_t EnqueueUrl(const char *url, UInt_t uid, Int_t *nQueue = NULL);
     StgStatus_t DequeueUrl(const char *url, UInt_t uid, Int_t *nQueue = NULL);
     Int_t       RequeueUrl(const char *url, UInt_t uid, Bool_t hasFailed);
@@ -81,6 +81,7 @@ class AfDataSetsManager {
     Int_t               fLastStaging;
     Int_t               fLastFail;
     Int_t               fLastDone;
+    Int_t               fLastDelPending;
     Int_t               fMaxFilesInQueue;
 
     Int_t               fDsNotifCounter;

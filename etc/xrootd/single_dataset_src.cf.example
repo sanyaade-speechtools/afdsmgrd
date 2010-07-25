@@ -1,0 +1,61 @@
+#
+# single_dataset_src.cf.example
+#
+# Example of a specific configuration file for a single dataset source. The
+# dataset manager afdsmgrd re-reads this file at every dataset scan, so there is
+# no need to restart the daemon to see changes applied.
+#
+# In this file, several things can be configured:
+#
+#  - actions per-dataset, or for multiple datasets matching a regexp;
+#  - synchronization of the dataset with a remote AliEn repository;
+#
+# See the examples below to understand how it works.
+#
+# Directives named "ds" are followed by the full name of the dataset (no
+# wildcards) and the actions separated by spaces (or tabs). Possible actions
+# are (you can specify them in any order, but they will be processed in this
+# specific order):
+#
+#  - translate : the original AliEn URL of each file is translated into the URL
+#                referring to the file on the xrootd master;
+#  - stage     : stage the file;
+#  - verify    : fills metadata information on each file (default tree, number
+#                of events);
+#  - addendurl : adds at the beginning of the file's URLs the URL of the xrootd
+#                server where to take the file;
+#  - ignore    : nothing is done on the dataset.
+#
+# The "legacy" afdsmgrd corresponds to all of these actions (except ignore, of
+# course).
+#
+# "ds" directives always have precedence over "dsre" directives.
+#
+# The following example is useful for completely dynamic datasets: datasets are
+# filled with alien:// URLs, and the dataset manager only fills in metadata
+ds   /foo/foo/foo1      verify
+
+# This example, that uses regular expressions, is useful for files that are to
+# be staged but without statically adding the URL of the server, only master. So
+# every action is specified except "addendurl"
+dsre /alice/.*          translate stage verify
+
+# The following datasets are ignored
+dsre /ignore/ignore/.*  ignore
+
+# This directive is useful if we want to use the vMSS interface of xrootd
+# without letting afdsmgrd manage the staging queue: files are not told to be
+# staged, but at the moment of the verification the file is actually downloaded,
+# if xrootd has been configured with vMSS
+dsre /vmss/vmss/.*      translate verify addendurl
+
+# The default action to take if no other directive matches
+defaultactions          translate stage verify addendurl
+
+# The following directive tells the daemon to do synchronization (that must be
+# enabled globally in the main configuration file) of the datasets from the
+# specified AliEn path: if some datasets on AliEn that do not exist "locally"
+# are found, they are simply fetched. The default, if no sync directive is
+# given, is to not sync the repository. Synchronization is extremely useful for
+# dynamic and distributed facilities
+sync alien:///alice/cern.ch/user/d/dberzano/datasets

@@ -5,7 +5,7 @@ ClassImp(AfDataSetSrc);
 AfDataSetSrc::AfDataSetSrc() {}
 
 AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
-  const char *syncUrl, AfDataSetsManager *parentManager) {
+  const char *dsConf, AfDataSetsManager *parentManager) {
 
   fUrl  = url;
   fOpts = opts;
@@ -19,7 +19,10 @@ AfDataSetSrc::AfDataSetSrc(const char *url, TUrl *redirUrl, const char *opts,
   fManager = new TDataSetManagerFile(NULL, NULL, Form("dir:%s opt:%s",
     fUrl.Data(), fOpts.Data()) );
 
-  fSyncUrl.SetUrl(syncUrl);
+  fActionsConf = dsConf;
+
+  fActions = new TList();
+  fActions->SetOwner();
 
   fDsUris = new TList();  // TList of AfDsUri
   fDsUris->SetOwner();
@@ -30,6 +33,7 @@ AfDataSetSrc::~AfDataSetSrc() {
   delete fRedirUrl;
   delete fDsToProcess;
   delete fDsUris;
+  delete fActions;
 }
 
 // Processes all the datasets in this dataset source
@@ -40,8 +44,13 @@ Int_t AfDataSetSrc::Process(DsAction_t action) {
 
   Int_t nChanged = 0;
 
+  ReadDsActionsConf();
+
   if (action == kDsSync) {
-    if (!fSyncUrl.IsValid()) return 0;
+    if (!fSyncUrl.IsValid()) {
+      AfLogWarning("Synchronization is disabled for this dataset source");
+      return 0;
+    }
     FlattenListOfDataSets();
     nChanged += Sync();
   }
@@ -71,7 +80,7 @@ Int_t AfDataSetSrc::Process(DsAction_t action) {
   return nChanged;
 }
 
-Int_t AfDataSetSrc::Sync() {
+Bool_t AfDataSetSrc::AliEnConnect() {
 
   if ((!gGrid) || (!gGrid->IsConnected())) {
     if (TGrid::Connect("alien:") && (gGrid) && (gGrid->IsConnected())) {
@@ -79,12 +88,19 @@ Int_t AfDataSetSrc::Sync() {
     }
     else {
       AfLogError("Can't open AliEn connection");
-      return 0;
+      return kFALSE;
     }
   }
   else {
     AfLogDebug(10, "Reusing existing AliEn connection");
   }
+
+  return kTRUE;
+}
+
+Int_t AfDataSetSrc::Sync() {
+
+  if (!AliEnConnect()) return 0;
 
   // Do an AliEn "find" on the AliEn datasets directory
 
@@ -264,6 +280,17 @@ Int_t AfDataSetSrc::ResetDataSet(const char *uri) {
   return nChanged;
 }
 
+AfDsMatch *AfDataSetSrc::GetActionsForDs(AfDsUri *dsUri) {
+
+  TIter i(fActions);
+  AfDsMatch *m;
+  while (( m = dynamic_cast<AfDsMatch *>(i.Next()) )) {
+    if ( m->Match(dsUri->GetUri()) ) return m;
+  }
+
+  return &fDefaultAction;
+}
+
 Int_t AfDataSetSrc::ProcessDataSet(AfDsUri *dsUri) {
 
   ListDataSetContent(dsUri->GetUri(), Form("Dataset %s before processing:",
@@ -274,6 +301,26 @@ Int_t AfDataSetSrc::ProcessDataSet(AfDsUri *dsUri) {
 
   // If you want to do a ScanDataSet here, you need to do fc->GetList() after
   // that, because ScanDataSet actually modifies the list and writes it to disk
+
+  AfDsMatch *acts = GetActionsForDs(dsUri);
+  AfLogDebug(10, ">> Actions to take: %c%c%c%c | %s",
+    acts->TestBit(kActTranslate) ? 'T' : 't',
+    acts->TestBit(kActStage)     ? 'S' : 's',
+    acts->TestBit(kActVerify)    ? 'V' : 'v',
+    acts->TestBit(kActAddEndUrl) ? 'A' : 'a',
+    dsUri->GetUri()
+  );
+
+  Bool_t aTra = acts->TestBit(kActTranslate);
+  Bool_t aStg = acts->TestBit(kActStage);
+  Bool_t aVer = acts->TestBit(kActVerify);
+  Bool_t aUrl = acts->TestBit(kActAddEndUrl);
+
+  /*if ((!aTra) && (!aStg) && (!aVer) && (!aUrl)) {
+    // Ignore this dataset
+    delete fc;
+    return;
+  }*/
 
   TFileInfo *fi;
   TIter i( fc->GetList() );
@@ -286,33 +333,65 @@ Int_t AfDataSetSrc::ProcessDataSet(AfDsUri *dsUri) {
     Bool_t c = fi->TestBit(TFileInfo::kCorrupted);
 
     if (!s) {
-      // Only AliEn URLs are translated
-      if (TranslateUrl(fi, AfDataSetSrc::kUrlAliEn) > 0) {
-        changed = kTRUE;
+
+      // Translate URL
+      if ((!c) && (aTra)) {
+        if (TranslateUrl(fi, AfDataSetSrc::kUrlAliEn) > 0) {
+          changed = kTRUE;
+          if ((!aStg) && (!aVer) && (!aUrl)) {
+            fi->SetBit(TFileInfo::kStaged);
+            AfLogInfo("URL translated: %s", fi->GetCurrentUrl()->GetUrl());
+          }
+        }
       }
 
       TUrl url( fi->GetCurrentUrl()->GetUrl() );
       url.SetAnchor("");  // download the full file, not only the #Anchor.root
       const char *surl = url.GetUrl();
-      StgStatus_t st = fParentManager->GetStageStatus(surl);
+      StgStatus_t st = fParentManager->GetStageStatus(surl, dsUri->GetUId());
 
       if (st == kStgDone) {
-        Int_t nLeft;
-        if (AddRealUrlAndMetaData(fi)) {
-          // Verification succeeded
-          fi->SetBit( TFileInfo::kStaged );
 
-          // We should save a TFileInfo somewhere to avoid verifying again and
-          // again...
-          fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
-          AfLogInfo("Dequeued (staged) [%d left]: %s", nLeft, surl);
+        // Staging complete
+
+        Int_t nLeft;
+
+        if ((aUrl) || (aVer)) {
+
+          if (AddRealUrlAndMetaData(fi, aUrl, aVer)) {
+
+            // Verification succeeded
+            fi->SetBit( TFileInfo::kStaged );
+
+            // We should save a TFileInfo somewhere to avoid verifying again and
+            // again...
+            fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+            AfLogInfo("Dequeued (staged and verified) [%d left]: %s", nLeft,
+              surl);
+          }
+          else {
+            // If verification fails, immediately dequeue it and mark as corrupted
+            fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+            fi->SetBit( TFileInfo::kCorrupted );
+            AfLogError("Dequeued last one and marked as corrupted (failed to "
+              "verify) [%d left]: %s", nLeft, surl);
+          }
+
         }
         else {
-          // If verification fails, immediately dequeue it and mark as corrupted
-          fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
-          fi->SetBit( TFileInfo::kCorrupted );
-          AfLogError("Dequeued last one and marked as corrupted (failed to "
-            "verify) [%d left]: %s", nLeft, surl);
+
+          // Neither verify nor add endpoint url
+          fi->SetBit( TFileInfo::kStaged );
+
+          // DequeueUrl may fail silently if the URL was not staged, but we are
+          // obliged to deal with this case because aStg may have changed and
+          // staging may have actually begun in the past
+          StgStatus_t s = fParentManager->DequeueUrl(surl, dsUri->GetUId(),
+            &nLeft);
+          if ((s == kStgDeqLast) || (s == kStgDeqLeft)) {
+            AfLogInfo("Dequeued (staged) [%d left]: %s", nLeft, surl);
+          }
+
         }
 
         changed = kTRUE;  // info has changed in dataset
@@ -346,20 +425,41 @@ Int_t AfDataSetSrc::ProcessDataSet(AfDsUri *dsUri) {
       }
       else if (st == kStgDelPending) {
         Int_t nLeft;
-        fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
-        AfLogInfo("Dequeued (marked for dequeuing) [%d left]: %s",
-          nLeft, surl);
+        char c = fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
+        AfLogInfo("Dequeued (marked for dequeuing) [%d left]: %s [%c]",
+          nLeft, surl, c);
       }
       else if (st == kStgAbsent) {
         if (c) {
           AfLogDebug(10, "Not queuing (marked as corrupted): %s", surl);
         }
-        else {
-          // Try to push at the end with status Q
-          if ( fParentManager->EnqueueUrl(surl, dsUri->GetUId()) !=
+        else if (aStg) {
+          // Try to push at the end with status Q, only if actions include
+          // staging
+          Int_t nQueue;
+          if ( fParentManager->EnqueueUrl(surl, dsUri->GetUId(), &nQueue) !=
             kStgQueueFull ) {
-            AfLogInfo("Queued: %s", surl);
+            AfLogInfo("Queued [%d]: %s", nQueue, surl);
           }
+        }
+        else {
+
+          // File is not corrupted and not to be staged: verify it, if told
+          if ((aUrl) || (aVer)) {
+
+            if (AddRealUrlAndMetaData(fi, aUrl, aVer)) {
+              fi->SetBit(TFileInfo::kStaged);
+              AfLogOk("Verified: %s", surl);
+            }
+            else {
+              fi->SetBit(TFileInfo::kCorrupted);
+              AfLogError("Cannot verify (marked as corrupted): %s", surl);
+            }
+
+            changed = kTRUE;
+
+          }
+
         }
       }
       else if (st == kStgQueue) {
@@ -367,23 +467,11 @@ Int_t AfDataSetSrc::ProcessDataSet(AfDsUri *dsUri) {
           Int_t nLeft;
           // After queuing the file may have been marked as corrupted
           fParentManager->DequeueUrl(surl, dsUri->GetUId(), &nLeft);
-          AfLogInfo("Dequeued (marked as corrupted) [%d left]: %s", nLeft,
-            surl);
-        }
-        else {
-          // It's already in queue, but let's add another copy
-          Int_t nQueue;
-          if (fParentManager->EnqueueUrl(surl, dsUri->GetUId(), &nQueue) ==
-            kStgCopyQueued) {
-            AfLogInfo("Queued [%d]: %s", nQueue, surl);
-          }
-          else {
-            AfLogDebug(10, "Not queued (already in queue %d time(s)): %s",
-              nQueue, surl);
-          }
+          AfLogInfo("Dequeued (has been marked as corrupted) [%d left]: %s",
+            nLeft, surl);
         }
       }
-    }
+    }  // end if (s)
 
   }
 
@@ -531,6 +619,122 @@ void AfDataSetSrc::SetDsProcessList(TList *dsList) {
   }
 }
 
+void AfDataSetSrc::ReadDsActionsConf() {
+
+  if (fActionsConf.IsNull()) {
+    AfLogDebug(10, "No configuration file specified for this dataset");
+    return;
+  }
+
+  AfLogInfo("Reading configuration");
+
+  // Reset default configuration
+  fDefaultAction.ResetBit(kActIgnore);  // this cleans the bits
+  fActions->Clear();
+  fSyncUrl.SetUrl("");
+
+  AfConfReader *cf = AfConfReader::Open(fActionsConf.Data(), kTRUE);
+
+  if (!cf) {
+    AfLogError("Can't open actions configuration file %s",
+      fActionsConf.Data());
+    return;
+  }
+
+  AfLogDebug(20, "Actions configuration file %s opened", fActionsConf.Data());
+
+  // Actions per dataset or regexp
+  {
+    TList *matches;
+    for (Char_t t=0; t<=1; t++) {
+
+      if (t == 0) matches = cf->GetDirs("ds");
+      else        matches = cf->GetDirs("dsre");
+
+      TIter i(matches);
+      TObjString *o;
+
+      while (( o = dynamic_cast<TObjString *>(i.Next()) )) {
+        TString *name = new TString();
+        UInt_t bits = ParseActionsToBits(o->String(), name);
+        AfDsMatch *dsAct = new AfDsMatch(name->Data(), (t == 1));
+        delete name;
+        dsAct->SetBit(bits);
+
+        AfLogDebug(30, ">> dsptn=%s isre=%c acts=%c%c%c%c",
+          dsAct->GetPattern().Data(),
+          dsAct->IsRegEx() ? 'Y' : 'N',
+          dsAct->TestBit(kActTranslate) ? 'T' : 't',
+          dsAct->TestBit(kActStage)     ? 'S' : 's',
+          dsAct->TestBit(kActVerify)    ? 'V' : 'v',
+          dsAct->TestBit(kActAddEndUrl) ? 'A' : 'a'
+        );
+
+        fActions->Add(dsAct);
+      }
+
+      delete matches;
+
+    }
+
+  }
+
+  // Default action
+  {
+    TString *defAct = cf->GetDir("defaultactions");
+    if (defAct) {
+      UInt_t bits = ParseActionsToBits(*defAct);
+      fDefaultAction.SetBit(bits);
+      AfLogInfo(">> Default actions: %c%c%c%c",
+        (bits & kActTranslate) ? 'T' : 't',
+        (bits & kActStage)     ? 'S' : 's',
+        (bits & kActVerify)    ? 'V' : 'v',
+        (bits & kActAddEndUrl) ? 'A' : 'a'
+      );
+    }
+  }
+
+  // Sync URL
+  {
+    TString *syncUrl = cf->GetDir("sync");
+    if (syncUrl) {
+      fSyncUrl.SetUrl(*syncUrl);
+      AfLogInfo(">> Sync URL: %s", fSyncUrl.GetUrl());
+    }
+  }
+
+  delete cf;
+}
+
+UInt_t AfDataSetSrc::ParseActionsToBits(TString &act, TString *name) {
+
+  TObjArray *tokensPtr = act.Tokenize(" \t");
+  TObjArray &tokens = *tokensPtr;
+
+  if (name) {
+    *name = dynamic_cast<TObjString *>(tokens[0])->GetString();
+  }
+
+  UInt_t bits = 0;
+
+  for (Int_t i=(name ? 1 : 0); i<tokens.GetEntries(); i++) {
+    TString tok = dynamic_cast<TObjString *>(tokens[i])->GetString();
+    tok.ToLower();
+    if (tok == "ignore") {
+      bits = 0;
+      break;
+    }
+    else if (tok == "translate") bits |= kActTranslate;
+    else if (tok == "stage")     bits |= kActStage;
+    else if (tok == "verify")    bits |= kActVerify;
+    else if (tok == "addendurl") bits |= kActAddEndUrl;
+  }
+
+  delete tokensPtr;
+
+  return bits;
+}
+
 void AfDataSetSrc::FlattenListOfDataSets() {
 
   fDsUris->Clear();
@@ -597,12 +801,17 @@ void AfDataSetSrc::FlattenListOfDataSets() {
 
 }
 
-Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
+Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi, Bool_t addEndUrl,
+  Bool_t addMeta) {
 
   fi->RemoveMetaData();
 
   TUrl *url = fi->GetCurrentUrl();
   AfLogDebug(20, "Verifying %s", url->GetUrl());
+
+  if (strcmp(url->GetProtocol(), "alien") == 0) {
+    if (!AliEnConnect()) return kFALSE;
+  }
 
   TFile *f = TFile::Open(url->GetUrl());
 
@@ -614,47 +823,51 @@ Bool_t AfDataSetSrc::AddRealUrlAndMetaData(TFileInfo *fi) {
   AfLogDebug(20, ">> Opened successfully");
 
   // Get the real URL
-  const TUrl *realUrl = f->GetEndpointUrl();
+  if (addEndUrl) {
+    const TUrl *realUrl = f->GetEndpointUrl();
 
-  if (realUrl) {
-    TUrl *newUrl = new TUrl(*realUrl);
-    newUrl->SetAnchor(url->GetAnchor());
-    fi->AddUrl(newUrl->GetUrl(), kTRUE);  // kTRUE = added as first URL
-    delete newUrl;
-  }
-  else {
-    AfLogWarning("Can't read endpoint URL of %s", url->GetUrl());
+    if (realUrl) {
+      TUrl *newUrl = new TUrl(*realUrl);
+      newUrl->SetAnchor(url->GetAnchor());
+      fi->AddUrl(newUrl->GetUrl(), kTRUE);  // kTRUE = added as first URL
+      delete newUrl;
+    }
+    else {
+      AfLogWarning("Can't read endpoint URL of %s", url->GetUrl());
+    }
   }
 
   // Get the associated metadata
-  TIter k( f->GetListOfKeys() );
-  TKey *key;
+  if (addMeta) {
 
-  while ( key = dynamic_cast<TKey *>(k.Next()) ) {
+    TIter k( f->GetListOfKeys() );
+    TKey *key;
 
-    if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
+    while ( key = dynamic_cast<TKey *>(k.Next()) ) {
 
-      // Every tree will be filled with data
-      TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
-      TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
+      if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
 
-      // Maybe the file is now unaccessible for some reason, and the tree is
-      // unreadable!
-      if (tree) {
-        meta->SetEntries( tree->GetEntries() );
-        fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
-        //delete tree;  // CHECK: should I delete it or not?
+        // Every tree will be filled with data
+        TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
+        TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
+
+        // Maybe the file is now unaccessible for some reason, and the tree is
+        // unreadable!
+        if (tree) {
+          meta->SetEntries( tree->GetEntries() );
+          fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
+          //delete tree;  // CHECK: should I delete it or not?
+        }
+        else {
+          AfLogError("In file %s, can't read TTree %s - server went down?",
+            url->GetUrl(), key->GetName());
+          f->Close();
+          delete f;
+          return kFALSE;
+        }
       }
-      else {
-        AfLogError("In file %s, can't read TTree %s - server went down?",
-          url->GetUrl(), key->GetName());
-        f->Close();
-        delete f;
-        return kFALSE;
-      }
 
-    }
-
+    } // while
   }
 
   f->Close();
