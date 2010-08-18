@@ -33,24 +33,24 @@
 #
 # The following example is useful for completely dynamic datasets: datasets are
 # filled with alien:// URLs, and the dataset manager only fills in metadata
-ds   /foo/foo/foo1      verify
+ds   /foo/foo/foo1        verify
 
 # This example, that uses regular expressions, is useful for files that are to
 # be staged but without statically adding the URL of the server, only master. So
 # every action is specified except "addendurl"
-dsre /alice/.*          translate stage verify
+dsre ^/alice/.*$          translate stage verify
 
 # The following datasets are ignored
-dsre /ignore/ignore/.*  ignore
+dsre ^/ignore/ignore/.*$  ignore
 
 # This directive is useful if we want to use the vMSS interface of xrootd
 # without letting afdsmgrd manage the staging queue: files are not told to be
 # staged, but at the moment of the verification the file is actually downloaded,
 # if xrootd has been configured with vMSS
-dsre /vmss/vmss/.*      translate verify addendurl
+dsre ^/vmss/vmss/.*$      translate verify addendurl
 
 # The default action to take if no other directive matches
-defaultactions          translate stage verify addendurl
+defaultactions            translate stage verify addendurl
 
 # The following directive tells the daemon to do synchronization (that must be
 # enabled globally in the main configuration file) of the datasets from the
