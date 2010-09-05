@@ -102,7 +102,7 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
 
     // What to do if it appears to be a single dataset name
 
-    TFileCollection *fc = NULL;
+    fc = NULL;
 
     _afRootQuietOn();
 
@@ -615,7 +615,7 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
     if ( ((s && bS) || (!s && bs)) && ((c && bC) || (!c && bc)) ) {
       TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
       Int_t entries = (meta ? meta->GetEntries() : -1);
-      Printf("% 4u. %c%c | % 7d | %s", ++countMatching,
+      Printf("%4u. %c%c | % 7d | %s", ++countMatching,
         (s ? 'S' : 's'), (c ? 'C' : 'c'),
         entries,
         inf->GetCurrentUrl()->GetUrl());
@@ -1030,7 +1030,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     if (nChanged > 0) {
       newFc->Update();
       if ( _afSaveDs(dsUri, newFc, kTRUE, kTRUE) ) {
-        Printf("Dataset %s has changed - # of files: %ld (%.2f%% staged)",
+        Printf("Dataset %s has changed - # of files: %lld (%.2f%% staged)",
           dsUri.Data(), newFc->GetNFiles(), newFc->GetStagedPercentage());
       }
       else {
@@ -1393,8 +1393,10 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     }
     else {
       // Ask user
-      dsUri = _afGetLine(Form("Found %d files (%.1lf %s total). Dataset name? ",
-        fc->GetNFiles(), fmtSize, um.Data()));
+      dsUri = _afGetLine(
+        Form("Found %lld files (%.1lf %s total). Dataset name? ",
+        fc->GetNFiles(), fmtSize, um.Data())
+      );
     }
 
     Bool_t saved;
@@ -1418,7 +1420,7 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
       opStatus = "can't write!";
     }
 
-    Printf(">> %- 45s : % 4d files, %6.1lf %s total size [%s]", dsUri.Data(),
+    Printf(">> %-45s : % 4lld files, %6.1lf %s total size [%s]", dsUri.Data(),
       fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
     delete fc;
@@ -1470,7 +1472,7 @@ void afCreateGenericDsFromAliEn(TString basePath,
   Double_t fmtSize;
   _afNiceSize(fc->GetTotalSize(), um, fmtSize);
 
-  Printf("Found %d files (%.1lf %s total).", fc->GetNFiles(), fmtSize,
+  Printf("Found %lld files (%.1lf %s total).", fc->GetNFiles(), fmtSize,
     um.Data());
 
   TString dsUri;
@@ -1688,10 +1690,10 @@ void afFillMetaData(TString dsMask, TString options = "") {
 /** Init function, it only prints a welcome message with the default parameters.
  */
 void afdsutil() {
-  Printf("");
+  cout << endl;
   Printf("Dataset management utilities loaded.");
   Printf("Available functions start with \"af\", use autocompletion to list.");
-  Printf("");
+  cout << endl;
   afPrintSettings();
-  Printf("");
+  cout << endl;
 }
