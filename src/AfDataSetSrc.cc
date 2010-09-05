@@ -636,7 +636,7 @@ void AfDataSetSrc::ReadDsActionsConf() {
   AfConfReader *cf = AfConfReader::Open(fActionsConf.Data(), kTRUE);
 
   if (!cf) {
-    AfLogError("Can't open actions configuration file %s",
+    AfLogError("Can't open actions configuration file %s, defaulted to IGNORE",
       fActionsConf.Data());
     return;
   }
