@@ -797,12 +797,20 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
 
   try {
 
-    Int_t r = fApMon->sendParameters( (char *)fApMonDsPrefix.Data(),
-      (char *)buf, nParams, paramNames, valueTypes, paramValues);
+    const UInt_t maxRetries = 5;
+    Int_t r;
 
+    for (UInt_t i=0; i<maxRetries; i++) {
+      r = fApMon->sendParameters( (char *)fApMonDsPrefix.Data(),
+        (char *)buf, nParams, paramNames, valueTypes, paramValues);
+
+      if (r != RET_NOT_SENT) break;
+    }
+
+    // Report error only if fails to send message after maxRetries retries
     if (r == RET_NOT_SENT) {
-      AfLogWarning("MonALISA notification skipped: maximum number of messages "
-        "per second exceeded");
+      AfLogWarning("MonALISA notification skipped after %u tries: maximum "
+        "number of datagrams per second exceeded", maxRetries);
     }
 
   }
