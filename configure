@@ -126,6 +126,7 @@ EOF
 function ConfigXrd() {
   PREFIX="$1"
   ROOTSYS=`cd "$PREFIX" 2>/dev/null && cd ../root 2>/dev/null && pwd`
+  APMON_PREFIX=`cd "$PREFIX" 2>/dev/null && cd ../alien/api 2>/dev/null && pwd`
 }
 
 # Configures variables in a custom way
