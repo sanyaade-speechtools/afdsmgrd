@@ -169,10 +169,10 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
         while ((dn = dynamic_cast<TObjString *>(di.Next()))) {
 
           // No COMMON user/group mapping is done here...
-          TString dataSetUri = TDataSetManager::CreateUri( gn->String(), un->String(),
+          TString dsUri = TDataSetManager::CreateUri( gn->String(), un->String(),
             dn->String() );
 
-          listOfDs->Add( new TObjString(dataSetUri.Data()) );
+          listOfDs->Add( new TObjString(dsUri.Data()) );
 
         }
       }
@@ -316,7 +316,7 @@ void _afNiceSize(Long64_t bytes, TString &um, Double_t &size) {
  *  It returns kTRUE on success, kFALSE on failure. If quiet is kTRUE, it does
  *  print messages on success/failure.
  */
-Bool_t _afSaveDs(TString dataSetUri, TFileCollection *fc, Bool_t overwrite,
+Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
   Bool_t quiet = kFALSE) {
 
   Bool_t regSuccess;
@@ -324,7 +324,7 @@ Bool_t _afSaveDs(TString dataSetUri, TFileCollection *fc, Bool_t overwrite,
   if (!_afProofMode()) {
     TDataSetManagerFile *mgr = _afCreateDsMgr();
     TString group, user, name;
-    mgr->ParseUri(dataSetUri, &group, &user, &name);
+    mgr->ParseUri(dsUri, &group, &user, &name);
     if (mgr->WriteDataSet(group, user, name, fc) == 0) {
       regSuccess = kFALSE;
     }
@@ -338,18 +338,18 @@ Bool_t _afSaveDs(TString dataSetUri, TFileCollection *fc, Bool_t overwrite,
     if (overwrite) {
       opts.Append("O");
     }
-    regSuccess = gProof->RegisterDataSet(dataSetUri.Data(), fc, opts.Data());
+    regSuccess = gProof->RegisterDataSet(dsUri.Data(), fc, opts.Data());
   }
 
   if (regSuccess) {
     if (!quiet) {
-      Printf(">> Dataset %s written with success", dataSetUri.Data());
+      Printf(">> Dataset %s written with success", dsUri.Data());
     }
     return kTRUE;
   }
 
   if (!quiet) {
-    Printf(">> Can't write dataset %s, check permissions", dataSetUri.Data());
+    Printf(">> Can't write dataset %s, check permissions", dsUri.Data());
   }
 
   return kFALSE;
@@ -568,21 +568,21 @@ void afSetProofMode(Bool_t proofMode = kTRUE) {
  *   - To show every unstaged and corrupted file:  "sC"
  *   - To show every file (default):               "Ss" or "Cc" or "SsCc"
  */
-void afShowDsContent(const char *dataSetUri, TString showOnly = "SsCc") {
+void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
   TDataSetManagerFile *mgr = NULL;
   TFileCollection *fc;
 
   if (_afProofMode()) {
-    fc = gProof->GetDataSet(dataSetUri);
+    fc = gProof->GetDataSet(dsUri);
   }
   else {
     mgr = _afCreateDsMgr();
-    fc = mgr->GetDataSet(dataSetUri);
+    fc = mgr->GetDataSet(dsUri);
   }
 
   if (!fc) {
-    Printf("Error opening dataset URI %s", dataSetUri);
+    Printf("Error opening dataset URI %s", dsUri);
     if (mgr) {
       delete mgr;
     }
@@ -747,19 +747,19 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
   TList *listOfDs = _afGetListOfDs(dsMask);
   Int_t regErrors = 0;
   TIter i(listOfDs);
-  TObjString *dataSetUriObj;
+  TObjString *dsUriObj;
 
-  while ( (dataSetUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
 
-    TString dataSetUri = dataSetUriObj->String();
+    TString dsUri = dsUriObj->String();
     Int_t nChanged = 0;
 
     TFileCollection *fc;
     if (mgr) {
-      fc = mgr->GetDataSet(dataSetUri.Data());
+      fc = mgr->GetDataSet(dsUri.Data());
     }
     else {
-      fc = gProof->GetDataSet(dataSetUri.Data());
+      fc = gProof->GetDataSet(dsUri.Data());
     }
 
     TIter j(fc->GetList());
@@ -770,7 +770,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
       if ((allFiles) || (fi->FindByUrl(fileUrl))) {
 
         if (!allFiles) {
-          Printf(">> Found in dataset %s", dataSetUri.Data());
+          Printf(">> Found in dataset %s", dsUri.Data());
         }
 
         if (bC)      fi->SetBit(TFileInfo::kCorrupted);
@@ -809,7 +809,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
     if (nChanged > 0) {
       fc->Update();
-      _afSaveDs(dataSetUri, fc, kTRUE);
+      _afSaveDs(dsUri, fc, kTRUE);
     }
 
     delete fc;
@@ -839,20 +839,20 @@ void afFindUrl(const char *fileUrl, const char *dsMask = "/*/*") {
 
   TList *listOfDs = _afGetListOfDs(dsMask);
   TIter i(listOfDs);
-  TObjString *dataSetUriObj;
+  TObjString *dsUriObj;
   Int_t nFoundDs = 0;
   Int_t nFoundTotal = 0;
 
-  while ( (dataSetUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
 
-    TString dataSetUri = dataSetUriObj->String();
+    TString dsUri = dsUriObj->String();
 
     TFileCollection *fc;
     if (mgr) {
-      fc = mgr->GetDataSet(dataSetUri.Data());
+      fc = mgr->GetDataSet(dsUri.Data());
     }
     else {
-      fc = gProof->GetDataSet(dataSetUri.Data());
+      fc = gProof->GetDataSet(dsUri.Data());
     }
 
     TIter j(fc->GetList());
@@ -868,10 +868,10 @@ void afFindUrl(const char *fileUrl, const char *dsMask = "/*/*") {
 
     if (nFoundIntoDs) {
       if (nFoundIntoDs == 1) {
-        Printf(">> Found in dataset %s once", dataSetUri.Data());
+        Printf(">> Found in dataset %s once", dsUri.Data());
       }
       else {
-        Printf(">> Found in dataset %s (%d times)", dataSetUri.Data(), nFoundIntoDs);
+        Printf(">> Found in dataset %s (%d times)", dsUri.Data(), nFoundIntoDs);
       }
       nFoundDs++;
     }
@@ -957,21 +957,21 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
   }
 
   TList *listOfDs = _afGetListOfDs(dsMask);
-  TObjString *dataSetUriObj;
+  TObjString *dsUriObj;
   TIter iDs(listOfDs);
 
   // Loop over datasets
-  while ( (dataSetUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
+  while ( (dsUriObj = dynamic_cast<TObjString *>(iDs.Next())) ) {
 
-    TString dataSetUri = dataSetUriObj->String();
+    TString dsUri = dsUriObj->String();
     TFileCollection *fc;
     TFileCollection *newFc = NULL;
 
     if (mgr) {
-      fc = mgr->GetDataSet(dataSetUri.Data());
+      fc = mgr->GetDataSet(dsUri.Data());
     }
     else {
-      fc = gProof->GetDataSet(dataSetUri.Data());
+      fc = gProof->GetDataSet(dsUri.Data());
     }
 
     if (aUncorrupt || aUnstage || aUnlist) {
@@ -979,7 +979,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
       newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
     }
 
-    Printf("Scanning dataset %s for corrupted files...", dataSetUri.Data());
+    Printf("Scanning dataset %s for corrupted files...", dsUri.Data());
 
     TIter j(fc->GetList());
     TFileInfo *fi;
@@ -1029,12 +1029,12 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
     if (nChanged > 0) {
       newFc->Update();
-      if ( _afSaveDs(dataSetUri, newFc, kTRUE, kTRUE) ) {
+      if ( _afSaveDs(dsUri, newFc, kTRUE, kTRUE) ) {
         Printf("Dataset %s has changed - # of files: %lld (%.2f%% staged)",
-          dataSetUri.Data(), newFc->GetNFiles(), newFc->GetStagedPercentage());
+          dsUri.Data(), newFc->GetNFiles(), newFc->GetStagedPercentage());
       }
       else {
-        Printf("Error while writing dataset %s", dataSetUri.Data());
+        Printf("Error while writing dataset %s", dsUri.Data());
       }
     }
 
@@ -1385,15 +1385,15 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
 
-    TString dataSetUri;
+    TString dsUri;
 
     if (guessed) {
       // Form the guessed ds name
-      dataSetUri = Form(dsNameFormat.Data(), lhcPeriod.Data(), runNum, passNum);
+      dsUri = Form(dsNameFormat.Data(), lhcPeriod.Data(), runNum, passNum);
     }
     else {
       // Ask user
-      dataSetUri = _afGetLine(
+      dsUri = _afGetLine(
         Form("Found %lld files (%.1lf %s total). Dataset name? ",
         fc->GetNFiles(), fmtSize, um.Data())
       );
@@ -1401,7 +1401,7 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
 
     Bool_t saved;
 
-    if ((!dryRun) && ( _afSaveDs(dataSetUri, fc, kFALSE, kTRUE) )) {
+    if ((!dryRun) && ( _afSaveDs(dsUri, fc, kFALSE, kTRUE) )) {
       saved = kTRUE;
     }
     else {
@@ -1420,7 +1420,7 @@ void afCreateDsFromAliEn(TString basePath, TString runList,
       opStatus = "can't write!";
     }
 
-    Printf(">> %-45s : % 4lld files, %6.1lf %s total size [%s]", dataSetUri.Data(),
+    Printf(">> %-45s : % 4lld files, %6.1lf %s total size [%s]", dsUri.Data(),
       fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
     delete fc;
@@ -1475,22 +1475,22 @@ void afCreateGenericDsFromAliEn(TString basePath,
   Printf("Found %lld files (%.1lf %s total).", fc->GetNFiles(), fmtSize,
     um.Data());
 
-  TString dataSetUri;
+  TString dsUri;
 
   while (kTRUE) {
 
-    dataSetUri = _afGetLine("Dataset name (leave empty if you don't want to "
+    dsUri = _afGetLine("Dataset name (leave empty if you don't want to "
       "save it)? ");
 
-    if (dataSetUri == "") {
+    if (dsUri == "") {
       break;
     }
-    else if (dataSetUri.Index("/") == kNPOS) {
+    else if (dsUri.Index("/") == kNPOS) {
       Printf("Please specify the full path in the form /GROUP/user/dataset");
     }
     else {
 
-      if (_afSaveDs(dataSetUri, fc, kFALSE, kTRUE)) {
+      if (_afSaveDs(dsUri, fc, kFALSE, kTRUE)) {
         Printf("Dataset saved");
         break;
       }
@@ -1509,18 +1509,18 @@ void afCreateGenericDsFromAliEn(TString basePath,
 /** Removes a dataset from the disk. Files associated to the dataset are not
  *  removed.
  */
-void afRemoveDs(TString dataSetUri) {
+void afRemoveDs(TString dsUri) {
   if (_afProofMode()) {
-    gProof->RemoveDataSet(dataSetUri.Data());
+    gProof->RemoveDataSet(dsUri.Data());
   }
   else {
     TString path = Form("%s/%s.root", gEnv->GetValue("af.dspath", "/tmp"),
-      dataSetUri.Data());
+      dsUri.Data());
     if (gSystem->Unlink(path.Data()) < 0) {
       Printf("Can't remove %s from disk", path.Data());
     }
     else {
-      Printf("Dataset removed: %s", dataSetUri.Data());
+      Printf("Dataset removed: %s", dsUri.Data());
     }
   }
 }
@@ -1570,7 +1570,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
 
   TList *dsList = _afGetListOfDs(dsMask);
 
-  TObjString *dataSetUriObj;
+  TObjString *dsUriObj;
   TIter i(dsList);
 
   TDataSetManagerFile *mgr = NULL;
@@ -1578,26 +1578,26 @@ void afFillMetaData(TString dsMask, TString options = "") {
     mgr = _afCreateDsMgr();
   }
 
-  while ( (dataSetUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
 
-    const char *dataSetUri = dataSetUriObj->String().Data();
+    const char *dsUri = dsUriObj->String().Data();
     TFileCollection *fc;
 
     // Gets the current dataset, both in PROOF and "offline" mode
     if (mgr) {
-      fc = mgr->GetDataSet(dataSetUri);
+      fc = mgr->GetDataSet(dsUri);
     }
     else {
-      fc = gProof->GetDataSet(dataSetUri);
+      fc = gProof->GetDataSet(dsUri);
     }
 
     // Dataset may not exist anymore!
     if (!fc) {
-      Printf("*** Error opening dataset URI %s, skipping ***", dataSetUri);
+      Printf("*** Error opening dataset URI %s, skipping ***", dsUri);
       continue;
     }
 
-    Printf("*** Processing dataset %s ***", dataSetUri);
+    Printf("*** Processing dataset %s ***", dsUri);
 
     // Loop over all files in dataset
     Int_t nChanged = 0;
@@ -1661,7 +1661,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
       // Saves sometimes
       if ((nChanged) && ((nChanged % saveEvery) == 0)) {
         fc->Update();
-        _afSaveDs(dataSetUri, fc, kTRUE);
+        _afSaveDs(dsUri, fc, kTRUE);
         nChanged = 0;
       }
 
@@ -1670,7 +1670,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
     // Save, if necessary
     if (nChanged > 0) {
       fc->Update();
-      _afSaveDs(dataSetUri, fc, kTRUE);
+      _afSaveDs(dsUri, fc, kTRUE);
     }
 
     delete fc;
