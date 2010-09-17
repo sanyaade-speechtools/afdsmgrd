@@ -1,8 +1,0 @@
-#ifndef AFCONFIGURE
-#define AFCONFIGURE
-
-#ifndef __CINT__
-#cmakedefine WITH_APMON
-#endif
-
-#endif
