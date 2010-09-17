@@ -45,7 +45,7 @@ class AfDataSetsManager {
 
     void NotifyDataSetStatus(UInt_t uniqueId, const char *dsName, Int_t nFiles,
       Int_t nStaged, Int_t nCorrupted, const char *treeName, Int_t nEvts,
-      Int_t totalSizeBytes);
+      Long64_t totalSizeBytes);
 
   private:
 

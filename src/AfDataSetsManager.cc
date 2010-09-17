@@ -743,7 +743,7 @@ void AfDataSetsManager::ProcessTransferQueue() {
 
 void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
   Int_t nFiles, Int_t nStaged, Int_t nCorrupted, const char *treeName,
-  Int_t nEvts, Int_t totalSizeBytes) {
+  Int_t nEvts, Long64_t totalSizeBytes) {
 
   #ifdef WITH_APMON
 
@@ -763,7 +763,7 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
     (char *)"corruptedpct",
     (char *)"treename",
     (char *)"nevts",
-    (char *)"totsizebytes"
+    (char *)"totsizemb" // MB = 1024*1024 bytes
   };
 
   Int_t valueTypes[] = {
@@ -778,6 +778,8 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
     XDR_INT32
   };
 
+  Int_t totalSizeMB = (Int_t)(totalSizeBytes / 1048576L);
+
   char *paramValues[] = {
     (char *)dsName,
     (char *)&nFiles,
@@ -787,7 +789,7 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
     (char *)&pctCorrupted,
     (char *)treeName,
     (char *)&nEvts,
-    (char *)&totalSizeBytes
+    (char *)&totalSizeMB
   };
 
   Int_t nParams = sizeof(paramNames) / sizeof(char *);
