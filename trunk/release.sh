@@ -165,6 +165,22 @@ function Upload() {
   fi
 
   ./upload -s "$SUMMARY" -p $PROG -u $GUSER -w $GPWD $ARCH
+
+  echo ""
+  echo "Archive will be now uploaded to lxplus: password will be asked twice!"
+  echo ""
+  echo " * Uploading file..."
+  scp $ARCH dberzano@lxplus.cern.ch:public/afdsmgrd/$ARCH
+  if [ "$?" != "0" ]; then
+    echo "Error doing scp, aborting"
+    exit 4
+  fi
+  echo " * Pointing \"latest\" symlink to this version..."
+  ssh dberzano@lxplus.cern.ch "cd public/afdsmgrd ; ln -nfs $ARCH afdsmgrd-latest.tar.gz ; ls -l afdsmgrd-latest.tar.gz $ARCH"
+  if [ "$?" != "0" ]; then
+    echo "Errors creating symlink, aborting"
+    exit 5
+  fi
 }
 
 #
