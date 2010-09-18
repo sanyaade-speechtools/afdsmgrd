@@ -154,16 +154,14 @@ void AfLog::CheckRotateAndFormat(MsgType_t type, const char *fmt,
   TThread::Lock();
 
   Int_t r = CheckRotate();
-  va_list vl1 = {};
   if (r < 0) {
-    Format(kMsgError, "Errors occured rotating logfile!", vl1);
+    Format(kMsgError, "Errors occured rotating logfile!", args);
   }
   else if (r > 0) {
     if (!fBanner.IsNull()) {
-      va_list vl2 = {};
-      Format(kMsgInfo, fBanner, vl2);
+      Format(kMsgInfo, fBanner, args);
     }
-    Format(kMsgOk, "Logfile rotated", vl1);
+    Format(kMsgOk, "Logfile rotated", args);
   }
   // 0 == no need to rotate
   Format(type, fmt, args);
@@ -173,30 +171,30 @@ void AfLog::CheckRotateAndFormat(MsgType_t type, const char *fmt,
 
 void AfLog::Format(MsgType_t type, const char *fmt, va_list args) {
 
-  char prefix[4];
+  char prefix;
 
   switch (type) {
     case kMsgOk:
-      strcpy(prefix, "OK!");
+      prefix = 'O';
     break;
     case kMsgWarning:
-      strcpy(prefix, "WRN");
+      prefix = 'W';
     break;
     case kMsgInfo:
-      strcpy(prefix, "INF");
+      prefix = 'I';
     break;
     case kMsgError:
-      strcpy(prefix, "ERR");
+      prefix = 'E';
     break;
     case kMsgFatal:
-      strcpy(prefix, "FTL");
+      prefix = 'F';
     break;
     case kMsgDebug:
-      strcpy(prefix, "DBG");
+      prefix = 'D';
     break;
   }
   fDatime->Set();
-  fprintf(fLogFile, "[%s] *** %s *** ", fDatime->AsSQLString(), prefix);
+  fprintf(fLogFile, "[%c-%08d-%06d] ", prefix, fDatime->GetDate(), fDatime->GetTime());
   vfprintf(fLogFile, fmt, args);
   fputc('\n', fLogFile);
   fflush(fLogFile);
