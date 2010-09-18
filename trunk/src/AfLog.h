@@ -41,7 +41,7 @@ class AfLog {
 
     // Methods
     AfLog(Int_t debugLevel = -999);
-	~AfLog();
+    ~AfLog();
     void CheckRotateAndFormat(MsgType_t type, const char *fmt,
       va_list args);
     void Format(MsgType_t type, const char *fmt, va_list args);
