@@ -509,15 +509,22 @@ TString _afShortStr(const char *str, Int_t maxlen) {
 /** Print current dataset utilities settings.
  */
 void afPrintSettings() {
-  Printf(">> Datasets path: %s - change it with afSetDsPath()",
+
+  Printf("\033[34mDatasets path:\033[m "
+    "\033[35m%s\033[m - change it with afSetDsPath()",
     gEnv->GetValue("af.dspath", "/tmp"));
-  Printf(">> PROOF connect string: %s - change it with afSetProofUserHost()", 
+
+  Printf("\033[34mPROOF connect string:\033[m "
+    "\033[35m%s\033[m - change it with afSetProofUserHost()", 
     gEnv->GetValue("af.userhost", "alice-caf.cern.ch"));
-  Printf(">> PROOF mode is active? %s - toggle it with afSetProofMode()",
+
+  Printf("\033[34mPROOF mode is active?\033[m "
+    "\033[35m%s\033[m - toggle it with afSetProofMode()",
     (gEnv->GetValue("af.proofmode", 1) ? "YES" : "NO"));
-  Printf(">> Files path with redirector ($1 is the file path): %s - change "
-    "it with afSetRedirUrl()", gEnv->GetValue("af.redirurl",
-    "root://localhost:1234/$1"));
+
+  Printf("\033[34mFiles path with redirector ($1 is the file path):\033[m "
+    "\033[35m%s\033[m - change it with afSetRedirUrl()",
+    gEnv->GetValue("af.redirurl", "root://localhost:1234/$1"));
 }
 
 /** Sets the URL of the redirector. $1 *must* be present in the string, or else
@@ -1533,11 +1540,14 @@ void afRemoveDs(TString dsUri) {
  *
  *  Options may contain, separated by colons:
  *
- *   - rescan  : by default only files with no metadata are rescanned; if
- *               rescan, every file is rescanned
+ *   - rescan    : by default only files with no metadata are rescanned; if
+ *                 rescan, every file is rescanned
  *
- *   - corrupt : files which can't be scanned are marked as corrupted; by
- *               default they are just ignored
+ *   - corrupt   : files which can't be scanned are marked as corrupted; by
+ *                 default they are just ignored
+ *
+ *   - setstaged : updated files (or all files, if the "rescan" option is set)
+ *                 are marked as staged
  *
  *  If corruptIfFail, files whose metadata can't be obtained are marked as
  *  corrupted.
@@ -1547,6 +1557,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
   // Parse options
   Bool_t rescanAll = kFALSE;
   Bool_t corruptIfFail = kFALSE;
+  Bool_t setStaged = kFALSE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -1560,6 +1571,9 @@ void afFillMetaData(TString dsMask, TString options = "") {
     }
     else if (sopt == "corrupt") {
       corruptIfFail = kTRUE;
+    }
+    else if (sopt == "setstaged") {
+      setStaged = kTRUE;
     }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
@@ -1638,6 +1652,9 @@ void afFillMetaData(TString dsMask, TString options = "") {
           }
         }
         else {
+          if (setStaged) {
+            fi->SetBit(TFileInfo::kStaged);
+          }
           status = " OK ";
           nEvts = 0;
           nChanged++;
