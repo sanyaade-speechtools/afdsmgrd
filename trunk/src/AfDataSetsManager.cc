@@ -811,7 +811,7 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
 
     // Report error only if fails to send message after maxRetries retries
     if (r == RET_NOT_SENT) {
-      AfLogWarning("MonALISA notification skipped after %u tries: maximum "
+      AfLogDebug(10, "MonALISA notification skipped after %u tries: maximum "
         "number of datagrams per second exceeded", maxRetries);
     }
 
