@@ -1,5 +1,8 @@
 /* ========================================================================== *
  * afdsmgrd -- by Dario Berzano <dario.berzano@gmail.com>                     *
+ *                                                                            *
+ * This macro is part of the AAF package VO_ALICE@AFDSUtils::0.3.0            *
+ *                                                                            *
  * Source code available on http://code.google.com/p/afdsmgrd                 *
  * ========================================================================== */
 
@@ -500,6 +503,78 @@ TString _afShortStr(const char *str, Int_t maxlen) {
     o = str;
   }
   return o;
+}
+
+/** Takes as input a string containing a list of run ranges separated either by
+ *  colons or by commas, and returns an ordered vector of integers with the
+ *  parsed run numbers. Duplicates are removed. The range separator is the dash.
+ *
+ *  Example: the string "1230-1235:1240:1241-1243" will be parsed to array as:
+ *  { 1230, 1231, 1232, 1233, 1234, 1235, 1240, 1241, 1242, 1243 }
+ */
+vector<Int_t> *_afExpandRunList(TString runList) {
+
+  vector<Int_t> *runNumsPtr = new vector<Int_t>();
+  vector<Int_t> &runNums = *runNumsPtr;
+
+  TObjArray *runs = runList.Tokenize(":,");
+  runs->SetOwner();
+  TIter run(runs);
+  TObjString *runOs;
+
+  while ( (runOs = dynamic_cast<TObjString *>(run.Next())) ) {
+
+    TString runStr = runOs->String();
+
+    TPMERegexp p("^([0-9]+)-([0-9]+)$");
+    if (p.Match(runStr) == 3) {
+      Int_t r1 = p[1].Atoi();
+      Int_t r2 = p[2].Atoi();
+
+      if (r1 > r2) {
+        // Swap
+        r1 = r1 ^ r2;
+        r2 = r1 ^ r2;
+        r1 = r1 ^ r2;
+      }
+
+      for (Int_t r=r1; r<=r2; r++) {
+        runNums.push_back(r);
+      }
+    }
+    else {
+      runNums.push_back(runStr.Atoi());
+    }
+  }
+
+  delete runs;
+
+  // Bubble sort (slow)
+  for (UInt_t i=0; i<runNums.size(); i++) {
+    for (UInt_t j=i+1; j<runNums.size(); j++) {
+      if (runNums[j] < runNums[i]) {
+        runNums[i] = runNums[i] ^ runNums[j];
+        runNums[j] = runNums[i] ^ runNums[j];
+        runNums[i] = runNums[i] ^ runNums[j];
+      }
+    }
+  }
+
+  // Remove duplicates
+  {
+    vector<Int_t>::iterator itr, prev;
+    for (itr=runNums.begin(); itr!=runNums.end(); itr++) {
+      if (itr == runNums.begin()) continue;
+      prev = itr;
+      prev--;
+      if (*prev == *itr) {
+        runNums.erase(itr);
+        itr--;
+      }
+    }
+  }
+
+  return runNumsPtr;
 }
 
 /* ========================================================================== *
@@ -1105,414 +1180,6 @@ void afPrependRedirUrl(const char *dsMask = "/*/*") {
   afMarkUrlAs("*", "", dsMask, "redir");
 }
 
-
-/** Creates a collection directly from AliEn and registers it as a dataset. If
- *  the Grid connection does not exist, it creates it.
- *
- *  You have to specify:
- *
- *  - The basePath of the search, e.g. "/alice/data/2010/LHC10b/".
- *
- *  - A list of runs, separated by colons, as a string, even without initial
- *    zeroes, like "114783:114786:114798". This list may also contain intervals
- *    like "140007:140010:140001-140005" which will expand to runs 140007,
- *    140010, 140001, 140002, 140003, 140004 and 140005.
- *
- *  - The files of which you wish to make a collection: one of "esd", "esd.tag",
- *    "aod", "zip". You may also specify an anchor: if you want, for instance,
- *    to collect every root_archive.zip and make the dataset point to the
- *    AliESDs.root (the most common scenario), you would specify "zip#esd".
- *
- *  - The pass number (applies only for data, ignored in sim).
- *
- *  The dataset name is guessed automatically in most cases. If not, you will be
- *  prompted for each dataset.
- *
- *  Options are a string with flags separated by colons. Flags are:
- *
- *   - staged : save the dataset with all files marked as staged (to prevent,
- *              for instance, the dataset daemon to stage them)
- *
- *   - dryrun : only test the search but don't write anything on disk or PROOF
- *
- *  ==========================================================================
- *
- *  Some examples of basePath and the resulting name of the dataset:
- *
- *  Simulation in PDC (run number is 6 digits, zero-padded):
- *    /alice/sim/PDC_09/LHC09a9/... --> /alice/sim/PDC09_LHC09a9_082002
- *
- *  Simulation not in PDC (run number is still 6 digits, zero-padded):
- *    /alice/sim/LHC10b4/...        --> /alice/sim/LHC10b4_114933
- *
- *  Real data (we include the pass number and the run is 9 digits, zero-padded):
- *    /alice/data/2010/LHC10b/...   --> /alice/data/LHC10b_000117113_p1
- */
-void afCreateDsFromAliEn(TString basePath, TString runList,
-  TString dataType = "zip#esd", Int_t passNum = 1, TString options = "") {
-
-  // Parse options
-  Bool_t preMarkAsStaged = kFALSE;
-  Bool_t dryRun = kFALSE;
-
-  options.ToLower();
-  TObjArray *tokOpts = options.Tokenize(":");
-  TIter opt(tokOpts);
-  TObjString *oopt;
-
-  while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
-    TString &sopt = oopt->String(); 
-    if (sopt == "dryrun") {
-      dryRun = kTRUE;
-    }
-    else if (sopt == "staged") {
-      preMarkAsStaged = kTRUE;
-    }
-    else {
-      Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
-    }
-  }
-
-  // What to search for
-  dataType.ToLower();
-  TString fileAnchor;
-  TString dataSub;
-  TString treeName = "";
-
-  Ssiz_t sharpIdx = dataType.Index('#');
-
-  if (sharpIdx >= 0) {
-    fileAnchor = dataType(sharpIdx+1, dataType.Length()-sharpIdx-1);
-    dataType = dataType(0, sharpIdx);
-  }
-  else {
-    fileAnchor = "";
-  }
-
-  TString filePtn;
-
-  if (dataType == "esd.tag") {
-    dataType = "ESDs";
-    filePtn  = "*ESD.tag.root";
-  }
-  else if (dataType == "esd") {
-    dataType = "ESDs";
-    filePtn  = "AliESDs.root";
-    treeName = "/esdTree";
-  }
-  else if (dataType == "aod") {
-    dataType = "AODs";
-    filePtn  = "AliAOD.root";
-    treeName = "/aodTree";
-  }
-  else if (dataType == "zip") {
-
-    if (fileAnchor == "esd") {
-      filePtn = "root_archive.zip";
-      dataType = "ESDs";
-      fileAnchor = "AliESDs.root";
-      treeName = "/esdTree";
-    }
-    else if (fileAnchor == "esd.tag") {
-      filePtn = "root_archive.zip";
-      dataType = "ESDs";
-      fileAnchor = "AliESDs.tag.root";
-    }
-    else if (fileAnchor == "aod") {
-      filePtn = "aod_archive.zip";
-      dataType = "AODs";
-      fileAnchor = "AliAOD.root";
-    }
-    else if (fileAnchor != "") {
-      Printf("Unsupported anchor: %s", fileAnchor.Data());
-      return;
-    }
-
-  }
-  else {
-    Printf("Unsupported data type: %s", dataType.Data());
-    return;
-  }
-
-  // No anchor allowed except for archives
-  if (!filePtn.EndsWith(".zip") && (fileAnchor != "")) {
-    Printf("Anchor not supported for types different from zip.");
-    return;
-  }
-
-  //Printf("==> dataType=%s, fileAnchor=%s, filePtn=%s", dataType.Data(),
-  //  fileAnchor.Data(), filePtn.Data());
-
-  // Guess name of the dataset
-  TString dsNameFormat = "";
-  TString lhcPeriod = "";
-  TString pdcPeriod = "";
-
-  if (_afProofMode()) {
-    dsNameFormat = Form("/%s/%s/", gProof->GetGroup(), gProof->GetUser());
-  }
-
-  Bool_t guessed = kTRUE;
-  Bool_t isSim = kFALSE;
-
-  if (basePath.Contains("data")) {
-    if (dsNameFormat == "") {
-      dsNameFormat = "/alice/data/";
-    }
-    else {
-      dsNameFormat.Append("DATA_");
-    }
-    isSim = kFALSE;
-    dsNameFormat.Append("%s_%09d_p%d");
-  }
-  else if (basePath.Contains("sim")) {
-    if (dsNameFormat == "") {
-      dsNameFormat = "/alice/sim/";
-    }
-    else {
-      dsNameFormat.Append("SIM_");
-    }
-    isSim = kTRUE;
-    dsNameFormat.Append("%s_%06d");
-  }
-  else {
-    guessed = kFALSE;
-  }
-
-  // Guess LHC period
-  if (guessed) {
-    TPMERegexp reLhc("/(LHC[^/]+)");
-    if (reLhc.Match(basePath) == 2) {
-      lhcPeriod = reLhc[1];
-    }
-    else {
-      guessed = kFALSE;
-    }
-  }
-
-  // Guess PDC period
-  if ((isSim) && (guessed)) {
-    TPMERegexp rePdc("/PDC_([^/]+)");
-    if (rePdc.Match(basePath) == 2) {
-      lhcPeriod = "PDC" + rePdc[1] + "_" + lhcPeriod;
-    }
-  }
-
-  // Print a warning if it is impossible to guess the names of the dataests
-  if (!guessed) {
-    Printf("Warning: can't guess the final name of the datasets!");
-    Printf("Dataset names will be asked one by one.");
-    TString ret = _afGetLine("Do you want to proceed [y|n]? ");
-    ret.ToLower();
-    if ( !ret.BeginsWith("y") ) {
-      Printf("Aborting.");
-      return;
-    }
-  }
-
-  // The dataset manager, if running locally
-  TDataSetManagerFile *mgr = NULL;
-  if ((!dryRun) && (!_afProofMode())) {
-    mgr = _afCreateDsMgr();
-  }
-
-  // Run numbers: either list or colon-separated
-
-  vector<Int_t> runNums;
-
-  TObjArray *runs = runList.Tokenize(":");
-  runs->SetOwner();
-  TIter run(runs);
-  TObjString *runOs;
-
-  while ( (runOs = dynamic_cast<TObjString *>(run.Next())) ) {
-
-    TString runStr = runOs->String();
-
-    TPMERegexp p("^([0-9]+)-([0-9]+)$");
-    if (p.Match(runStr) == 3) {
-      Int_t r1 = p[1].Atoi();
-      Int_t r2 = p[2].Atoi();
-
-      if (r1 > r2) {
-        // Swap
-        r1 = r1 ^ r2;
-        r2 = r1 ^ r2;
-        r1 = r1 ^ r2;
-      }
-
-      for (Int_t r=r1; r<=r2; r++) {
-        runNums.push_back(r);
-      }
-    }
-    else {
-      runNums.push_back(runStr.Atoi());
-    }
-  }
-
-  delete runs;
-
-  for (UInt_t i=0; i<runNums.size(); i++) {
-
-    Int_t runNum = runNums[i];
-    cout << runNum << endl;
-    if (i == runNums.size()-1) return;
-    continue;
-
-    TString searchPtn;
-
-    if (!isSim) { // data
-      searchPtn = Form("%09d/%s/pass%d/*%d*/%s", runNum, dataType.Data(),
-        passNum, runNum, filePtn.Data());
-    }
-    else {
-      // Any other case, inc. sim: the search mask should be big enough to
-      // suit custom patterns
-      searchPtn = Form("*%d*/*/%s", runNum, filePtn.Data());
-    }
-
-    //Printf("basePath=%s searchPtn=%s", basePath.Data(), searchPtn.Data());
-
-    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, fileAnchor,
-      treeName);
-
-    if (fc->GetNFiles() == 0) {
-      Printf("No results found for basePath=%s searchPtn=%s, skipping",
-        basePath.Data(), searchPtn.Data());
-      delete fc;
-      continue;
-    }
-
-    if (preMarkAsStaged) {
-      fc->SetBitAll(TFileInfo::kStaged);
-      fc->Update();
-    }
-
-    TString um;
-    Double_t fmtSize;
-    _afNiceSize(fc->GetTotalSize(), um, fmtSize);
-
-    TString dsUri;
-
-    if (guessed) {
-      // Form the guessed ds name
-      dsUri = Form(dsNameFormat.Data(), lhcPeriod.Data(), runNum, passNum);
-    }
-    else {
-      // Ask user
-      dsUri = _afGetLine(
-        Form("Found %lld files (%.1lf %s total). Dataset name? ",
-        fc->GetNFiles(), fmtSize, um.Data())
-      );
-    }
-
-    Bool_t saved;
-
-    if ((!dryRun) && ( _afSaveDs(dsUri, fc, kFALSE, kTRUE) )) {
-      saved = kTRUE;
-    }
-    else {
-      saved = kFALSE;
-    }
-
-    TString opStatus;
-
-    if (saved) {
-      opStatus = "saved";
-    }
-    else if (dryRun) {
-      opStatus = "not saved";
-    }
-    else {
-      opStatus = "can't write!";
-    }
-
-    Printf(">> %-45s : % 4lld files, %6.1lf %s total size [%s]", dsUri.Data(),
-      fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
-
-    delete fc;
-
-  }
-
-  if (mgr) {
-    delete mgr;
-  }
-}
-
-/** Creates a dataset starting from files found with AliEn find command. Options
- *  basePath and fileName are the same as:
- *
- *    find <basePath> <fileName>
- *
- *  If you create a collection of files inside zip archives, remember to specify
- *  the real file name in the anchor parameter.
- *
- *  The defaultTree is needed to PROOF to count the number of events, so set it
- *  correctly.
- *
- *  If you don't want your files to be staged (and for instance you want to
- *  run your macros directly on AliEn files), just pre-mark them as staged and
- *  they will just be ignored by the dataset manager.
- */
-void afCreateGenericDsFromAliEn(TString basePath,
-  TString fileName = "*ESDs.root", TString defaultTree = "/esdTree",
-  Bool_t preMarkAsStaged = kFALSE, TString anchor = "") {
-
-  if (defaultTree == "") {
-    Printf("Warning: you did not specify a default tree.");
-  }
-
-  TFileCollection *fc = _afAliEnFind(basePath, fileName, anchor, defaultTree);
-
-  if (fc->GetNFiles() == 0) {
-    Printf("No results found");
-    delete fc;
-    return;
-  }
-
-  if (preMarkAsStaged) {
-    fc->SetBitAll(TFileInfo::kStaged);
-    fc->Update();
-  }
-
-  TString um;
-  Double_t fmtSize;
-  _afNiceSize(fc->GetTotalSize(), um, fmtSize);
-
-  Printf("Found %lld files (%.1lf %s total).", fc->GetNFiles(), fmtSize,
-    um.Data());
-
-  TString dsUri;
-
-  while (kTRUE) {
-
-    dsUri = _afGetLine("Dataset name (leave empty if you don't want to "
-      "save it)? ");
-
-    if (dsUri == "") {
-      break;
-    }
-    else if (dsUri.Index("/") == kNPOS) {
-      Printf("Please specify the full path in the form /GROUP/user/dataset");
-    }
-    else {
-
-      if (_afSaveDs(dsUri, fc, kFALSE, kTRUE)) {
-        Printf("Dataset saved");
-        break;
-      }
-      else {
-        Printf("Problem saving the dataset, check the name and try again");
-      }
-
-    }
-
-  }
-
-  delete fc;
-
-}
-
 /** Removes a dataset from the disk. Files associated to the dataset are not
  *  removed.
  */
@@ -1636,7 +1303,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
 
       // Metadata already present and told not to rescan all?
       if ((fi->GetMetaData()) && (!rescanAll)) {
-        status = "SKIP";
+        status = "\033[34mSKIP\033[m";  // blue
         nEvts = 0;
       }
       else {
@@ -1644,18 +1311,18 @@ void afFillMetaData(TString dsMask, TString options = "") {
         if (!_afFillMetaDataFile( fi, kTRUE )) {
           if (corruptIfFail) {
             fi->SetBit(TFileInfo::kCorrupted);
-            status = "CORR";
+            status = "\033[31mCORR\033[m";  // red
             nChanged++;
           }
           else {
-            status = "FAIL";
+            status = "\033[31mFAIL\033[m";  // red
           }
         }
         else {
           if (setStaged) {
             fi->SetBit(TFileInfo::kStaged);
           }
-          status = " OK ";
+          status = "\033[32m OK \033[m";  // green
           nEvts = 0;
           nChanged++;
         }      
@@ -1700,6 +1367,166 @@ void afFillMetaData(TString dsMask, TString options = "") {
 
 }
 
+/** Creates a dataset from AliEn find. See http://aaf.cern.ch/node/160 for
+ *  instructions.
+ */
+void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
+  TString treeName, TString runList, Int_t passNum, TString dsPtn,
+  TString options = "") {
+
+  // Parse options
+  Bool_t dryRun    = kFALSE;
+  Bool_t setStaged = kFALSE;
+  Bool_t addRedir  = kFALSE;
+  Bool_t verify    = kFALSE;
+
+  options.ToLower();
+  TObjArray *tokOpts = options.Tokenize(":");
+  TIter opt(tokOpts);
+  TObjString *oopt;
+
+  while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
+    TString &sopt = oopt->String(); 
+    if (sopt == "dryrun") {
+      dryRun = kTRUE;
+    }
+    else if (sopt == "setstaged") {
+      setStaged = kTRUE;
+    }
+    else if (sopt == "cache") {
+      addRedir = kTRUE;
+    }
+    else if (sopt == "verify") {
+      verify = kTRUE;
+    }
+    else {
+      Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
+    }
+  }
+
+  if (dryRun)
+    if (verify) {
+      Printf("Warning: can't verify dataset on dry run");
+      verify = kFALSE;
+    }
+    if (cache) {
+      Printf("Warning: can't add redirector URL on dry run");
+      verify = kFALSE;
+    }
+  }
+
+  Ssiz_t idx;
+
+  if (_afProofMode()) {
+  
+    // In PROOF mode, complete dataset name with group and user, if not given
+    idx = dsPtn.Index("/");
+    if (idx == -1) {
+      dsPtn.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
+        dsPtn.Data());
+    }
+
+  }
+
+  // Find <RUN> and <PASS> tags, and substitute them with $1 and $2
+  idx = dsPtn.Index("<RUN>");
+  if (idx > -1) {
+    TString p1 = dsPtn(0, idx);
+    TString p2 = dsPtn(idx+5, dsPtn.Length());
+    dsPtn.Form("%s%%1$09d%s", p1.Data(), p2.Data());
+  }
+
+  idx = dsPtn.Index("<PASS>");
+  if (idx > -1) {
+    if (passNum <= -1) {
+      Printf("<PASS> specified in format string, but no passNum provided, "
+        "aborting.");
+      return;
+    }
+    TString p1 = dsPtn(0, idx);
+    TString p2 = dsPtn(idx+6, dsPtn.Length());
+    dsPtn.Form("%s%%2$d%s", p1.Data(), p2.Data());
+  }
+
+  // Now dsPtn is a format string which contains <RUN> as first parameter, and
+  // <PASS> as the second one
+
+  // Parse run list
+  vector<Int_t> *runNumsPtr = _afExpandRunList(runList);
+  vector<Int_t> &runNums = *runNumsPtr;
+
+  // For each run
+  for (UInt_t i=0; i<runNums.size(); i++) {
+    TString dsName;
+    dsName.Form(dsPtn.Data(), runNums[i], 1);
+
+    TString searchPtn;
+
+    if (passNum > -1) {
+      // Use passNum in search string
+      searchPtn = Form("*%d/*/pass%d/*%d*/%s", runNums[i], passNum, runNums[i],
+        fileName.Data());
+    }
+    else {
+      // No passNum specified: let's get generic (but let's still select files
+      // inside chunks -- that's the "*%d*")
+      searchPtn = Form("*%d/*%d*/%s", runNums[i], runNums[i], fileName.Data());
+    }
+
+    // Run AliEn find
+    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, anchor, treeName);
+    if (fc == NULL) {
+      delete runNumsPtr;
+      Printf("Creation of datasets from AliEn aborted.");
+      return;
+    }
+
+    // Set staged bit if requested (to avoid real staging)
+    if (setStaged) {
+      fc->SetBitAll(TFileInfo::kStaged);
+      fc->Update();
+    }
+
+    TString opStatus;
+    Bool_t wasSaved = kFALSE;
+
+    // Zero files?
+    if (fc->GetNFiles() == 0LL) {
+      opStatus = "\033[33mno results, skipped\033[m";
+    }
+    else if (!dryRun) {
+      wasSaved = _afSaveDs(dsName, fc, kFALSE, kTRUE);
+      if (wasSaved) {
+        opStatus = "\033[32msaved\033[m";
+      }
+      else {
+        opStatus = "\033[31merror saving\033[m";
+      }
+    }
+    else {
+      opStatus = "\033[34mdry run\033[m";
+    }
+
+    // Print: dataset name, num. files, total size, success|failure
+    TString um;
+    Double_t fmtSize;
+    _afNiceSize(fc->GetTotalSize(), um, fmtSize);
+    Printf("%-45s : %4llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
+      (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
+
+    // If requested, "verify" the dataset and "cache"
+    if (wasSaved) {
+      if (verify) afFillMetaData(dsName);
+      if (addRedir) afPrependRedirUrl(dsName);
+    }
+
+  }
+
+  // Delete list of runs
+  delete runNumsPtr;
+}
+
+
 /* ========================================================================== *
  *                                ENTRY POINT                                 *
  * ========================================================================== */
@@ -1708,7 +1535,9 @@ void afFillMetaData(TString dsMask, TString options = "") {
  */
 void afdsutil() {
   cout << endl;
-  Printf("Dataset management utilities loaded.");
+  Printf("Dataset management utilities -- "
+    "by Dario Berzano <dario.berzano@gmail.com>");
+  Printf("Bugs: https://savannah.cern.ch/projects/aaf/");
   Printf("Available functions start with \"af\", use autocompletion to list.");
   cout << endl;
   afPrintSettings();
