@@ -1404,14 +1404,14 @@ void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
     }
   }
 
-  if (dryRun)
+  if (dryRun) {
     if (verify) {
       Printf("Warning: can't verify dataset on dry run");
       verify = kFALSE;
     }
-    if (cache) {
+    if (addRedir) {
       Printf("Warning: can't add redirector URL on dry run");
-      verify = kFALSE;
+      addRedir = kFALSE;
     }
   }
 
