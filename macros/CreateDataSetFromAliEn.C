@@ -13,7 +13,11 @@
 #include <TError.h>
 
 void CreateDataSetFromAliEn(
+
+  // Customize with your user and your group (optional)
   TString connStr   = "youruser:default@alice-caf.cern.ch",
+
+  // Example for official real data
   TString basePath  = "/alice/data/2010/LHC10h",
   TString fileName  = "root_archive.zip",
   TString filter    = "ESDs_lowflux/pass1/*<RUN>",
@@ -21,8 +25,21 @@ void CreateDataSetFromAliEn(
   TString treeName  = "/esdTree",
   TString runList   = "136837,137045",
   TString dsPattern = "LHC10h_<RUN>",
-  /* possible options: setstaged:cache:verify:dryrun:aliencmd */
+
+  // Example official for Monte Carlo
+  /*
+  TString basePath  = "/alice/sim/LHC10h1",
+  TString fileName  = "root_archive.zip",
+  TString filter    = "",
+  TString anchor    = "AliESDs.root",
+  TString treeName  = "/esdTree",
+  TString runList   = "137045",
+  TString dsPattern = "LHC10h1_<RUN>",
+  */
+
+  // Possible options: setstaged:cache:verify:dryrun:aliencmd
   TString options   = "setstaged:dryrun:aliencmd"
+
   ) {
 
   TProof::Open(connStr, "masteronly");
