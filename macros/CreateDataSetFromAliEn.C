@@ -14,14 +14,15 @@
 
 void CreateDataSetFromAliEn(
   TString connStr   = "youruser:default@alice-caf.cern.ch",
-  TString basePath  = "/alice/data/2010/LHC10e",
+  TString basePath  = "/alice/data/2010/LHC10h",
   TString fileName  = "root_archive.zip",
+  TString filter    = "ESDs_lowflux/pass1/*<RUN>",
   TString anchor    = "AliESDs.root",
   TString treeName  = "/esdTree",
-  TString runList   = "130831-130833,130803",
-  Int_t   passNum   = 1, /* set as -1 if not relevant */
-  TString dsPattern = "LHC10e_<RUN>_p<PASS>",
-  TString options   = "setstaged:dryrun" /* setstaged:cache:verify:dryrun */
+  TString runList   = "136837,137045",
+  TString dsPattern = "LHC10h_<RUN>",
+  /* possible options: setstaged:cache:verify:dryrun:aliencmd */
+  TString options   = "setstaged:dryrun:aliencmd"
   ) {
 
   TProof::Open(connStr, "masteronly");
@@ -30,7 +31,7 @@ void CreateDataSetFromAliEn(
     return;
   }
 
-  if (gProof->EnablePackage("VO_ALICE@AFDSUtils::0.4.0")) {
+  if (gProof->EnablePackage("VO_ALICE@AFDSUtils::0.4.1")) {
     ::Error(gSystem->HostName(), "Can't enable AFDSUtils package, aborting");
     return;
   }
@@ -44,7 +45,7 @@ void CreateDataSetFromAliEn(
 
   afPrintSettings();
 
-  afDataSetFromAliEn(basePath, fileName, anchor, treeName, runList, passNum,
+  afDataSetFromAliEn(basePath, fileName, filter, anchor, treeName, runList,
     dsPattern, options);
 
 }
