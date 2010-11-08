@@ -26,6 +26,7 @@
 #include <TFile.h>
 #include <TTree.h>
 #include <TKey.h>
+#include <TFileStager.h>
 
 #endif
 
@@ -671,6 +672,24 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
     return;
   }
 
+  // Check is the file is staged for real (it takes time!)
+  /*Bool_t checkStaged = kTRUE;
+  TFileStager *fileStager = NULL;
+
+  if (checkStaged) {
+    const char *url = gEnv->GetValue("af.redirurl", "root://localhost:1234/$1");
+    TUrl redirUrl(url);
+    redirUrl.SetFile("");
+    redirUrl.SetOptions("");
+    redirUrl.SetAnchor("");
+    fileStager = TFileStager::Open(redirUrl.GetUrl());
+    if (!fileStager) {
+      Printf("Warning: can't open file stager, impossible to check real stage "
+        "status");
+      checkStaged = kFALSE;
+    }
+  }*/
+
   Bool_t bS, bs, bC, bc;
   bS = bs = bC = bc = kFALSE;
 
@@ -693,12 +712,18 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
     Bool_t s = inf->TestBit(TFileInfo::kStaged);
     Bool_t c = inf->TestBit(TFileInfo::kCorrupted);
+    Char_t r = ' ';  // ToDo
+
+    // Check if the file is *really* staged, if possible
+    /*if (checkStaged) {
+
+    }*/
 
     if ( ((s && bS) || (!s && bs)) && ((c && bC) || (!c && bc)) ) {
       TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
       Int_t entries = (meta ? meta->GetEntries() : -1);
-      Printf("%4u. %c%c | % 7d | %s", ++countMatching,
-        (s ? 'S' : 's'), (c ? 'C' : 'c'),
+      Printf("%4u. %c%c%c | % 7d | %s", ++countMatching,
+        (s ? 'S' : 's'), (c ? 'C' : 'c'), r,
         entries,
         inf->GetCurrentUrl()->GetUrl());
       TUrl *url;
@@ -706,7 +731,7 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
       // Every URL is shown, not only first
       while ((url = inf->NextUrl())) {
-        Printf("         |         | %s", url->GetUrl());
+        Printf("          |         | %s", url->GetUrl());
       }
       inf->ResetUrl();
     }
@@ -720,6 +745,7 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
   Printf(">> There are %u file(s) in the dataset, %u matched your criteria",
     count, countMatching);
+
 }
 
 /** Marks a file matching the URL as (un)staged or (un)corrupted: choose mode
@@ -1370,15 +1396,16 @@ void afFillMetaData(TString dsMask, TString options = "") {
 /** Creates a dataset from AliEn find. See http://aaf.cern.ch/node/160 for
  *  instructions.
  */
-void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
-  TString treeName, TString runList, Int_t passNum, TString dsPtn,
-  TString options = "") {
+void afDataSetFromAliEn(TString basePath, TString fileName,
+  TString searchFilter, TString anchor, TString treeName, TString runList,
+  TString dsPtn, TString options = "") {
 
   // Parse options
   Bool_t dryRun    = kFALSE;
   Bool_t setStaged = kFALSE;
   Bool_t addRedir  = kFALSE;
   Bool_t verify    = kFALSE;
+  Bool_t aliEnCmd  = kFALSE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -1398,6 +1425,9 @@ void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
     }
     else if (sopt == "verify") {
       verify = kTRUE;
+    }
+    else if (sopt == "aliencmd") {
+      aliEnCmd = kTRUE;
     }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
@@ -1428,7 +1458,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
 
   }
 
-  // Find <RUN> and <PASS> tags, and substitute them with $1 and $2
+  // Find <RUN> tag and substitute it with $1 in dataset name (zero-padded)
   idx = dsPtn.Index("<RUN>");
   if (idx > -1) {
     TString p1 = dsPtn(0, idx);
@@ -1436,20 +1466,16 @@ void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
     dsPtn.Form("%s%%1$09d%s", p1.Data(), p2.Data());
   }
 
-  idx = dsPtn.Index("<PASS>");
+  // Find <RUN> tag and substitute it with $1 in search filter (not zero-padded)
+  idx = searchFilter.Index("<RUN>");
   if (idx > -1) {
-    if (passNum <= -1) {
-      Printf("<PASS> specified in format string, but no passNum provided, "
-        "aborting.");
-      return;
-    }
-    TString p1 = dsPtn(0, idx);
-    TString p2 = dsPtn(idx+6, dsPtn.Length());
-    dsPtn.Form("%s%%2$d%s", p1.Data(), p2.Data());
+    TString p1 = searchFilter(0, idx);
+    TString p2 = searchFilter(idx+5, searchFilter.Length());
+    searchFilter.Form("%s%%1$d%s", p1.Data(), p2.Data());
   }
 
-  // Now dsPtn is a format string which contains <RUN> as first parameter, and
-  // <PASS> as the second one
+  // Now dsPtn and searchFilter are format strings which contain <RUN> as first
+  // parameter
 
   // Parse run list
   vector<Int_t> *runNumsPtr = _afExpandRunList(runList);
@@ -1457,20 +1483,22 @@ void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
 
   // For each run
   for (UInt_t i=0; i<runNums.size(); i++) {
-    TString dsName;
+    TString dsName, searchFilterWithRun;
     dsName.Form(dsPtn.Data(), runNums[i], 1);
+    searchFilterWithRun.Form(searchFilter.Data(), runNums[i], 1);
 
     TString searchPtn;
+    //searchPtn.Form("*%d/*%s*%d*/%s", runNums[i], searchFilterWithRun.Data(),
+    //  runNums[i], fileName.Data());
+    searchPtn.Form("*%d/*%s*/%s", runNums[i], searchFilterWithRun.Data(),
+      fileName.Data());
 
-    if (passNum > -1) {
-      // Use passNum in search string
-      searchPtn = Form("*%d/*/pass%d/*%d*/%s", runNums[i], passNum, runNums[i],
-        fileName.Data());
-    }
-    else {
-      // No passNum specified: let's get generic (but let's still select files
-      // inside chunks -- that's the "*%d*")
-      searchPtn = Form("*%d/*%d*/%s", runNums[i], runNums[i], fileName.Data());
+    // Echo the AliEn find command
+    if (aliEnCmd) {
+      TString searchPtnPct = searchPtn;
+      searchPtnPct.ReplaceAll("*", "%");
+      Printf("\033[33maliensh>\033[m find %s %s", basePath.Data(),
+        searchPtnPct.Data());
     }
 
     // Run AliEn find
@@ -1514,7 +1542,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName, TString anchor,
     Printf("%-45s : %4llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
       (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
-    // If requested, "verify" the dataset and "cache"
+    // If requested, "verify" the dataset and /"cache"
     if (wasSaved) {
       if (verify) afFillMetaData(dsName);
       if (addRedir) afPrependRedirUrl(dsName);
