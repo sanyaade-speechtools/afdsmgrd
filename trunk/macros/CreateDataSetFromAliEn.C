@@ -28,13 +28,13 @@ void CreateDataSetFromAliEn(
 
   // Example for official Monte Carlo
   /*
-  TString basePath  = "/alice/sim/LHC10h1",
+  TString basePath  = "/alice/sim/LHC10c9",
   TString fileName  = "root_archive.zip",
   TString filter    = ".*<RUN>/[0-9]{3,4}",  // beware: it's a regexp!
   TString anchor    = "AliESDs.root",
   TString treeName  = "/esdTree",
-  TString runList   = "137045",
-  TString dsPattern = "LHC10h1_<RUN>",
+  TString runList   = "115315",
+  TString dsPattern = "LHC10c9_<RUN>",
   */
 
   // Possible options: setstaged:cache:verify:dryrun:aliencmd
