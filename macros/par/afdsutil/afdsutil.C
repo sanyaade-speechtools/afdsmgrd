@@ -384,11 +384,7 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
   TPMERegexp *re = NULL;
 
   if ((nEntries > 0) && (!regExp.IsNull())) {
-    Printf("USING regexp");
     re = new TPMERegexp(regExp);
-  }
-  else {
-    Printf("NOT using regexp");
   }
 
   for (Int_t i=0; i<nEntries; i++) {
