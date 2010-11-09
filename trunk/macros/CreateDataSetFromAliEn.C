@@ -20,7 +20,7 @@ void CreateDataSetFromAliEn(
   // Example for official real data
   TString basePath  = "/alice/data/2010/LHC10h",
   TString fileName  = "root_archive.zip",
-  TString filter    = "ESDs_lowflux/pass1/*<RUN>",
+  TString filter    = "ESDs_lowflux/pass1/.*<RUN>",  // beware: it's a regexp
   TString anchor    = "AliESDs.root",
   TString treeName  = "/esdTree",
   TString runList   = "136837,137045",
@@ -30,7 +30,7 @@ void CreateDataSetFromAliEn(
   /*
   TString basePath  = "/alice/sim/LHC10h1",
   TString fileName  = "root_archive.zip",
-  TString filter    = "",
+  TString filter    = "",  // beware: it's a regexp
   TString anchor    = "AliESDs.root",
   TString treeName  = "/esdTree",
   TString runList   = "137045",

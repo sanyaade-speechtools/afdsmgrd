@@ -367,7 +367,7 @@ Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
  *  collection can also be set.
  */
 TFileCollection *_afAliEnFind(TString basePath, TString fileName,
-  TString anchor, TString defaultTree) {
+  TString anchor, TString defaultTree, TString regExp = "") {
 
   if (!gGrid) {
     if (!TGrid::Connect("alien:")) {
@@ -381,19 +381,38 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
   TGridResult *res = gGrid->Query(basePath.Data(), fileName.Data());
   Int_t nEntries = res->GetEntries();
 
+  TPMERegexp *re = NULL;
+
+  if ((nEntries > 0) && (!regExp.IsNull())) {
+    Printf("USING regexp");
+    re = new TPMERegexp(regExp);
+  }
+  else {
+    Printf("NOT using regexp");
+  }
+
   for (Int_t i=0; i<nEntries; i++) {
 
     Long64_t size = TString(res->GetKey(i, "size")).Atoll();
 
     TString tUrl = res->GetKey(i, "turl");
-    if (anchor != "") {
-      tUrl.Append("#");
-      tUrl.Append(anchor);
+
+    // Perform optional regexp match
+    if (((re != NULL) && (re->Match(tUrl) > 0)) || (re == NULL)) {
+      if (anchor != "") {
+        tUrl.Append("#");
+        tUrl.Append(anchor);
+      }
+
+      //Printf("*** %s ***", tUrl.Data());
+
+      fc->Add( new TFileInfo( tUrl, size, res->GetKey(i, "guid"),
+        res->GetKey(i, "md5") ) );
     }
 
-    fc->Add( new TFileInfo( tUrl, size, res->GetKey(i, "guid"),
-      res->GetKey(i, "md5") ) );
   }
+
+  delete re;
 
   if (defaultTree != "") {
     fc->SetDefaultTreeName(defaultTree.Data());
@@ -1488,21 +1507,27 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     searchFilterWithRun.Form(searchFilter.Data(), runNums[i], 1);
 
     TString searchPtn;
-    //searchPtn.Form("*%d/*%s*%d*/%s", runNums[i], searchFilterWithRun.Data(),
-    //  runNums[i], fileName.Data());
-    searchPtn.Form("*%d/*%s*/%s", runNums[i], searchFilterWithRun.Data(),
-      fileName.Data());
+    //searchPtn.Form("*%d/*%s*/%s", runNums[i], searchFilterWithRun.Data(),
+    //  fileName.Data());
+    searchPtn.Form("*%d/*/%s", runNums[i], fileName.Data());
 
     // Echo the AliEn find command
     if (aliEnCmd) {
       TString searchPtnPct = searchPtn;
       searchPtnPct.ReplaceAll("*", "%");
-      Printf("\033[33maliensh>\033[m find %s %s", basePath.Data(),
-        searchPtnPct.Data());
+      if (!searchFilter.IsNull()) {
+              Printf("\033[33maliensh>\033[m find %s %s | grep -E '%s'",
+          basePath.Data(), searchPtnPct.Data(), searchFilterWithRun.Data());
+      }
+      else {
+        Printf("\033[33maliensh>\033[m find %s %s", basePath.Data(),
+          searchPtnPct.Data());
+      }
     }
 
     // Run AliEn find
-    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, anchor, treeName);
+    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, anchor, treeName,
+      searchFilterWithRun);
     if (fc == NULL) {
       delete runNumsPtr;
       Printf("Creation of datasets from AliEn aborted.");
