@@ -20,17 +20,17 @@ void CreateDataSetFromAliEn(
   // Example for official real data
   TString basePath  = "/alice/data/2010/LHC10h",
   TString fileName  = "root_archive.zip",
-  TString filter    = "ESDs_lowflux/pass1/.*<RUN>",  // beware: it's a regexp
+  TString filter    = "ESDs_lowflux/pass1/.*<RUN>",  // beware: it's a regexp!
   TString anchor    = "AliESDs.root",
   TString treeName  = "/esdTree",
   TString runList   = "136837,137045",
   TString dsPattern = "LHC10h_<RUN>",
 
-  // Example official for Monte Carlo
+  // Example for official Monte Carlo
   /*
   TString basePath  = "/alice/sim/LHC10h1",
   TString fileName  = "root_archive.zip",
-  TString filter    = "",  // beware: it's a regexp
+  TString filter    = ".*<RUN>/[0-9]{3,4}",  // beware: it's a regexp!
   TString anchor    = "AliESDs.root",
   TString treeName  = "/esdTree",
   TString runList   = "137045",
