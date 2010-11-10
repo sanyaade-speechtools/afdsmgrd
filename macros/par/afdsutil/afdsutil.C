@@ -1652,9 +1652,9 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     Printf("%-45s : %4llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
       (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
-    // If requested, "verify" the dataset and /"cache"
+    // If requested, "verify" the dataset (fast mode) and "cache"
     if (wasSaved) {
-      if (verify) afFillMetaData(dsName);
+      if (verify) afFillMetaData(dsName, "fast");
       if (addRedir) afPrependRedirUrl(dsName);
     }
 
