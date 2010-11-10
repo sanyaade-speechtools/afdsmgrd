@@ -48,7 +48,7 @@ void CreateDataSetFromAliEn(
     return;
   }
 
-  if (gProof->EnablePackage("VO_ALICE@AFDSUtils::0.4.1")) {
+  if (gProof->EnablePackage("VO_ALICE@AFDSUtils::0.4.2")) {
     ::Error(gSystem->HostName(), "Can't enable AFDSUtils package, aborting");
     return;
   }
