@@ -434,13 +434,22 @@ TString _afGetLine(const char *prompt) {
  *  file pointed by the first URL in the list. Information about TTrees and
  *  classes that inherit thereof are read.
  *
+ *  fastScan enables retrieval of number of events from Tag file, if available,
+ *  and falls back on standard TFile::Open() upon failure.
+ *
  *  In case of success it returns kTRUE. If any failure occurs it returns
  *  kFALSE.
  */
-Bool_t _afFillMetaDataFile(TFileInfo *fi, Bool_t quiet = kFALSE) {
+Bool_t _afFillMetaDataFile(TFileInfo *fi, Bool_t fastScan = kFALSE,
+  TString defTree = "", Bool_t quiet = kFALSE) {
 
   if (quiet) {
     _afRootQuietOn();
+  }
+
+  // Can't do fastScan if no default tree is given
+  if ((fastScan) && (defTree.IsNull())) {
+    fastScan = kFALSE;
   }
 
   // Let's start by removing old metadata
@@ -449,57 +458,115 @@ Bool_t _afFillMetaDataFile(TFileInfo *fi, Bool_t quiet = kFALSE) {
   // Get the URL and eventually open an AliEn connection
   TUrl *url = fi->GetCurrentUrl();
 
-  if ((!gGrid) && (strcmp(url->GetProtocol(), "alien") == 0)) {
+  if ((!gGrid) && ((strcmp(url->GetProtocol(), "alien") == 0) || fastScan)) {
     if (!TGrid::Connect("alien:")) {
       _afRootQuietOff();
       return kFALSE;
     }
   }
 
-  // Let us open the file
-  TFile *f = TFile::Open(url->GetUrl());
+  // Will be set to kFALSE only if fast scan succeeds
+  Bool_t slowScan = kTRUE;
 
-  if (!f) {
-    Printf("Can't open file %s!", url->GetUrl());
-    _afRootQuietOff();
-    return kFALSE;
-  }
+  // Fast scan
+  if (fastScan) {
 
-  // Get the ROOT file content
-  TIter k( f->GetListOfKeys() );
-  TKey *key;
-
-  while (( key = dynamic_cast<TKey *>(k.Next()) )) {
-
-    if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
-
-      // Every TTree (or inherited thereof) will be scanned for entries
-      TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
-      TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
-
-      // Maybe the file is now unaccessible for some reason, and the tree is
-      // unreadable!
-      if (tree) {
-        meta->SetEntries( tree->GetEntries() );
-        fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
-        //delete tree;  // CHECK: should I delete it or not?
+    // Find the AliEn URL
+    Bool_t aliEnFound = kFALSE;
+    fi->ResetUrl();
+    while ((url=fi->NextUrl()) != NULL) {
+      if (strcmp(url->GetProtocol(), "alien") == 0) {
+        aliEnFound = kTRUE;
+        break;
       }
-      else {
-        Printf("!! In file %s, can't read TTree %s!",
-          url->GetUrl(), key->GetName());
-        f->Close();
-        delete f;
-        _afRootQuietOff();
-        return kFALSE;
-      }
-
     }
-  }
 
-  f->Close();
-  delete f;
+    // Reset the URLs, if we need to fall back on TFile::Open()
+    fi->ResetUrl();
+    url = fi->NextUrl();
 
-  _afRootQuietOff();
+    // Get the AliEn path
+    if (aliEnFound) {
+      TString basePath = gSystem->DirName(url->GetFile());
+      TFileCollection *fc = _afAliEnFind(basePath, "Run*.ESD.tag.root", "", "");
+
+      if (fc) {
+        if (fc->GetNFiles() == 1LL) {
+
+          TIter i(fc->GetList());
+          TFileInfo *tagFi;
+
+          while ( (tagFi = dynamic_cast<TFileInfo *>(i.Next())) != NULL ) {
+            TUrl *tagUrl = tagFi->GetCurrentUrl();
+            TPMERegexp re("Run[0-9]*\\.Event0_([0-9]+)\\.ESD\\.tag\\.root");
+            Int_t match = re.Match(tagUrl->GetFile());
+
+            if (match == 2) {
+              Long64_t ent = re[1].Atoll();
+              if (ent > 0) {
+                slowScan = kFALSE;
+                TFileInfoMeta *meta = new TFileInfoMeta(defTree.Data());
+                meta->SetEntries(ent);
+                fi->AddMetaData(meta);
+              }
+            }
+          }
+        }
+        delete fc;
+      }
+    }
+
+  } // end of fast scan
+
+  if (slowScan) {
+
+    // Slow scan: let us open the file
+    TFile *f = TFile::Open(url->GetUrl());
+
+    if (!f) {
+      Printf("Can't open file %s!", url->GetUrl());
+      _afRootQuietOff();
+      return kFALSE;
+    }
+
+    // Get the ROOT file content
+    TIter k( f->GetListOfKeys() );
+    TKey *key;
+
+    while (( key = dynamic_cast<TKey *>(k.Next()) )) {
+
+      if ( TClass::GetClass(key->GetClassName())->InheritsFrom("TTree") ) {
+
+        // Every TTree (or inherited thereof) will be scanned for entries
+        TFileInfoMeta *meta = new TFileInfoMeta( Form("/%s", key->GetName()) );
+        TTree *tree = dynamic_cast<TTree *>( key->ReadObj() );
+
+        // Maybe the file is now unaccessible for some reason, and the tree is
+        // unreadable!
+        if (tree) {
+          meta->SetEntries( tree->GetEntries() );
+          fi->AddMetaData(meta);  // TFileInfo is owner of its metadata
+          //delete tree;  // CHECK: should I delete it or not?
+        }
+        else {
+          Printf("!! In file %s, can't read TTree %s!",
+            url->GetUrl(), key->GetName());
+          f->Close();
+          delete f;
+          _afRootQuietOff();
+          return kFALSE;
+        }
+
+      }
+    }
+
+    f->Close();
+    delete f;
+
+    _afRootQuietOff();
+
+  } // end of slow scan
+
   return kTRUE;
 }
 
@@ -778,12 +845,21 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
  *
  *  If "*" is used as URL, it applies to every entry in the dataset.
  *
- *  If keepOnlyLastUrl is kTRUE, it removes every URL in each TFileInfo but the
- *  last one.
+ *  Available options may be separated by colons:
  *
- *  If told to do so, it appends an eventually guessed AliEn path *before*
- *  removing all the other URLs. Useful if the dataset was created without
- *  keeping the originating URL in each TFileInfo (afdsmgrd <= v0.1.7).
+ *   - keeplast : every URL in each TFileInfo is removed, but the last one
+ *
+ *   - alien    : appends an eventually guessed AliEn path *before* removing all
+ *                the other URLs; useful if the dataset was created without
+ *                keeping the originating URL in each TFileInfo (if using
+ *                afdsmgrd <= v0.1.7).
+ *
+ *   - redir    : path of file on the redirector is prepended
+ *
+ *   - fast     : try to read number of events from the ESD tag file, if
+ *                available, or fallback on standard, slower file opening; it
+ *                applies only if using with option 'M'
+ *
  */
 void afMarkUrlAs(const char *fileUrl, TString bits = "",
   const char *dsMask = "/*/*", TString options = "") {
@@ -792,6 +868,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
   Bool_t keepOnlyLastUrl = kFALSE;
   Bool_t appendRecoveredAliEnPath = kFALSE;
   Bool_t prependRedirectorPath = kFALSE;
+  Bool_t fastScan = kFALSE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -808,6 +885,9 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     }
     else if (sopt == "redir") {
       prependRedirectorPath = kTRUE;
+    }
+    else if (sopt == "fast") {
+      fastScan = kTRUE;
     }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
@@ -906,7 +986,9 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
           fi->RemoveMetaData();
         }
         else if (bM) {
-          if (!_afFillMetaDataFile( fi, kTRUE )) {
+          if (!_afFillMetaDataFile( fi, fastScan, fc->GetDefaultTreeName(),
+            kTRUE )) {
+
             // The following is non-fatal
             Printf("There was a problem updating metadata of file %s",
               fi->GetCurrentUrl()->GetUrl());
@@ -1257,6 +1339,9 @@ void afRemoveDs(TString dsUri) {
  *   - setstaged : updated files (or all files, if the "rescan" option is set)
  *                 are marked as staged
  *
+ *   - fast      : try to read number of events from the ESD tag file, if
+ *                 available, or fallback on standard, slower file opening
+ *
  *  If corruptIfFail, files whose metadata can't be obtained are marked as
  *  corrupted.
  */
@@ -1266,6 +1351,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
   Bool_t rescanAll = kFALSE;
   Bool_t corruptIfFail = kFALSE;
   Bool_t setStaged = kFALSE;
+  Bool_t fastScan = kFALSE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -1282,6 +1368,9 @@ void afFillMetaData(TString dsMask, TString options = "") {
     }
     else if (sopt == "setstaged") {
       setStaged = kTRUE;
+    }
+    else if (sopt == "fast") {
+      fastScan = kTRUE;
     }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
@@ -1349,7 +1438,7 @@ void afFillMetaData(TString dsMask, TString options = "") {
       }
       else {
 
-        if (!_afFillMetaDataFile( fi, kTRUE )) {
+        if (!_afFillMetaDataFile( fi, fastScan, defTree, kTRUE )) {
           if (corruptIfFail) {
             fi->SetBit(TFileInfo::kCorrupted);
             status = "\033[31mCORR\033[m";  // red
