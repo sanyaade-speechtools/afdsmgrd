@@ -1,7 +1,7 @@
 /* ========================================================================== *
  * afdsmgrd -- by Dario Berzano <dario.berzano@gmail.com>                     *
  *                                                                            *
- * This macro is part of the AAF package VO_ALICE@AFDSUtils::0.3.0            *
+ * This macro is part of the AAF package VO_ALICE@AFDSUtils::0.4.3            *
  *                                                                            *
  * Source code available on http://code.google.com/p/afdsmgrd                 *
  * ========================================================================== */
@@ -71,6 +71,21 @@ TDataSetManagerFile *_afCreateDsMgr() {
   TDataSetManagerFile *mgr = new TDataSetManagerFile( NULL, NULL,
     Form("dir:%s", gEnv->GetValue("af.dspath", "/pool/datasets")) );
   return mgr;
+}
+
+/** Creates a new TFileStager based on current redirector URL.
+ */
+TFileStager *_afCreateStager(TUrl **stagerUrl = NULL) {
+  const char *url = gEnv->GetValue("af.redirurl", "root://localhost:1234/$1");
+  TUrl redirUrl(url);
+  redirUrl.SetFile("");
+  redirUrl.SetOptions("");
+  redirUrl.SetAnchor("");
+  TFileStager *fileStager = TFileStager::Open(redirUrl.GetUrl());
+  if (stagerUrl != NULL) {
+    *stagerUrl = new TUrl(redirUrl);
+  }
+  return fileStager;
 }
 
 /** Gets a flattened TList of datasets. The list must be destroyed by the user,
@@ -685,6 +700,21 @@ void afPrintSettings() {
     gEnv->GetValue("af.redirurl", "root://localhost:1234/$1"));
 }
 
+/** Opens a PROOF connection.
+ */
+void afOpen() {
+  const char *connStr = gEnv->GetValue("af.userhost", "alice-caf.cern.ch");
+  TProof::Open(connStr, "masteronly");
+}
+
+/** Resets (soft, then hard) PROOF.
+ */
+void afReset() {
+  const char *connStr = gEnv->GetValue("af.userhost", "alice-caf.cern.ch");
+  TProof::Reset(connStr);
+  TProof::Reset(connStr, kTRUE);
+}
+
 /** Sets the URL of the redirector. $1 *must* be present in the string, or else
  *  it will complain about it without setting the value.
  */
@@ -726,6 +756,12 @@ void afSetProofMode(Bool_t proofMode = kTRUE) {
  *  that are (un)staged or (un)corrupted by combining one or more of SsCc in the
  *  showOnly string parameter in any order.
  *
+ *  Moreover, you can specify one or more of Rrn to see:
+ *
+ *   - which files are staged for real (R)
+ *   - which files aren't staged for real (r)
+ *   - which files have no redirector information (n)
+ *
  *  Usage examples:
  *
  *   - To show every staged file:                  "S" or "SCc"
@@ -754,35 +790,35 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
     return;
   }
 
-  // Check is the file is staged for real (it takes time!)
-  /*Bool_t checkStaged = kTRUE;
-  TFileStager *fileStager = NULL;
-
-  if (checkStaged) {
-    const char *url = gEnv->GetValue("af.redirurl", "root://localhost:1234/$1");
-    TUrl redirUrl(url);
-    redirUrl.SetFile("");
-    redirUrl.SetOptions("");
-    redirUrl.SetAnchor("");
-    fileStager = TFileStager::Open(redirUrl.GetUrl());
-    if (!fileStager) {
-      Printf("Warning: can't open file stager, impossible to check real stage "
-        "status");
-      checkStaged = kFALSE;
-    }
-  }*/
-
-  Bool_t bS, bs, bC, bc;
-  bS = bs = bC = bc = kFALSE;
+  Bool_t bS, bs, bC, bc, bR, br, bn;
+  bS = bs = bC = bc = bR = br = bn = kFALSE;
 
   if (showOnly.Index('S') >= 0) bS = kTRUE;
   if (showOnly.Index('s') >= 0) bs = kTRUE;
   if (showOnly.Index('C') >= 0) bC = kTRUE;
   if (showOnly.Index('c') >= 0) bc = kTRUE;
+  if (showOnly.Index('R') >= 0) bR = kTRUE;
+  if (showOnly.Index('r') >= 0) br = kTRUE;
+  if (showOnly.Index('n') >= 0) bn = kTRUE;
 
-  // If Ss (or Cc) omitted, show both Ss (or Cc)
+  // If Ss (or Cc) omitted, show both Ss (or Cc) -- does not apply to Rr
   if (!bc && !bC) bc = bC = kTRUE;
   if (!bs && !bS) bs = bS = kTRUE;
+
+  // Check is the file is staged for real (it takes time!)
+  Bool_t checkStaged = (br || bR || bn);
+  TFileStager *fileStager = NULL;
+
+  TUrl *redirUrl = NULL;
+
+  if (checkStaged) {
+    fileStager = _afCreateStager(&redirUrl);
+    if (!fileStager) {
+      Printf("Warning: can't open file stager, impossible to check real stage "
+        "status");
+      checkStaged = kFALSE;
+    }
+  }
 
   TIter i(fc->GetList());
   TFileInfo *inf;
@@ -794,21 +830,44 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
     Bool_t s = inf->TestBit(TFileInfo::kStaged);
     Bool_t c = inf->TestBit(TFileInfo::kCorrupted);
-    Char_t r = ' ';  // ToDo
+    Char_t r = 'n';  // possible values: R=online, r=not staged, n=info n.a.
 
-    // Check if the file is *really* staged, if possible
-    /*if (checkStaged) {
-
-    }*/
+    TUrl *url;
 
     if ( ((s && bS) || (!s && bs)) && ((c && bC) || (!c && bc)) ) {
+
+      // Check if the file is *really* staged, if possible
+      if (checkStaged) {
+        inf->ResetUrl();
+        while ((url = inf->NextUrl())) {
+          if ((strcmp(url->GetProtocol(), redirUrl->GetProtocol()) == 0) &&
+            (strcmp(url->GetHost(), redirUrl->GetHost()) == 0)) {
+            TString where;
+          
+            //gSystem->RedirectOutput("/dev/null");
+            r = (fileStager->Locate(url->GetUrl(), where) == 0) ? 'R' : 'r';
+            //gSystem->RedirectOutput(0x0);
+            break;
+
+          }
+        }
+
+        if (!(((r == 'R') && bR) || ((r == 'r') && br) || ((r == 'n') && bn))) {
+          continue;
+        }
+
+        inf->ResetUrl();
+      }
+      else {
+        r = ' ';  // real staging information not requested
+      }
+
       TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
       Int_t entries = (meta ? meta->GetEntries() : -1);
       Printf("%4u. %c%c%c | % 7d | %s", ++countMatching,
         (s ? 'S' : 's'), (c ? 'C' : 'c'), r,
         entries,
         inf->GetCurrentUrl()->GetUrl());
-      TUrl *url;
       inf->NextUrl();
 
       // Every URL is shown, not only first
@@ -821,13 +880,108 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
   delete fc;
 
-  if (mgr) {
-    delete mgr;
+  if (mgr) delete mgr;
+  if (fileStager) {
+    delete fileStager;
+    delete redirUrl;
   }
 
   Printf(">> There are %u file(s) in the dataset, %u matched your criteria",
     count, countMatching);
+}
 
+/** Prints summarized information about a certain dataset. It can also check how
+ *  many files are on disk for real.
+ */
+void afDataSetInfo(const char *dsUri, Bool_t checkStaged = kFALSE) {
+
+  TDataSetManagerFile *mgr = NULL;
+  TFileCollection *fc;
+
+  if (_afProofMode()) {
+    fc = gProof->GetDataSet(dsUri);
+  }
+  else {
+    mgr = _afCreateDsMgr();
+    fc = mgr->GetDataSet(dsUri);
+  }
+
+  if (!fc) {
+    Printf("Error opening dataset URI %s", dsUri);
+    if (mgr) {
+      delete mgr;
+    }
+    return;
+  }
+
+  TFileStager *fileStager = NULL;
+  TUrl *redirUrl;
+
+  if (checkStaged) {
+    fileStager = _afCreateStager(&redirUrl);
+    if (!fileStager) {
+      Printf("Warning: can't open file stager, impossible to check real stage "
+        "status");
+      checkStaged = kFALSE;
+    }
+  }
+
+  TIter i(fc->GetList());
+  TFileInfo *inf;
+
+  // Counters
+  Long64_t nS, ns, nC, nc, nR, nr, nn;
+  nS = ns = nC = nc = nR = nr = nn = 0;
+
+  while ((inf = dynamic_cast<TFileInfo *>(i.Next()))) {
+
+    Bool_t s = inf->TestBit(TFileInfo::kStaged);
+    Bool_t c = inf->TestBit(TFileInfo::kCorrupted);
+
+    TUrl *url;
+
+    // Check if the file is *really* staged, if possible
+    if (checkStaged) {
+      Char_t r = 'n';  // possible values: R=online, r=not staged, n=info n.a.
+      inf->ResetUrl();
+      while ((url = inf->NextUrl())) {
+        if ((strcmp(url->GetProtocol(), redirUrl->GetProtocol()) == 0) &&
+          (strcmp(url->GetHost(), redirUrl->GetHost()) == 0)) {
+          TString where;
+          
+          //gSystem->RedirectOutput("/dev/null");
+          r = (fileStager->Locate(url->GetUrl(), where) == 0) ? 'R' : 'r';
+          //gSystem->RedirectOutput(0x0);
+          break;
+        }
+      }
+
+      if (r == 'R') nR++;
+      else if (r == 'r') nr++;
+      else nn++;
+    }
+
+    if (s) nS++;
+    else ns++;
+
+    if (c) nC++;
+    else nc++;
+  }
+
+  if (mgr) delete mgr;
+  if (fileStager) {
+    delete fileStager;
+    delete redirUrl;
+  }
+
+  Printf("Dataset %s contains %lld files:", dsUri, fc->GetNFiles());
+  Printf(">> %lld marked as staged, %lld marked as not staged", nS, ns);
+  Printf(">> %lld good, %lld corrupted", nc, nC);
+  if (checkStaged) {
+    Printf(">> %lld really staged, %lld not on disk, %lld unknown", nR, nr, nn);
+  }
+
+  delete fc;
 }
 
 /** Marks a file matching the URL as (un)staged or (un)corrupted: choose mode
