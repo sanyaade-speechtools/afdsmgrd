@@ -37,6 +37,12 @@ void CreateDataSetFromAliEn(
   TString dsPattern = "LHC10c9_<RUN>",
   */
 
+  // Host name (and, optional, port) of redirector -- leave empty "" if it is
+  // the same as the host name in connStr, but it differs if you're connecting
+  // to AAF through a SSH tunnel
+  TString redirHost = "",
+  //TString redirHost = "alice-caf.cern.ch",
+ 
   // Possible options: setstaged:cache:verify:dryrun:aliencmd
   TString options   = "setstaged:dryrun:aliencmd"
 
@@ -58,7 +64,8 @@ void CreateDataSetFromAliEn(
   afSetDsPath("/pool/PROOF-AAF/proof/dataset");
   afSetProofUserHost(connStr.Data());
   afSetProofMode(1);
-  afSetRedirUrl( Form("root://%s/$1", afHost.Data()) );
+  afSetRedirUrl( Form("root://%s/$1",
+    redirHost.IsNull() ? afHost.Data() : redirHost.Data()) );
 
   afPrintSettings();
 
