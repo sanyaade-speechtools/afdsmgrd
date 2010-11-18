@@ -60,6 +60,10 @@ void CreateDataSetFromAliEn(
   }
 
   TString afHost = connStr.Remove(0, connStr.Index('@')+1);
+  {
+    Ssiz_t colon = afHost.Index(':');
+    if (colon > -1) afHost.Remove(colon, afHost.Length());
+  }
 
   afSetDsPath("/pool/PROOF-AAF/proof/dataset");
   afSetProofUserHost(connStr.Data());
