@@ -34,8 +34,18 @@ include_directories (${CMAKE_CURRENT_BINARY_DIR})
 #add_executable (afdsmgrd afdsmgrd.cc)
 #target_link_libraries(afdsmgrd AfDataSetsManager AfConfReader AfDataSetSrc AfLog AfStageUrl AfDict ${Root_LIBS} ${ApMon_LIBRARY})
 
+#add_library (sqlite3 sqlite3.c)
+
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
+
+
 add_executable (tellpid tellpid.cc)
+#target_link_libraries (tellpid sqlite3 -ldl -pthread)
+
+
+add_executable (readds readds.cc afDataSetList.cc)
+target_link_libraries (readds ${Root_LIBS})
+
 
 #
 # Where to install the stuff

@@ -1,5 +1,5 @@
 /* ========================================================================== *
- * afdsmgrd -- by Dario Berzano <dario.berzano@gmail.com>                     *
+ * afdsutil.C -- by Dario Berzano <dario.berzano@gmail.com>                     *
  *                                                                            *
  * This macro is part of the AAF package VO_ALICE@AFDSUtils::0.4.3            *
  *                                                                            *

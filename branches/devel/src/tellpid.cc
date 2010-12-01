@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "sqlite3.h"
+
 int main(int argn, char *argv[]) {
 
   pid_t process_pid;
