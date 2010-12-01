@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
   const char *pid_fn = NULL;
   const char *out_fn = NULL;
   const char *err_fn = NULL;
-
+	
   while ((c = getopt(argc, argv, "+:p:o:e:")) != -1) {
     switch (c) {
       case 'p':
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
     return 6;
   }
 
-  if (!freopen(out_fn, "w", stdout)) {
+  if (freopen(out_fn, "w", stdout) == NULL) {
     printf("Can't write standard output on file %s\n", out_fn);
     return 7;
   }

@@ -35,6 +35,7 @@ include_directories (${CMAKE_CURRENT_BINARY_DIR})
 #target_link_libraries(afdsmgrd AfDataSetsManager AfConfReader AfDataSetSrc AfLog AfStageUrl AfDict ${Root_LIBS} ${ApMon_LIBRARY})
 
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
+add_executable (tellpid tellpid.cc)
 
 #
 # Where to install the stuff
