@@ -15,11 +15,12 @@ include_directories (${CMAKE_CURRENT_BINARY_DIR})
 # List of the libraries to build
 #
 
-#add_library (AfConfReader AfConfReader.cc)
-#add_library (AfDataSetsManager AfDataSetsManager.cc)
-#add_library (AfDataSetSrc AfDataSetSrc.cc)
-#add_library (AfLog AfLog.cc)
-#add_library (AfStageUrl AfStageUrl.cc)
+add_library (afDataSetList afDataSetList.cc)
+add_library (afOpQueue afOpQueue.cc)
+add_library (afQueueEntry afQueueEntry.cc)
+add_library (sqlite3 sqlite3.c)
+
+target_link_libraries(afOpQueue sqlite3 -ldl -pthread)
 
 #
 # Classes which need a dictionary
@@ -34,8 +35,6 @@ include_directories (${CMAKE_CURRENT_BINARY_DIR})
 #add_executable (afdsmgrd afdsmgrd.cc)
 #target_link_libraries(afdsmgrd AfDataSetsManager AfConfReader AfDataSetSrc AfLog AfStageUrl AfDict ${Root_LIBS} ${ApMon_LIBRARY})
 
-#add_library (sqlite3 sqlite3.c)
-
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
 
@@ -43,8 +42,8 @@ add_executable (tellpid tellpid.cc)
 #target_link_libraries (tellpid sqlite3 -ldl -pthread)
 
 
-add_executable (readds readds.cc afDataSetList.cc)
-target_link_libraries (readds ${Root_LIBS})
+add_executable (readds readds.cc)
+target_link_libraries (readds afDataSetList afOpQueue ${Root_LIBS})
 
 
 #

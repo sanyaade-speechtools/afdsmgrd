@@ -1,11 +1,9 @@
 /**
- * afDataSetList.h -- by Dario Berzano <dario.berzano@gmail.com>
+ * afDataSetList.cc -- by Dario Berzano <dario.berzano@gmail.com>
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
- * This class implements a list of datasets and it is a wrapper around calls on
- * the TDataSetManager class (and subclasses). The class is defined inside the
- * namespace "af".
+ * See header file for a description of the class.
  */
 
 #include "afDataSetList.h"
