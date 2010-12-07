@@ -11,6 +11,7 @@
 #define AFOPQUEUE_H
 
 #include <stdio.h>
+#include <string.h>
 
 #include "sqlite3.h"
 
@@ -28,18 +29,22 @@ namespace af {
   class opQueue {
 
     public:
-      opQueue();
+      opQueue(unsigned int max_failures = 0);
       virtual ~opQueue();
       bool insert(const char *url);
       int flush();
-      int update(const char *url, qstat_t qstat);
+      bool set_status(const char *url, qstat_t qstat);
+      bool failed(const char *url);
+      void arbitrary_query(const char *query);
       void dump();
 
     private:
       sqlite3 *db;
       char strbuf[AF_STRBUFSIZE];
       char *sql_err;
-      static int dump_callback(void *, int argc, char *argv[], char **colname);
+      static int query_callback(void *, int argc, char *argv[], char **colname);
+      unsigned long last_queue_rowid;
+      unsigned int fail_threshold;
 
   };
 
