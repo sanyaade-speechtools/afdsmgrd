@@ -38,11 +38,6 @@ target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
-
-add_executable (tellpid tellpid.cc)
-#target_link_libraries (tellpid sqlite3 -ldl -pthread)
-
-
 add_executable (readds readds.cc)
 target_link_libraries (readds afDataSetList afOpQueue ${Root_LIBS})
 

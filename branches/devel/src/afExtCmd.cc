@@ -70,12 +70,29 @@ bool extCmd::run() {
   return true;
 }
 
-/** Checks if the spawned program is still running.
+/** Checks if the spawned program is still running using the trick of sending
+ *  the signal 0 (noop) to the process.
  */
 bool extCmd::is_running() {
-
   if (kill(pid, 0) == -1) return false;
   else return true;
+}
+
+/** Searches for a line on stdout that begins either with FAIL or with OK and
+ *  parses all the fields, space-separated. Fields must be unique.
+ */
+void extCmd::get_output() {
+
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu",
+    temp_path.c_str(), outf_pref, id);
+
+  std::ifstream outfile(strbuf);
+
+  while ( outfile.getline(strbuf, AF_EXTCMD_BUFSIZE) ) {
+    printf("line={%s}\n", strbuf);
+  }
+
+  outfile.close();
 
 }
 

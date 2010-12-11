@@ -126,7 +126,8 @@ int main(int argc, char *argv[]) {
   }
 
   // Spawns an external test program
-  af::extCmd prog("/bin/sleep 10");
+  af::extCmd prog("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/"
+    "devel/src/donothing.sh");
   prog.run();
 
   unsigned long iter = 0;
@@ -136,7 +137,8 @@ int main(int argc, char *argv[]) {
       printf("+++ program is running with pid %d\n", prog.get_pid());
     }
     else {
-      printf("+++ program terminated\n");
+      printf("+++ program terminated, output follows\n");
+      prog.get_output();
       break;
     }
     sleep(1);

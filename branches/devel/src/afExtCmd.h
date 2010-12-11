@@ -16,6 +16,8 @@
 
 #define AF_EXTCMD_BUFSIZE 1000
 
+#include <map>
+#include <string>
 #include <fstream>
 #include <stdio.h>
 #include <stdexcept>
@@ -24,6 +26,8 @@
 
 namespace af {
 
+  typedef std::map<std::string,std::string> field_map;
+
   class extCmd {
 
     public:
@@ -31,7 +35,8 @@ namespace af {
       //virtual ~extCmd();
       bool run();
       bool is_running();
-      pid_t get_pid() { return 0; };
+      pid_t get_pid() { return pid; };
+      void get_output();
 
       static void set_helper_path(const char *path);
       static void set_temp_path(const char *path);
