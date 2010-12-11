@@ -17,10 +17,11 @@ include_directories (${CMAKE_CURRENT_BINARY_DIR})
 
 add_library (afDataSetList afDataSetList.cc)
 add_library (afOpQueue afOpQueue.cc)
-add_library (afQueueEntry afQueueEntry.cc)
+add_library (afExtCmd afExtCmd.cc)
+#add_library (afQueueEntry afQueueEntry.cc)
 add_library (sqlite3 sqlite3.c)
 
-target_link_libraries(afOpQueue sqlite3 -ldl -pthread)
+target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 
 #
 # Classes which need a dictionary
