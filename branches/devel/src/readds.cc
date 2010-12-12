@@ -140,6 +140,10 @@ int main(int argc, char *argv[]) {
       printf("+++ program terminated, output follows\n");
       prog.get_output();
       prog.print_fields();
+      printf("str:   %s\n",  prog.get_field_text("Numeric_field"));
+      printf("ulong: %lu\n", prog.get_field_uint("Numeric_field"));
+      printf("long:  %ld\n", prog.get_field_int ("Numeric_field"));
+      printf("real:  %lf\n", prog.get_field_real("Numeric_field"));
       break;
     }
     sleep(1);

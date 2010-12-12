@@ -28,7 +28,7 @@ namespace af {
 
   typedef std::map<std::string,std::string> fields_t;
   typedef std::pair<std::string,std::string> key_val_t;
-  typedef fields_t::iterator fields_iter_t;
+  typedef fields_t::const_iterator fields_iter_t;
 
   class extCmd {
 
@@ -41,6 +41,11 @@ namespace af {
       void get_output();
       void print_fields();
       bool is_ok() { return ok; };
+
+      unsigned long get_field_uint(const char *key);
+      long get_field_int(const char *key);
+      double get_field_real(const char *key);
+      const char *get_field_text(const char *key);
 
       static void set_helper_path(const char *path);
       static void set_temp_path(const char *path);

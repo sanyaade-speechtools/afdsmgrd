@@ -137,6 +137,47 @@ void extCmd::get_output() {
 
 }
 
+/** Gets a field from output formatted as an unsigned integer. 0 is returned if
+ *  field does not exist or it is not a number. The base is guessed from the
+ *  number prefix (i.e., 0 means octal and 0x means hex): for more information
+ *  see http://www.cplusplus.com/reference/clibrary/cstdlib/strtoul/.
+ */
+unsigned long extCmd::get_field_uint(const char *key) {
+  const char *strval = get_field_text(key);
+  if (!strval) return 0L;
+  return strtoul(strval, NULL, 0);
+}
+
+/** Gets a field from output formatted as a signed integer. 0 is returned if
+ *  field does not exist or it is not a number. The base is guessed from the
+ *  number prefix (i.e., 0 means octal and 0x means hex): for more information
+ *  see http://www.cplusplus.com/reference/clibrary/cstdlib/strtol/.
+ */
+long extCmd::get_field_int(const char *key) {
+  const char *strval = get_field_text(key);
+  if (!strval) return 0L;
+  return strtol(strval, NULL, 0);
+}
+
+/** Gets a field from output formatted as a real (floating point). 0.0 is
+ *  returned if field does not exist or it is not a number. For more information
+ *  see http://www.cplusplus.com/reference/clibrary/cstdlib/strtod/.
+ */
+double extCmd::get_field_real(const char *key) {
+  const char *strval = get_field_text(key);
+  if (!strval) return 0.0;
+  return strtod(strval, NULL);
+}
+
+/** Gets a field from output as a string. A NULL pointer is returned if field
+ *  does not exist. The returned pointer belongs to the class.
+ */
+const char *extCmd::get_field_text(const char *key) {
+  fields_iter_t keyval = fields_map.find(key);
+  if (keyval == fields_map.end()) return NULL;
+  return (*keyval).second.c_str();
+}
+
 /** Prints out key/value pairs gathered during latest get_output() call.
  */
 void extCmd::print_fields() {
