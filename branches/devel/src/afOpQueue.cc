@@ -1,3 +1,11 @@
+/**
+ * afOpQueue.cc -- by Dario Berzano <dario.berzano@gmail.com>
+ *
+ * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+ *
+ * See header file for a description of the class.
+ */
+
 #include "afOpQueue.h"
 
 using namespace af;
@@ -38,7 +46,7 @@ opQueue::opQueue(unsigned int max_failures) :
 
   // See http://www.sqlite.org/c_interface.html#callback_returns_nonzero
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE, "Error in SQL CREATE query: %s\n",
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error in SQL CREATE query: %s\n",
       sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -48,7 +56,7 @@ opQueue::opQueue(unsigned int max_failures) :
   r = sqlite3_prepare_v2(db,
     "SELECT COUNT(rank) FROM queue WHERE main_url=?", -1, &query_exists, NULL);
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE,
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing SQL query for exists(): %s\n", r, sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -59,7 +67,7 @@ opQueue::opQueue(unsigned int max_failures) :
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,status"
     "  FROM queue WHERE main_url=?", -1, &query_get_entry, NULL);
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE,
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing SQL query for get_entry(): %s\n", r, sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -77,7 +85,7 @@ int opQueue::flush() {
     NULL, NULL, &sql_err);
 
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE, "Error #%d in SQL DELETE query: %s\n",
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error #%d in SQL DELETE query: %s\n",
       r, sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -130,7 +138,7 @@ void opQueue::arbitrary_query(const char *query) {
   int r = sqlite3_exec(db, query, query_callback, NULL, &sql_err);
 
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE, "Error in SQL arbitrary query: %s\n",
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error in SQL arbitrary query: %s\n",
       sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -158,13 +166,13 @@ bool opQueue::set_status(const char *url, qstat_t qstat) {
 
   if (!url) return false;
 
-  snprintf(strbuf, AF_STRBUFSIZE,
+  snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
     "UPDATE queue SET status='%c' WHERE main_url='%s'", qstat, url);
 
   int r = sqlite3_exec(db, strbuf, NULL, NULL, &sql_err);
 
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE, "Error in SQL UPDATE query: %s\n",
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error in SQL UPDATE query: %s\n",
       sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -184,7 +192,7 @@ bool opQueue::failed(const char *url) {
   if (!url) return false;
 
   if (fail_threshold != 0) {
-    snprintf(strbuf, AF_STRBUFSIZE,
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "UPDATE queue SET"
       "  n_failures=n_failures+1,rank=%lu,status=CASE"
       "    WHEN n_failures>=%u THEN 'F'"
@@ -194,7 +202,7 @@ bool opQueue::failed(const char *url) {
       ++last_queue_rowid, fail_threshold-1, url);
   }
   else {
-    snprintf(strbuf, AF_STRBUFSIZE,
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "UPDATE queue SET"
       "  n_failures=n_failures+1,rank=%lu,status='Q'"
       "  WHERE main_url='%s'",
@@ -204,7 +212,7 @@ bool opQueue::failed(const char *url) {
   int r = sqlite3_exec(db, strbuf, NULL, NULL, &sql_err);
 
   if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE, "Error in SQL UPDATE query: %s\n",
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error in SQL UPDATE query: %s\n",
       sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
@@ -224,7 +232,7 @@ opQueue::~opQueue() {
  */
 bool opQueue::insert(const char *url) {
 
-  snprintf(strbuf, AF_STRBUFSIZE,
+  snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
     "INSERT INTO queue "
     "(main_url) "
     "VALUES ('%s')", url);
@@ -236,7 +244,7 @@ bool opQueue::insert(const char *url) {
     return false;
   }
   else if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_STRBUFSIZE, "Error #%d in SQL INSERT query: %s",
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error #%d in SQL INSERT query: %s",
       r, sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);

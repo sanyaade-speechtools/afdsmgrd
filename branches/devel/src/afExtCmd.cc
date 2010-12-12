@@ -1,8 +1,16 @@
+/**
+ * afExtCmd.cc -- by Dario Berzano <dario.berzano@gmail.com>
+ *
+ * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+ *
+ * See header file for a description of the class.
+ */
+
 #include "afExtCmd.h"
 
 using namespace af;
 
-/**
+/** Static values used by every instance of this class.
  */
 std::string extCmd::helper_path;
 std::string extCmd::temp_path;
@@ -10,10 +18,11 @@ const char *extCmd::errf_pref = "err";
 const char *extCmd::outf_pref = "out";
 const char *extCmd::pidf_pref = "pid";
 
-/** Constructor
+/** Constructor. The instance_id is chosen automatically if not given or if
+ *  equal to zero.
  */
-extCmd::extCmd(const char *_cmd, unsigned long _id) :
-  cmd(_cmd), id(_id), ok(false) {
+extCmd::extCmd(const char *exec_cmd, unsigned long instance_id) :
+  cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1) {
 
   if ((helper_path.empty()) || (temp_path.empty()))
     throw std::runtime_error("Helper path and temp path must be defined");
@@ -29,7 +38,7 @@ extCmd::extCmd(const char *_cmd, unsigned long _id) :
     }
   }
 
-  // Creates temporary files (lock)
+  // Creates temporary empty pidfile
   snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu", temp_path.c_str(),
     pidf_pref, id);
   std::ofstream of(strbuf);
@@ -41,6 +50,9 @@ extCmd::extCmd(const char *_cmd, unsigned long _id) :
  *  was not spawned successfully.
  */
 bool extCmd::run() {
+
+  if (already_started) return false;
+  already_started = true;
 
   // Assembles the command line
   snprintf(strbuf, AF_EXTCMD_BUFSIZE,
@@ -88,13 +100,15 @@ void extCmd::get_output() {
   const char *delims = " \t";
   bool found = false;
 
+  if (!fields_map.empty()) fields_map.clear();
+
   snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu",
     temp_path.c_str(), outf_pref, id);
 
   std::ifstream outfile(strbuf);
 
   while ( outfile.getline(strbuf, AF_EXTCMD_BUFSIZE) ) {
-    printf("line={%s}\n", strbuf);
+    //printf("line={%s}\n", strbuf);
     char *tok = strtok(strbuf, delims);
 
     if (( strcmp(tok, "OK") == 0 ) || ( strcmp(tok, "FAIL") == 0 )) {
@@ -178,28 +192,22 @@ const char *extCmd::get_field_text(const char *key) {
   return (*keyval).second.c_str();
 }
 
-/** Prints out key/value pairs gathered during latest get_output() call.
+/** Prints out key/value pairs gathered during latest get_output() call; used
+ *  mostly for debug.
  */
 void extCmd::print_fields() {
-
-  for (fields_iter_t it=fields_map.begin(); it!=fields_map.end(); it++) {
-    const char *key = (*it).first.c_str();
-    if (*key == '\0')
-      printf("<no_name>=%s\n", (*it).second.c_str());
-    else
-      printf("%s=%s\n", (*it).first.c_str(), (*it).second.c_str());
-
-  }
-
+  for (fields_iter_t it=fields_map.begin(); it!=fields_map.end(); it++)
+    printf("{%s}={%s}\n", (*it).first.c_str(), (*it).second.c_str());
 }
 
-/** Sets the helper path. Path must be a string allocated with malloc().
+/** Sets the helper path. The given string is copied in an internal buffer.
  */
 void extCmd::set_helper_path(const char *path) {
   helper_path = path;
 }
 
-/** Sets the temporary directory. Path must be a string allocated with malloc().
+/** Sets the temporary directory and creates it. The given string is copied in
+ *  an internal buffer.
  */
 void extCmd::set_temp_path(const char *path) {
   temp_path = path;

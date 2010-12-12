@@ -18,7 +18,7 @@
 
 #include <stdexcept>
 
-#define AF_STRBUFSIZE 1000
+#define AF_OPQUEUE_BUFSIZE 1000
 
 namespace af {
 
@@ -72,7 +72,7 @@ namespace af {
 
     private:
       sqlite3 *db;
-      char strbuf[AF_STRBUFSIZE];
+      char strbuf[AF_OPQUEUE_BUFSIZE];
       char *sql_err;
       static int query_callback(void *, int argc, char *argv[], char **colname);
       unsigned long last_queue_rowid;

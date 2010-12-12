@@ -17,6 +17,7 @@
 #include "afDataSetList.h"
 #include "afOpQueue.h"
 #include "afExtCmd.h"
+#include "afConfig.h"
 
 /** Waits for user input (debug)
  */
@@ -115,6 +116,8 @@ int main(int argc, char *argv[]) {
   //af::extCmd::helper_path(argv[0]);
 
   // Find path of current executable (where to find helper executables)
+  /*
+  // This piece of code might be useful, do not remove it, leave it commented.
   {
     char *path = exec_path(argv[0]);
     const char *helper_exec = "/afdsmgrd-exec-wrapper";
@@ -124,28 +127,23 @@ int main(int argc, char *argv[]) {
     af::extCmd::set_temp_path("/tmp/afdsmgrd");
     free(path);
   }
+  */
 
-  // Spawns an external test program
-  af::extCmd prog("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/"
-    "devel/src/donothing.sh");
-  prog.run();
+  // Configuration file management
+  af::config cfg("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/devel/"
+    "etc/xrootd/test.cf");
+
+  long test = -1;
+  cfg.bind_int("dsmgrd.sleepsecs", &test, 0, 100, true, 10);
+  cfg.read_file();
+  cfg.print_bindings();
+  printf("the value of the directive is %ld\n", test);
+
+  return 0;
 
   unsigned long iter = 0;
   while (true) {
     printf("main loop: iteration #%lu\n", ++iter);
-    if (prog.is_running()) {
-      printf("+++ program is running with pid %d\n", prog.get_pid());
-    }
-    else {
-      printf("+++ program terminated, output follows\n");
-      prog.get_output();
-      prog.print_fields();
-      printf("str:   %s\n",  prog.get_field_text("Numeric_field"));
-      printf("ulong: %lu\n", prog.get_field_uint("Numeric_field"));
-      printf("long:  %ld\n", prog.get_field_int ("Numeric_field"));
-      printf("real:  %lf\n", prog.get_field_real("Numeric_field"));
-      break;
-    }
     sleep(1);
   }
 

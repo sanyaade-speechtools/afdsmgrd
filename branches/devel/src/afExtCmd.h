@@ -8,7 +8,7 @@
  * line with separated fields.
  *
  * The class is capable of checking if the program is still running and parses
- * the output in memory.
+ * the output, made of fields and values, in memory.
  */
 
 #ifndef AFEXTCMD_H
@@ -33,6 +33,7 @@ namespace af {
   class extCmd {
 
     public:
+
       extCmd(const char *command, unsigned long id = 0);
       //virtual ~extCmd();
       bool run();
@@ -51,12 +52,14 @@ namespace af {
       static void set_temp_path(const char *path);
 
     private:
+
       char strbuf[AF_EXTCMD_BUFSIZE];
       pid_t pid;
       unsigned long id;
       std::string cmd;
       fields_t fields_map;
       bool ok;
+      bool already_started;
 
       static std::string helper_path;
       static std::string temp_path;
