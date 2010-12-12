@@ -12,7 +12,8 @@ const char *extCmd::pidf_pref = "pid";
 
 /** Constructor
  */
-extCmd::extCmd(const char *_cmd, unsigned long _id) : cmd(_cmd), id(_id) {
+extCmd::extCmd(const char *_cmd, unsigned long _id) :
+  cmd(_cmd), id(_id), ok(false) {
 
   if ((helper_path.empty()) || (temp_path.empty()))
     throw std::runtime_error("Helper path and temp path must be defined");
@@ -79,9 +80,13 @@ bool extCmd::is_running() {
 }
 
 /** Searches for a line on stdout that begins either with FAIL or with OK and
- *  parses all the fields, space-separated. Fields must be unique.
+ *  parses all the fields, space-separated. If the program did not give any
+ *  output, a FAIL status is triggered by default. Fields must be unique.
  */
 void extCmd::get_output() {
+
+  const char *delims = " \t";
+  bool found = false;
 
   snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu",
     temp_path.c_str(), outf_pref, id);
@@ -90,9 +95,60 @@ void extCmd::get_output() {
 
   while ( outfile.getline(strbuf, AF_EXTCMD_BUFSIZE) ) {
     printf("line={%s}\n", strbuf);
+    char *tok = strtok(strbuf, delims);
+
+    if (( strcmp(tok, "OK") == 0 ) || ( strcmp(tok, "FAIL") == 0 )) {
+
+      bool expect_key = false;
+      std::string key;
+      std::string val;
+
+      if (*tok == 'O') ok = true;
+      else ok = false;
+
+      while ((tok = strtok(NULL, delims))) {
+        //printf("  tok={%s}\n", tok);
+        if (expect_key) {
+          size_t len = strlen(tok);
+          if (tok[len-1] == ':') {
+            tok[len-1] = '\0';
+            key = tok;
+            expect_key = false;
+          }
+        }
+        else {
+          val = tok;
+          //printf("    pair={%s},{%s}\n", key.c_str(), val.c_str());
+          // See http://www.cplusplus.com/reference/stl/map/insert/
+          fields_map.insert( key_val_t(key, val) );
+          expect_key = true;
+        }
+      }
+
+      found = true;
+      break;
+
+    }
   }
 
   outfile.close();
+
+  if (!found) ok = false;
+
+}
+
+/** Prints out key/value pairs gathered during latest get_output() call.
+ */
+void extCmd::print_fields() {
+
+  for (fields_iter_t it=fields_map.begin(); it!=fields_map.end(); it++) {
+    const char *key = (*it).first.c_str();
+    if (*key == '\0')
+      printf("<no_name>=%s\n", (*it).second.c_str());
+    else
+      printf("%s=%s\n", (*it).first.c_str(), (*it).second.c_str());
+
+  }
 
 }
 

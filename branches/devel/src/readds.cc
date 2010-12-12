@@ -139,6 +139,7 @@ int main(int argc, char *argv[]) {
     else {
       printf("+++ program terminated, output follows\n");
       prog.get_output();
+      prog.print_fields();
       break;
     }
     sleep(1);

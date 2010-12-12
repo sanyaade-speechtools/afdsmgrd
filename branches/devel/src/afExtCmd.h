@@ -26,7 +26,9 @@
 
 namespace af {
 
-  typedef std::map<std::string,std::string> field_map;
+  typedef std::map<std::string,std::string> fields_t;
+  typedef std::pair<std::string,std::string> key_val_t;
+  typedef fields_t::iterator fields_iter_t;
 
   class extCmd {
 
@@ -37,6 +39,8 @@ namespace af {
       bool is_running();
       pid_t get_pid() { return pid; };
       void get_output();
+      void print_fields();
+      bool is_ok() { return ok; };
 
       static void set_helper_path(const char *path);
       static void set_temp_path(const char *path);
@@ -46,6 +50,8 @@ namespace af {
       pid_t pid;
       unsigned long id;
       std::string cmd;
+      fields_t fields_map;
+      bool ok;
 
       static std::string helper_path;
       static std::string temp_path;
