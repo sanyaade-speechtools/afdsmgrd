@@ -133,19 +133,27 @@ int main(int argc, char *argv[]) {
   af::config cfg("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/devel/"
     "etc/xrootd/test.cf");
 
-  long test = -1;
-  cfg.bind_int("dsmgrd.sleepsecs", &test, 0, 100, true, 10);
-  cfg.read_file();
-  cfg.print_bindings();
-  printf("the value of the directive is %ld\n", test);
+  // Directives (bound)
+  long test_int = -1;
+  std::string test_text;
 
-  return 0;
+  cfg.bind_int("dsmgrd.sleepsecs", &test_int, 10, AF_INT_MIN, AF_INT_MAX);
+  cfg.bind_text("directive.of.text", &test_text, "default_value");
+  cfg.read_file();
+
+  printf("\n=== bindings ===\n");
+  cfg.print_bindings();
+  printf("\n");
 
   unsigned long iter = 0;
   while (true) {
-    printf("main loop: iteration #%lu\n", ++iter);
+    //printf("main loop: iteration #%lu\n", ++iter);
+    printf("the value of test_int is %ld\n", test_int);
+    printf("the value of test_text is %s\n", test_text.c_str());
     sleep(1);
   }
+
+  printf("alive...\n");
 
   return 0;
 }
