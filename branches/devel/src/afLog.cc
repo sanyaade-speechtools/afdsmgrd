@@ -142,8 +142,10 @@ void log::vsay(log_type_t type, log_level_t level, const char *fmt,
     case log_type_fatal:   pref = 'F'; break;
   }
 
-  snprintf(strbuf, AF_LOG_BUFSIZE, "%c-[20101212-101300] ", pref);
-  *out << strbuf;
+  time_t cur_time = time(NULL);
+  struct tm *cur_tm = localtime(&cur_time);
+  strftime(strbuf, AF_LOG_BUFSIZE, "-[%Y%m%d-%H%M%S] ", cur_tm);
+  *out << pref << strbuf;
 
   vsnprintf(strbuf, AF_LOG_BUFSIZE, fmt, vargs);
   *out << strbuf << std::endl;
