@@ -10,28 +10,66 @@
 
 using namespace af;
 
-/** Constructor of the directive binding for numeric type int.
+////////////////////////////////////////////////////////////////////////////////
+// Member functions for the af::cfg_binding class
+////////////////////////////////////////////////////////////////////////////////
+
+/** Allowed values for "true" and "false" booleans -- notice the empty string
+ *  inside the true list, meaning that the sole presence of the directive
+ *  without any value means that the boolean will be set to true.
  */
-cfg_binding::cfg_binding(long *_dest_ptr, long _def_val, long _min, long _max) :
-  dest(_dest_ptr) {
-  ctor_helper(_def_val, _min, _max);
-  type = dir_type_int;
+const char *cfg_binding::true_str[] = { "1", "true", "t", "yes", "y", "" };
+const char *cfg_binding::false_str[] = { "0", "false", "f", "no", "n" };
+size_t cfg_binding::true_str_len = sizeof(true_str)/sizeof(const char *);
+size_t cfg_binding::false_str_len = sizeof(false_str)/sizeof(const char *);
+
+/** Constructor of the directive binding for booleal type.
+ */
+cfg_binding::cfg_binding(bool *_dest_ptr, bool _def_val) :
+  dest(_dest_ptr), type(dir_type_bool) {
+  def_val.b = _def_val;
 }
 
-/** Constructor of the directive binding for text type.
+/** Constructor of the directive binding for numeric type "integer".
+ */
+cfg_binding::cfg_binding(long *_dest_ptr, long _def_val, long _min, long _max) :
+  dest(_dest_ptr), type(dir_type_int) {
+  ctor_helper(_def_val, _min, _max);
+}
+
+/** Constructor of the directive binding for numeric type "unsigned integer".
+ */
+cfg_binding::cfg_binding(unsigned long *_dest_ptr, unsigned long _def_val,
+  unsigned long _min, unsigned long _max) :
+  dest(_dest_ptr), type(dir_type_uint) {
+  ctor_helper(_def_val, _min, _max);
+}
+
+/** Constructor of the directive binding for numeric type "real".
+ */
+cfg_binding::cfg_binding(double *_dest_ptr, double _def_val, double _min,
+  double _max) : dest(_dest_ptr), type(dir_type_real) {
+  ctor_helper(_def_val, _min, _max);
+}
+
+/** Constructor of the directive binding for text type. Default value is copied
+ *  in an internal buffer (destroyed on exit).
  */
 cfg_binding::cfg_binding(std::string *_dest_ptr, const char *_def_val) :
-  dest(_dest_ptr) {
-  type = dir_type_text;
+  dest(_dest_ptr), type(dir_type_text) {
   def_val.s = new std::string(_def_val);
-  printf("cted, default value is {%s}\n", def_val.s->c_str());
-  //std::string *def_val_ptr = new std::string(_def_val);
 }
+
+/** Constructor of the directive binding for text type. Default value is copied
+ *  in an internal buffer.
+ */
+cfg_binding::cfg_binding(void (callback)(const char *val, void *args),
+  void *args) :
+  type(dir_type_custom), ext_callback(callback), callback_args(args) {}
 
 /** Destructor. It deletes the pointer to the string, if directive type is such.
  */
 cfg_binding::~cfg_binding() {
-  printf("dtor: %016lx\n", (unsigned long)dest);
   if (type == dir_type_text) delete def_val.s;
 }
 
@@ -41,6 +79,7 @@ template<typename T> void cfg_binding::ctor_helper(T _def_val, T _min, T _max) {
   *(T *)(&min) = _min;
   *(T *)(&max) = _max;
   *(T *)(&def_val) = _def_val;
+  touched = false;
 }
 
 /** Prints on stdout the directive type and the pointer.
@@ -56,62 +95,167 @@ void cfg_binding::print() const {
   printf(" ptr:0x%016lx\n", (unsigned long)dest);
 }
 
-/** Checks if given value is inside limits: in this case assigns it to the
- *  pointer; elsewhere the default value is assigned. This works for the Int
- *  type (other specializations follow).
+/** Assigns a value, parsing it to the appropriate directive type, and checking
+ *  the limits. If the value does not fit limits, it is set to the default
+ *  value. Default value is not checked agains limits: this is done on purpose
+ *  to permit error detection through the assignment of a default directive.
  */
-void cfg_binding::check_assign(long value) const {
-  if (inside_limits(value, min.i, max.i)) *(long *)(dest) = value;
-  else *(long *)(dest) = def_val.i;
+void cfg_binding::assign(const char *val_str) {
+
+  mixed_t val;
+  int i;
+
+  switch (type) {
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Boolean
+    ////////////////////////////////////////////////////////////////////////////
+    case dir_type_bool:
+
+      for (i=0; i<true_str_len; i++) {
+        if (strcmp(val_str, true_str[i]) == 0) {
+          i = -1;
+          val.b = true;
+          break;
+        }
+      }
+      if (i != -1) {
+        for (i=0; i<false_str_len; i++) {
+          if (strcmp(val_str, false_str[i]) == 0) {
+            i = -1;
+            val.b = false;
+            break;
+          }
+        }
+      }
+
+      *(bool *)dest = (i == -1) ? val.b : def_val.b;
+
+    break;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Integer
+    ////////////////////////////////////////////////////////////////////////////
+    case dir_type_int:
+
+      val.i = strtol(val_str, NULL, 0);
+      *(long *)dest = fits_limits(val.i, min.i, max.i) ? val.i : def_val.i;
+
+    break;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Unsigned integer
+    ////////////////////////////////////////////////////////////////////////////
+    case dir_type_uint:
+
+      val.u = strtoul(val_str, NULL, 0);
+      *(unsigned long *)dest = fits_limits(val.u, min.u, max.u) ?
+        val.u : def_val.u;
+
+    break;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Real
+    ////////////////////////////////////////////////////////////////////////////
+    case dir_type_real:
+
+      val.r = strtod(val_str, NULL);
+      *(double *)dest = fits_limits(val.r, min.r, max.r) ? val.r : def_val.r;
+
+    break;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Text
+    ////////////////////////////////////////////////////////////////////////////
+    case dir_type_text:
+
+      if (*(std::string *)dest != val_str) *(std::string *)dest = val_str;
+
+    break;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Custom type: invoke callback
+    ////////////////////////////////////////////////////////////////////////////
+    case dir_type_custom:
+
+      ext_callback(val_str, callback_args);
+
+    break;
+
+  }
 }
 
-/** Same, but for Uint type.
+/** Assigns the default value for the current binding. No limits check for the
+ *  default value is performed on purpose, to eventually permit error signalling
+ *  through the assignment of a default value.
  */
-void cfg_binding::check_assign(unsigned long value) const {
-  if (inside_limits(value, min.u, max.u)) *(unsigned long *)(dest) = value;
-  else *(unsigned long *)(dest) = def_val.u;
+void cfg_binding::assign_default() {
+
+  switch (type) {
+
+    case dir_type_bool:
+      *(bool *)dest = def_val.b;
+    break;
+
+    case dir_type_int:
+      *(long *)dest = def_val.i;
+    break;
+
+    case dir_type_uint:
+      *(unsigned long *)dest = def_val.u;
+    break;
+
+    case dir_type_real:
+      *(double *)dest = def_val.r;
+    break;
+
+    case dir_type_text:
+      *(std::string *)dest = def_val.s->c_str();
+    break;
+
+    case dir_type_custom:
+      ext_callback(NULL, callback_args);
+    break;
+
+  }
+
 }
 
-/** Same, but for Real type.
- */
-void cfg_binding::check_assign(double value) const {
-  if (inside_limits(value, min.d, max.d)) *(double *)(dest) = value;
-  else *(double *)(dest) = def_val.d;
-}
-
-/** Assign a string value.
- */
-void cfg_binding::assign(const char *value) const {
-  *(std::string *)(dest) = value;
-}
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+////////////////////////////////////////////////////////////////////////////////
+// Member functions for the af::config class
+////////////////////////////////////////////////////////////////////////////////
 
 /** Constructor.
  */
-config::config(const char *config_file) : file_name(config_file) {}
+config::config(const char *config_file) :
+  file_name(config_file), never_read_before(true) {
+  memset(&file_stat, 0, sizeof(struct stat));
+}
 
 /** Destructor. It destructs every pointer to cfg_binding: these directives are
  *  saved as pointers to avoid multiple and useless ctor/copy ctor/dtor calls
  *  when pushing in the list.
  */
 config::~config() {
-  printf("config dtor\n");
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
     delete (*it).second;
   directives.clear();
 }
 
-/** Prints fields (used for debug).
+/** Prints fields (used for debug and tests).
  */
 void config::print_bindings() {
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
     printf("%s: ", (*it).first.c_str());
     (*it).second->print();
   }
+}
+
+/** Binds a "boolean" directive to a pointer.
+ */
+void config::bind_bool(const char *dir_name, bool *dest_ptr, bool def_val) {
+  cfg_binding *binding = new cfg_binding(dest_ptr, def_val);
+  directives.insert( dir_t(dir_name, binding) );
 }
 
 /** Binds an "integer" directive to a pointer.
@@ -122,11 +266,38 @@ void config::bind_int(const char *dir_name, long *dest_ptr, long def_val,
   directives.insert( dir_t(dir_name, binding) );
 }
 
+/** Binds an "unsigned integer" directive to a pointer.
+ */
+void config::bind_uint(const char *dir_name, unsigned long *dest_ptr,
+  unsigned long def_val, unsigned long min_eq, unsigned long max_eq) {
+  cfg_binding *binding = new cfg_binding(dest_ptr, def_val, min_eq, max_eq);
+  directives.insert( dir_t(dir_name, binding) );
+}
+
+/** Binds a "real" directive to a pointer.
+ */
+void config::bind_real(const char *dir_name, double *dest_ptr, double def_val,
+  double min_eq, double max_eq) {
+  cfg_binding *binding = new cfg_binding(dest_ptr, def_val, min_eq, max_eq);
+  directives.insert( dir_t(dir_name, binding) );
+}
+
 /** Binds a "text" directive to a STL string pointer.
  */
 void config::bind_text(const char *dir_name, std::string *dest_ptr,
   const char *def_val) {
   cfg_binding *binding = new cfg_binding(dest_ptr, def_val);
+  directives.insert( dir_t(dir_name, binding) );
+}
+
+/** Binds a generic directive whose control (limits check, assignment, pointer
+ *  validity, whatever) is taken by a custom callback function. This callback
+ *  function must support a NULL val pointer meaning that no such directive
+ *  exists in configuration file, and the default value should be used instead.
+ */
+void config::bind_callback(const char *dir_name,
+  void (callback)(const char *val, void *args), void *args) {
+  cfg_binding *binding = new cfg_binding(callback, args);
   directives.insert( dir_t(dir_name, binding) );
 }
 
@@ -161,7 +332,16 @@ void config::read_file() {
 
   std::ifstream file(file_name.c_str());
 
-  if (!file) throw std::runtime_error("Can't read configuration file");
+  if (!file) return;
+  else {
+    if (stat(file_name.c_str(), &file_stat) != 0) {
+      // File disappeared after opening
+      file.close();
+      return;
+    }
+  }
+
+  never_read_before = false;
 
   char *dir;
   char *val;
@@ -181,34 +361,62 @@ void config::read_file() {
     conf_dirs_iter_t it = directives.find(dir);
     if (it == directives.end()) continue;  // directive does not exist
 
-    const cfg_binding &binding = *((*it).second);
-
+    cfg_binding &binding = *((*it).second);
     val = rtrim(ltrim(val));
-    printf("--{%s}-{%s}-{0x%016lx}-\n", dir, val,
-      (unsigned long)binding.get_dest());
 
-    switch (binding.get_type()) {
-
-      case dir_type_int:
-        binding.check_assign( strtol(val, NULL, 0) );
-      break;
-
-      case dir_type_uint:
-        binding.check_assign( strtoul(val, NULL, 0) );
-      break;
-
-      case dir_type_real:
-        binding.check_assign( strtod(val, NULL) );
-      break;
-
-      case dir_type_text:
-        binding.assign(val);
-      break;
-
-    }
+    binding.assign(val);
+    binding.touch();
 
   }
 
   file.close();
 
+  // At this point, bound and unassigned directives should be defaulted: see
+  // the untouched directives
+
+  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
+   cfg_binding &binding = *((*it).second);
+   if (!binding.is_touched()) binding.assign_default();
+   else binding.touch(false);
+  }
+
+}
+
+/** Checks if a file has been updated; in such a case, re-read it. If file is
+ *  not readable, returns false and does not modify current variables. If file
+ *  is readable it returns true if it has been modified since last access, false
+ *  elsewhere.
+ */
+bool config::update() {
+
+  struct stat upd_file_stat;
+  memset(&upd_file_stat, 0, sizeof(struct stat));
+
+  if (stat(file_name.c_str(), &upd_file_stat) != 0) {
+    if (never_read_before) {
+      never_read_before = false;
+      default_all();
+      return true;
+    }
+    else return false;
+  }
+
+  bool modified = false;
+
+  if ((upd_file_stat.st_size != file_stat.st_size) ||
+    (upd_file_stat.st_mtime != file_stat.st_mtime)) {
+    modified = true;
+    read_file();
+  }
+
+  return modified;
+}
+
+/** Assigns default values to every directive.
+ */
+// TODO: Support NULL pointer in callback to signal missing directive (and
+//       trigger default value management).
+void config::default_all() {
+  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
+    (*it).second->assign_default();
 }

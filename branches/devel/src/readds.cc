@@ -18,6 +18,7 @@
 #include "afOpQueue.h"
 #include "afExtCmd.h"
 #include "afConfig.h"
+#include "afLog.h"
 
 /** Waits for user input (debug)
  */
@@ -28,6 +29,17 @@ void wait_user() {
   std::string fuffa;
   std::cin >> fuffa;
 #endif
+}
+
+bool quit_requested = false;
+
+//af::log stdlog
+
+/** Manages the stop signal (kill -15)
+ */
+void signal_quit_callback(int signum) {
+  printf("quit requested with signal %d\n", signum);
+  quit_requested = true;
 }
 
 /** Returns a string containing the base path (without trailing slashes) of the
@@ -61,6 +73,83 @@ char *exec_path(const char *cmd) {
   }
 
   return path;
+}
+
+/** A callback function to test the bind_callback() feature of af::config.
+ */
+void directive_callback(const char *val, void *args) {
+  void **array = (void **)args;
+
+  if (val == NULL) {
+    printf("\033[1;31mcallback for default value called\033[m\n");
+  }
+  else {
+    printf("\033[1;31mdirective callback called:\033[m directive is {%s}, "
+      "while the meaning of life the universe and everything remains %ld "
+      "and a generic text to remember is \"%s\"\n",
+      val, *(long *)array[0], (const char *)array[1]);
+  }
+}
+
+/** Test log facility.
+ */
+void test_log(unsigned long max_iters = 10) {
+
+  //af::log log(std::cout, af::log_level_normal);
+  af::log log("logfile", af::log_level_normal);
+  unsigned long iter = 0;
+
+  while (true) {
+    af::log::info(af::log_level_normal, "Iteration #%lu", iter++);
+    sleep(1);
+    if ((quit_requested) || (iter == max_iters)) break;
+  }
+
+}
+
+/** Test configuration file facility.
+ */
+void test_config(unsigned int iter_limits = 20) {
+
+  // Configuration file management
+  af::config cfg("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/devel/"
+    "etc/xrootd/test.cf");
+
+  // Directives (bound)
+  long test_int = -1;
+  std::string test_text;
+  double test_real;
+  bool test_bool;
+
+  long tmoltuae = 42;
+  const char *some_text = "don't panic";
+  void *args_to_cbk[] = { &tmoltuae, (void *)some_text };
+
+  cfg.bind_int("signed_integer.directive", &test_int, 10, AF_INT_MIN, 100);
+  cfg.bind_text("directive.of.text", &test_text, "default_value");
+  cfg.bind_real("real_directive", &test_real, 666, AF_REAL_MIN, AF_REAL_MAX);
+  cfg.bind_callback("directive_callback", directive_callback, args_to_cbk);
+  cfg.bind_bool("mybool", &test_bool, false);
+
+  printf("\n*** registered bindings ***\n");
+  cfg.print_bindings();
+
+  unsigned long iter = 0;
+  while (true) {
+    printf("main loop: iteration #%lu\n", ++iter);
+    if (cfg.update()) {
+      printf("\n*** config file modified ***\n");
+      printf("the value of test_int is \033[1;32m%ld\033[m\n", test_int);
+      printf("the value of test_text is \033[1;32m%s\033[m\n",
+        test_text.c_str());
+      printf("the value of test_real is \033[1;32m%lf\033[m\n", test_real);
+      printf("the value of test_bool is \033[1;32m%s\033[m\n",
+        test_bool ? "<true>" : "<false>");
+    }
+    sleep(1);
+    if ((quit_requested) || (iter == iter_limits)) break;
+  }
+
 }
 
 /** Entry point.
@@ -116,9 +205,8 @@ int main(int argc, char *argv[]) {
   //af::extCmd::helper_path(argv[0]);
 
   // Find path of current executable (where to find helper executables)
-  /*
   // This piece of code might be useful, do not remove it, leave it commented.
-  {
+  /*{
     char *path = exec_path(argv[0]);
     const char *helper_exec = "/afdsmgrd-exec-wrapper";
     path = (char *)realloc(path, strlen(path)+strlen(helper_exec)+1);
@@ -126,34 +214,15 @@ int main(int argc, char *argv[]) {
     af::extCmd::set_helper_path(path);
     af::extCmd::set_temp_path("/tmp/afdsmgrd");
     free(path);
-  }
-  */
+  }*/
 
-  // Configuration file management
-  af::config cfg("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/devel/"
-    "etc/xrootd/test.cf");
+  signal(SIGTERM, signal_quit_callback);
+  signal(SIGINT, signal_quit_callback);
 
-  // Directives (bound)
-  long test_int = -1;
-  std::string test_text;
+  //test_config();
+  test_log();
 
-  cfg.bind_int("dsmgrd.sleepsecs", &test_int, 10, AF_INT_MIN, AF_INT_MAX);
-  cfg.bind_text("directive.of.text", &test_text, "default_value");
-  cfg.read_file();
-
-  printf("\n=== bindings ===\n");
-  cfg.print_bindings();
-  printf("\n");
-
-  unsigned long iter = 0;
-  while (true) {
-    //printf("main loop: iteration #%lu\n", ++iter);
-    printf("the value of test_int is %ld\n", test_int);
-    printf("the value of test_text is %s\n", test_text.c_str());
-    sleep(1);
-  }
-
-  printf("alive...\n");
+  printf("goodbye!\n");
 
   return 0;
 }
