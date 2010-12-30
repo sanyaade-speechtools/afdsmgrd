@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Renews the AliEn authentication token in background.
+# Continuously renews the AliEn authentication token in background.
 #
 # by Dario Berzano <dario.berzano@gmail.com>
 #
@@ -45,8 +45,6 @@ function TermHandler() {
 # The main function
 function Main() {
 
-  echo $$ > "$PIDFILE"
-
   trap TermHandler SIGINT
   trap TermHandler SIGTERM
 
@@ -57,20 +55,27 @@ function Main() {
         shift
       ;;
       -l)
-        LOGFILE="$2"
+        LOGFILE="$2" # overrides aflib
         shift
       ;;
       -s)
         RENEW_SLEEP_SEC="$2"
         shift
       ;;
+      -u)
+        ALIEN_UNAME="$2" #overrides aflib
+        shift
+      ;;
     esac    
     shift
   done
 
+  echo $$ > "$PIDFILE"
+
   prn -i "AliEn authentication daemon launched"
   prn -i "My pid is $$ (saved on $PIDFILE)"
   prn -i "Checking authentication renewal every $RENEW_SLEEP_SEC seconds"
+  prn -i "AliEn user to authenticate: $ALIEN_UNAME"
 
   # Check if all utilities are in PATH
   Init

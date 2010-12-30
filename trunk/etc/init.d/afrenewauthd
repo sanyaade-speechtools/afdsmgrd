@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #
 # Start (and daemonize) and stop the afrenewauth daemon for AliEn.
@@ -34,65 +34,152 @@
 #              AliEn token and Grid proxy
 ### END INIT INFO
 
-# Source function library
-if [ -r /lib/lsb/init-functions ]; then
-  . /lib/lsb/init-functions
-elif [ -r /etc/init.d/functions ]; then
-  . /etc/init.d/functions
-fi
+#
+# External libraries and global variables
+#
+
+# Basename of the script
+export BASENAME=`basename "$0"`
 
 # Get the configuration variables
-if [ -r /etc/sysconfig/afrenewauthd ]; then
-  . /etc/sysconfig/afrenewauthd
+if [ -r "/etc/sysconfig/$BASENAME" ]; then
+  source "/etc/sysconfig/$BASENAME"
+elif [ -r "/etc/default/$BASENAME" ]; then
+  source "/etc/default/$BASENAME"
 fi
 
-[ -x $AFRENEWAUTHD_LOGFILE ] || exit 0
+# Full path of program
+export PROG="$AFRENEWAUTHD_PROG"
 
-RETVAL=0
-PID=$(cat "$AFRENEWAUTHD_PIDFILE")
-PROG=afrenewauthd
+# Silently fails if program is missing (for spurious init.d scripts)
+[ -x "$PROG" ] || exit 0
 
-start() {
-  echo -n "Starting $PROG..."
-  if [ ! "$PID" -eq "" ]; then
-    kill -0 > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      echo "done (already running)"
-      return 0
-    fi
-  fi
+# Basename of program
+export BASEPROG=`basename "$PROG"`
 
-  # Creates logfile writable by daemon and backups the previous one
-  rm -f "$AFRENEWAUTHD_LOGFILE".0
-  mv "$AFRENEWAUTHD_LOGFILE" "$AFRENEWAUTHD_LOGFILE".0
-  touch "$AFRENEWAUTHD_LOGFILE"
-  chown $AFRENEWAUTHD_USER "$AFRENEWAUTHD_LOGFILE"
+# File that holds the PID
+export PIDFILE="$AFRENEWAUTHD_PIDFILE"
 
-  # Launches the daemon
-  cd /tmp
-  nohup "$AFRENEWAUTHD_PROG" -p "$AFRENEWAUTHD_PIDFILE" -l "$AFRENEWAUTHD_LOGFILE" -s $AFRENEWAUTHD_RENEW_SLEEP_SEC &
-  RETVAL=$?
+# Log file
+export LOGFILE="$AFRENEWAUTHD_LOGFILE"
 
-  [ $RETVAL -eq 0 ] && echo "done" || echo "failed"
-  return $RETVAL
+# Daemon user
+export SUSER="$AFRENEWAUTHD_USER"
+
+#
+# Functions
+#
+
+# Auxiliary messaging function: normal echo
+function Msg() {
+  echo "$@"
 }
 
-stop() {
-  echo -n "Stopping $PROG..."
-  if [ ! "$PID" -eq "" ]; then
-    kill -15 "$PID"
-    RETVAL=$?
-    if [ $RETVAL -eq 0 ]; then
-      echo "done"
-      rm -f "$AFRENEWAUTHD_PIDFILE"
-    else
-      echo "failed"
-    fi
-  else
-    echo "failed (not running)"
-  fi
+# Auxiliary messaging function: begin of operation
+function MsgBegin() {
+  echo -n "$@: "
+}
 
-  return $RETVAL
+# Auxiliary messaging function: end of operation
+function MsgEnd() {
+  local STATUS
+  [ "$1" == 0 ] && STATUS="\033[1;32mOK\033[m" || STATUS="\033[1;31mfailed\033[m"
+  shift
+  if [ "$*" != "" ]; then
+    echo -e "$STATUS ($@)"
+  else
+    echo -e "$STATUS"
+  fi
+}
+
+# Echoes the PID of the program if running; empty string otherwise
+function GetPid() {
+  local PID=`cat "$PIDFILE" 2> /dev/null`
+  kill -0 "$PID" 2> /dev/null && echo $PID
+}
+
+# Tries to stop, then kills the specified PID
+function StopKill() {
+  local PID="$1"
+  kill -15 "$PID" 2> /dev/null
+  for ((I=0; $I<3; I++)); do
+    sleep 1
+    kill -0 "$PID" 2> /dev/null
+    [ $? != 0 ] && return 0
+  done
+  kill -9 "$PID" 2> /dev/null
+  sleep 1
+  kill -0 "$PID" 2> /dev/null && return 1 || return 0
+}
+
+# This is most likely the only function to edit: it contains the custom
+# commands to effectively launch the daemon
+function LaunchDaemon() {
+
+  local AUX RETVAL
+
+  rm -f "$LOGFILE".0
+  mv "$LOGFILE" "$LOGFILE".0
+  touch "$LOGFILE" "$PIDFILE"
+  chown "$SUSER" "$LOGFILE"
+  chown "$SUSER" "$PIDFILE"
+
+  AUX="/tmp/$BASENAME-launch"
+
+  echo "#!/bin/bash" > "$AUX"
+  echo "export PATH=$AFRENEWAUTHD_PATH:\$PATH" >> "$AUX"
+  echo "export LD_LIBRARY_PATH=$AFRENEWAUTHD_LIBS:\$LD_LIBRARY_PATH" >> "$AUX"
+  echo "cd /tmp" >> "$AUX"
+  echo nohup \"$PROG\" -l \"$LOGFILE\" -p \"$PIDFILE\" \
+    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME '&' >> "$AUX"
+
+  chmod 0777 "$AUX"
+
+  su "$SUSER" -c "$AUX" > /dev/null 2>&1
+  RETVAL=$?
+
+  rm -f "$AUX"
+
+  return $?
+}
+
+# Starts the daemon (if not running)
+function Start() {
+  local PID
+  MsgBegin "Starting $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    LaunchDaemon
+    MsgEnd $?
+  else
+    MsgEnd 1 "already running with PID=$PID"
+  fi
+}
+
+# Stops the daemon
+function Stop() {
+  local PID RETVAL
+  MsgBegin "Stopping $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    MsgEnd 0 "not running"
+  else
+    StopKill $PID
+    RETVAL=$?
+    [ $RETVAL == 0 ] && rm -f "$PIDFILE"
+    MsgEnd $RETVAL
+  fi
+}
+
+# Status of the daemon
+function Status() {
+  local PID
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    Msg "$BASEPROG is not running"
+  else
+    Msg "$BASEPROG is running with PID=$PID"
+  fi
 }
 
 #
@@ -101,24 +188,20 @@ stop() {
 
 case "$1" in
   start)
-    start
+    Start
   ;;
   stop)
-    stop
+    Stop
   ;;
   status)
-    status afrenewauthd
-    RETVAL=$?
+    Status
   ;;
-  restart|reload)
-    # Restarts the daemon; results in a start if daemon wasn't running
-    stop
-    start
+  restart|condrestart|reload)
+    Stop
+    Start
   ;;
   *)
-     echo  "Usage: $0 {start|stop|status|restart|reload}"
+     echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status}"
      exit 1
   ;;
 esac
-
-exit $RETVAL

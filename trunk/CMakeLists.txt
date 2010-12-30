@@ -78,10 +78,26 @@ configure_file (
   "${PROJECT_BINARY_DIR}/etc/sysconfig/afdsmgrd"
 )
 
+configure_file (
+  "${PROJECT_SOURCE_DIR}/etc/sysconfig/afrenewauthd.in"
+  "${PROJECT_BINARY_DIR}/etc/sysconfig/afrenewauthd"
+)
+
 #
 # Install directives for non-src files
 #
 
+# Sample configuration files
 install (FILES etc/xrootd/afdsmgrd.cf.example etc/xrootd/single_dataset_src.cf.example DESTINATION etc/xrootd)
+
+# Default launch parameters (sysconfig)
 install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd etc/sysconfig)
+install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afrenewauthd etc/sysconfig)
+
+# Launch scripts (init.d)
 install (FILES etc/init.d/afdsmgrd DESTINATION etc/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (FILES etc/init.d/afrenewauthd DESTINATION etc/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+
+# Scripts
+install (FILES scripts/afrenewauth DESTINATION bin PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (FILES scripts/aflib DESTINATION bin PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
