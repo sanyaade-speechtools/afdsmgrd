@@ -27,8 +27,8 @@
 # Provides: afrenewauthd
 # Default-Start: 2 3 4 5
 # Default-Stop: 0 1 6
-# Required-Start: $local_fs
-# Required-Stop: $local_fs
+# Required-Start: $local_fs $network
+# Required-Stop: $local_fs $network
 # Short-Description: System-wide authentication keeper for AliEn
 # Description: afrenewauth is a daemonized script that automatically renews the
 #              AliEn token and Grid proxy
@@ -39,7 +39,9 @@
 #
 
 # Basename of the script
-export BASENAME=`basename "$0"`
+export BASENAME=`readlink "$0"`
+[ "$BASENAME" == "" ] && BASENAME="$0"
+BASENAME=`basename "$BASENAME"`
 
 # Get the configuration variables
 if [ -r "/etc/sysconfig/$BASENAME" ]; then
@@ -145,15 +147,18 @@ function LaunchDaemon() {
 
 # Starts the daemon (if not running)
 function Start() {
-  local PID
+  local PID RETVAL
   MsgBegin "Starting $BASEPROG"
   PID=`GetPid`
   if [ "$PID" == "" ]; then
     LaunchDaemon
-    MsgEnd $?
+    RETVAL=$?
+    MsgEnd $RETVAL
   else
     MsgEnd 1 "already running with PID=$PID"
+    RETVAL=1
   fi
+  return $RETVAL
 }
 
 # Stops the daemon
@@ -163,12 +168,14 @@ function Stop() {
   PID=`GetPid`
   if [ "$PID" == "" ]; then
     MsgEnd 0 "not running"
+    RETVAL=0
   else
     StopKill $PID
     RETVAL=$?
     [ $RETVAL == 0 ] && rm -f "$PIDFILE"
     MsgEnd $RETVAL
   fi
+  return $RETVAL
 }
 
 # Status of the daemon
@@ -189,19 +196,22 @@ function Status() {
 case "$1" in
   start)
     Start
+    exit $?
   ;;
   stop)
     Stop
+    exit $?
   ;;
   status)
     Status
+    exit 0
   ;;
   restart|condrestart|reload)
-    Stop
-    Start
+    Stop && Start
+    exit $?
   ;;
   *)
-     echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status}"
-     exit 1
+    echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status}"
+    exit 1
   ;;
 esac
