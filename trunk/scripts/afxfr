@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #
-# Transfer files using AliEn to the destination pool.
+# afxfr -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# Part of afdsmgrd -- http://afdsmgrd.googlecode.com/
+#
+# Transfer files using AliEn to the destination pool.
 #
 # This script is intended to be run by another daemon, of which it inherits the
 # full environment. However, it is written to be self-contained, so there's no

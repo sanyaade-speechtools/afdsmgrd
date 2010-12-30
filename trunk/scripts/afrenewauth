@@ -1,25 +1,30 @@
 #!/bin/bash
 
 #
-# Continuously renews the AliEn authentication token in background.
+# afrenewauth -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# Part of afdsmgrd -- http://afdsmgrd.googlecode.com/
+#
+# Continuously renews the AliEn authentication token and Grid proxy.
 #
 # Usage:
 #
-#   afrenewauth [-p <pidfile>] [-l <logfile>] [-s <renew_every_sec>]
+#   afrenewauth \
+#     [-p <pidfile>] \
+#     [-l <logfile>] \
+#     [-s <check_renew_every_sec>] \
+#     [-u <alien_user>]
 #
-# To launch as a daemon:
+# If pidfile is not provided, it defaults to /tmp/afrenewauth.pid. If logfile
+# is not provided, output is on stdout.
 #
-#   nohup afrenewauth [-p <pidfile>] [-l <logfile>] [-s <renew_every_sec>] &
+
+#
+# External libraries and global variables
 #
 
 # Load library functions
 source `dirname $0`/aflib
-
-#
-# Global variables
-#
 
 # Don't be quiet!
 export QUIET=0

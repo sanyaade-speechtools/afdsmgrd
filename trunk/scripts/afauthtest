@@ -1,9 +1,12 @@
 #!/bin/bash
 
 #
-# Authentication test: prints the status of proxy and token.
+# afauthtest -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# Part of afdsmgrd -- http://afdsmgrd.googlecode.com/
+#
+# Tests if current proxy and AliEn token need renewal without modifying
+# anything.
 #
 
 # Load library functions

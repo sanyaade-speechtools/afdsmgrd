@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #
-# Library functions for the MSS interface between xrootd and AliEn.
+# aflib -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# Part of afdsmgrd -- http://afdsmgrd.googlecode.com/
+#
+# Library functions for the MSS interface between xrootd and AliEn.
 #
 # === EXIT CODES ===
 #

@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #
-# MSS interface between xrootd and AliEn.
+# afmss -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# Part of afdsmgrd -- http://afdsmgrd.googlecode.com/
+#
+# MSS interface between xrootd and AliEn.
 #
 # === EXIT CODES ===
 #
