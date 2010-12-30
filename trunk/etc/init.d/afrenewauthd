@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #
-# Start (and daemonize) and stop the afrenewauth daemon for AliEn.
+# /etc/init.d/afrenewauthd -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# Start (daemonize) and stop the afrenewauth utility for AliEn.
 #
 # This script is conform to the LSB specifications and it is compatible with
 # the chkconfig custom header format.
