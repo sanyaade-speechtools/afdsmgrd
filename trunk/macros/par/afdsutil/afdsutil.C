@@ -293,11 +293,17 @@ Bool_t _afPrependRedirUrlFile(TFileInfo *fi) {
 }
 
 /** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
- *  output is not suppressed.
+ *  output is not suppressed. If launchRemotely is kTRUE (default) the command
+ *  is launched on the remote PROOF master rather than invoking xrd locally.
+ *  This feature is useful to allow AAF administrators to block remote access
+ *  to xrootd port 1094, but still give rights to the users to delete files.
+ *  Enabling users to delete files on the remote cluster implies that the AAF
+ *  users are conscious of "fair use" policies.
  *
  *  Returns kTRUE on success, kFALSE otherwise.
  */
-Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
+Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE,
+  Bool_t launchRemotely = kTRUE) {
 
   TString cmd = Form("xrd %s:%d rm %s", url->GetHost(), url->GetPort(),
     url->GetFile());
@@ -306,9 +312,17 @@ Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
     cmd.Append(" > /dev/null 2>&1");
   }
 
-  Printf(">> Unstaging: %s", cmd.Data());
+  Printf(">> Unstaging %s: %s", (launchRemotely ? "remotely" : "locally"),
+    cmd.Data());
 
-  gSystem->Exec( cmd );
+  if (launchRemotely) {
+    gProof->Exec( Form("if (gProofServ->IsMaster()) "
+      "gSystem->Exec(\"/pool/PROOF-AAF/xrootd*/bin/%s\");",
+      cmd.Data()), kTRUE);
+  }
+  else {
+    gSystem->Exec( cmd );
+  }
 
   return kTRUE;
 }
@@ -818,6 +832,10 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
         "status");
       checkStaged = kFALSE;
     }
+    else {
+      Printf("Warning: real staging information may have been cached by xrootd "
+      "and may not reflect the actual file status");
+    }
   }
 
   TIter i(fc->GetList());
@@ -1310,9 +1328,15 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     }
   }
 
+  Bool_t unstageRemotely;
+
   TDataSetManagerFile *mgr = NULL;
   if (!_afProofMode()) {
     mgr = _afCreateDsMgr();
+    unstageRemotely = kFALSE;
+  }
+  else {
+    unstageRemotely = kTRUE;
   }
 
   TList *listOfDs = _afGetListOfDs(dsMask);
@@ -1364,7 +1388,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
             fi->ResetBit(TFileInfo::kStaged);
           }
 
-          if ((aUnstage) && (_afUnstage(url, kTRUE))) {
+          if ((aUnstage) && (_afUnstage(url, kTRUE, unstageRemotely))) {
             fi->ResetBit(TFileInfo::kStaged);
           }
 
