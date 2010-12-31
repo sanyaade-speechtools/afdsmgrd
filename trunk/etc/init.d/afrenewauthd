@@ -6,7 +6,8 @@
 # Start (daemonize) and stop the afrenewauth utility for AliEn.
 #
 # This script is conform to the LSB specifications and it is compatible with
-# the chkconfig custom header format.
+# the chkconfig custom header format. It can also be run by an unprivileged
+# user and without being installed system-wide.
 #
 
 #
@@ -43,12 +44,22 @@ export BASENAME=`readlink "$0"`
 [ "$BASENAME" == "" ] && BASENAME="$0"
 BASENAME=`basename "$BASENAME"`
 
-# Get the configuration variables
-if [ -r "/etc/sysconfig/$BASENAME" ]; then
-  source "/etc/sysconfig/$BASENAME"
-elif [ -r "/etc/default/$BASENAME" ]; then
-  source "/etc/default/$BASENAME"
-fi
+# Get the configuration variables from the first configuration file found
+declare -a CONF_FILES
+CONF_FILES=(
+  "/etc/sysconfig/$BASENAME" \
+  "/etc/default/$BASENAME" \
+  "$HOME/.$BASENAME.cf"
+)
+
+for CF in "${CONF_FILES[@]}"; do
+  if [ -r "$CF" ]; then
+    source "$CF"
+    break
+  fi
+done
+
+unset CF
 
 # Full path of program
 export PROG="$AFRENEWAUTHD_PROG"
@@ -121,7 +132,7 @@ function LaunchDaemon() {
   local AUX RETVAL
 
   rm -f "$LOGFILE".0
-  mv "$LOGFILE" "$LOGFILE".0
+  mv "$LOGFILE" "$LOGFILE".0 2> /dev/null
   touch "$LOGFILE" "$PIDFILE"
   chown "$SUSER" "$LOGFILE"
   chown "$SUSER" "$PIDFILE"
@@ -133,12 +144,17 @@ function LaunchDaemon() {
   echo "export LD_LIBRARY_PATH=$AFRENEWAUTHD_LIBS:\$LD_LIBRARY_PATH" >> "$AUX"
   echo "cd /tmp" >> "$AUX"
   echo nohup \"$PROG\" -l \"$LOGFILE\" -p \"$PIDFILE\" \
-    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME '&' >> "$AUX"
+    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME '> /dev/null 2>&1 &' >> "$AUX"
 
   chmod 0777 "$AUX"
 
-  su "$SUSER" -c "$AUX" > /dev/null 2>&1
-  RETVAL=$?
+  if [ "$USER" != "root" ]; then
+    "$AUX"
+    RETVAL=$?
+  else
+    su "$SUSER" -c "$AUX" > /dev/null 2>&1
+    RETVAL=$?
+  fi
 
   rm -f "$AUX"
 
@@ -178,14 +194,25 @@ function Stop() {
   return $RETVAL
 }
 
-# Status of the daemon
+# Status of the daemon; returns 0 if running, nonzero otherwise
 function Status() {
   local PID
   PID=`GetPid`
   if [ "$PID" == "" ]; then
     Msg "$BASEPROG is not running"
+    return 1
   else
     Msg "$BASEPROG is running with PID=$PID"
+    return 0
+  fi
+}
+
+# Last lines of log
+function ShowLog() {
+  Status
+  if [ $? == 0 ]; then
+    echo "Showing last lines of $LOGFILE with tail -f (abort with Ctrl+C):"
+    tail -f "$LOGFILE"
   fi
 }
 
@@ -206,12 +233,16 @@ case "$1" in
     Status
     exit 0
   ;;
+  log)
+    ShowLog
+    exit 0
+  ;;
   restart|condrestart|reload)
     Stop && Start
     exit $?
   ;;
   *)
-    echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status}"
+    echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status|log}"
     exit 1
   ;;
 esac
