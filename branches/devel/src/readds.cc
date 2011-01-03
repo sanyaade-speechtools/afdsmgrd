@@ -91,6 +91,46 @@ void directive_callback(const char *val, void *args) {
   }
 }
 
+/** Test external command facility.
+ */
+void test_extcmd(const char *argv0) {
+
+  // Find path of current executable (where to find helper executables)
+  // This piece of code might be useful, do not remove it, leave it commented.
+  {
+    char *path = exec_path(argv0);
+    const char *helper_exec = "/afdsmgrd-exec-wrapper";
+    path = (char *)realloc(path, strlen(path)+strlen(helper_exec)+1);
+    strcat(path, helper_exec);
+    af::extCmd::set_helper_path(path);
+    af::extCmd::set_temp_path("/tmp/afdsmgrd");
+    free(path);
+  }
+
+  //af::extCmd my_cmd("../../src/donothing.sh 1");
+  af::extCmd my_cmd("xrdstagetool -d 0 root://localhost//alien/alice/cern.ch/user/d/dberzano/MeoniPt/AliESDs-00175.root");
+  my_cmd.run();
+
+  std::cout << "Downloading file..." << std::flush;
+
+  while (my_cmd.is_running()) {
+    std::cout << '.' << std::flush;
+    usleep(500000);
+  }
+
+  my_cmd.get_output();
+
+  if (my_cmd.is_ok()) {
+    unsigned long size_bytes = my_cmd.get_field_uint("Size");
+    const char *file_url = my_cmd.get_field_text("");
+    printf("done (%ld bytes big)\n", size_bytes);
+    printf("Returned file name: %s\n", file_url);
+  }
+  else printf("\nDownload failed\n");
+
+}
+
+
 /** Test log facility.
  */
 void test_log(unsigned long max_iters = 10) {
@@ -152,13 +192,13 @@ void test_config(unsigned int iter_limits = 20) {
 
 }
 
-/** Entry point.
+/** Test the operational queue facility.
  */
-int main(int argc, char *argv[]) {
+void test_queue() {
 
-  /*unsigned int n_entries = 20;
+  unsigned int n_entries = 20;
 
-  af::opQueue opq(2);
+  af::opQueue opq(2);  // after 2 errors mark as failed
 
   printf("\n=== INSERT ===\n");
 
@@ -173,15 +213,18 @@ int main(int argc, char *argv[]) {
   for (unsigned int i=1; i<=3; i++) {
     opq.failed("root://www.google.it/num000000007/root_archive.zip#AliESDs.root");
     opq.failed("root://www.google.it/num000000011/root_archive.zip#AliESDs.root");
-    printf("\n=== FAILED_%u ===\n", i);
-    opq.flush();
+    printf("\n=== AFTER_FAILED_%u ===\n", i);
     opq.dump();
-  }*/
+    opq.flush();
+  }
 
-  // Delete finished/failed
-  /*n = opq.flush();
-  printf("\n=== FLUSH (%d) ===\n", n);
-  opq.dump();*/
+  // Select a random item to see its status; beware that get_entry returns a
+  // pointer to an internal static buffer!
+  const af::queueEntry *ent = opq.get_entry(
+    "root://www.google.it/num000000004/root_archive.zip#AliESDs.root");
+
+  if (ent) ent->print();
+  else printf("Entry not found.\n");
 
   // Query a caso
   /*try {
@@ -201,28 +244,21 @@ int main(int argc, char *argv[]) {
 
   if (qe) qe->print();
   else printf("entry not found\n");*/
+}
 
-  //af::extCmd::helper_path(argv[0]);
-
-  // Find path of current executable (where to find helper executables)
-  // This piece of code might be useful, do not remove it, leave it commented.
-  /*{
-    char *path = exec_path(argv[0]);
-    const char *helper_exec = "/afdsmgrd-exec-wrapper";
-    path = (char *)realloc(path, strlen(path)+strlen(helper_exec)+1);
-    strcat(path, helper_exec);
-    af::extCmd::set_helper_path(path);
-    af::extCmd::set_temp_path("/tmp/afdsmgrd");
-    free(path);
-  }*/
+/** Entry point.
+ */
+int main(int argc, char *argv[]) {
 
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
+  test_queue();
+  //test_extcmd(argv[0]);
   //test_config();
-  test_log();
+  //test_log();
 
-  printf("goodbye!\n");
+  printf("!!! goodbye !!!\n");
 
   return 0;
 }

@@ -76,7 +76,7 @@ bool extCmd::run() {
     if ((stat(strbuf, &pidfile_info) == 0) && (pidfile_info.st_size != 0))
       break;
   }
-  std::ifstream pidfile(strbuf);
+  std::ifstream pidfile(strbuf);  // TODO: throw except if pidf not readable
   pidfile >> pid;
   pidfile.close();
 
@@ -184,7 +184,7 @@ double extCmd::get_field_real(const char *key) {
 }
 
 /** Gets a field from output as a string. A NULL pointer is returned if field
- *  does not exist. The returned pointer belongs to the class.
+ *  does not exist. The returned pointer belongs to the class instance.
  */
 const char *extCmd::get_field_text(const char *key) {
   fields_iter_t keyval = fields_map.find(key);

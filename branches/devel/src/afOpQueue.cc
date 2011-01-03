@@ -10,6 +10,99 @@
 
 using namespace af;
 
+////////////////////////////////////////////////////////////////////////////////
+// Member functions for the af::queueEntry class
+////////////////////////////////////////////////////////////////////////////////
+
+/** Default constructor. Constructs an empty instance of this class which does
+ *  not own its content.
+ */
+queueEntry::queueEntry() : main_url(NULL), endp_url(NULL), tree_name(NULL),
+  n_events(0L), n_failures(0), size_bytes(0L), status(qstat_queue),
+  own(false) {};
+
+/** Constructor that assigns passed values to the members. The _own parameter
+ *  decides if this class should dispose the strings when destroying. NULL
+ *  values for strings are permitted and properly dealt with.
+ */
+queueEntry::queueEntry(const char *_main_url, const char *_endp_url,
+  const char *_tree_name, unsigned long _n_events, unsigned int _n_failures,
+  unsigned long _size_bytes, bool _own) :
+  main_url(NULL), endp_url(NULL), tree_name(NULL), n_events(_n_events),
+  n_failures(_n_failures), size_bytes(_size_bytes), status(qstat_queue),
+  own(_own) {
+  set_str(&main_url, _main_url);
+  set_str(&endp_url, _endp_url);
+  set_str(&tree_name, _tree_name);
+};
+
+/** Destructor. Frees the space of owned strings.
+ */
+queueEntry::~queueEntry() {
+  if (own) {
+    if (main_url) free(main_url);
+    if (endp_url) free(endp_url);
+    if (tree_name) free(tree_name);
+  }
+}
+
+/** Private auxiliary function to assign a value to a string depending on the
+ *  ownership bit. NULL values for strings to assign are allowed and properly
+ *  dealt with.
+ */
+void queueEntry::set_str(char **dest, const char *src) {
+  if (!own) *dest = (char *)src;
+  else {
+    if (src) {
+      *dest = (char *)realloc(*dest, strlen(src)+1);  // TODO: bad alloc!
+      strcpy(*dest, src);
+    }
+    else {
+      if (*dest) free(*dest);
+      *dest = NULL;
+    }
+  }
+}
+
+/** Setter for main_url. See set_str().
+ */
+void queueEntry::set_main_url(const char *_main_url) {
+  set_str(&main_url, _main_url);
+};
+
+/** Setter for endp_url. See set_str().
+ */
+void queueEntry::set_endp_url(const char *_endp_url) {
+  set_str(&endp_url, _endp_url);
+};
+
+/** Setter for tree_name. See set_str().
+ */
+void queueEntry::set_tree_name(const char *_tree_name) {
+  set_str(&tree_name, _tree_name);
+};
+
+
+
+
+/** Debug function to print on stdout the members of this class.
+ */
+void queueEntry::print() const {
+  printf("is owner:   %s\n",  (own ? "yes" : "no"));
+  printf("main_url:   %s\n",  main_url);
+  printf("endp_url:   %s\n",  endp_url);
+  printf("tree_name:  %s\n",  tree_name);
+  printf("n_events:   %lu\n", n_events);
+  printf("n_failures: %u\n",  n_failures);
+  printf("size_bytes: %lu\n", size_bytes);
+};
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Member functions for the af::opQueue class
+////////////////////////////////////////////////////////////////////////////////
+
 /** Queue constructor: it associates the queue to a SQLite object, and it
  *  creates the database in memory. SQLite takes care of creating (and
  *  immediately unlinking) a swap file for it.
@@ -285,28 +378,25 @@ const queueEntry *opQueue::get_entry(const char *url) {
   sqlite3_bind_text(query_get_entry, 1, url, -1, SQLITE_STATIC);
 
   int r = sqlite3_step(query_get_entry);
+  printf("sqlite3_step() returned %d\n", r);
 
-  if (r != SQLITE_DONE) {
+  // See http://www.sqlite.org/c3ref/c_abort.html for constants
+  if (r == SQLITE_ROW) {
     // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events
     // 4:n_failures, 5:size_bytes, 6:status
-
-    qentry_buf.main_url   = (const char*)sqlite3_column_text  (query_get_entry, 0);
-    qentry_buf.endp_url   = (const char*)sqlite3_column_text  (query_get_entry, 1);
-    qentry_buf.tree_name  = (const char*)sqlite3_column_text  (query_get_entry, 2);
-    qentry_buf.n_events   = sqlite3_column_int64 (query_get_entry, 3);    
-    qentry_buf.n_failures = sqlite3_column_int   (query_get_entry, 4);
-    qentry_buf.size_bytes = sqlite3_column_int   (query_get_entry, 5);
-    qentry_buf.status     = (qstat_t)*sqlite3_column_text(query_get_entry, 6);
+    qentry_buf.main_url = (char*)sqlite3_column_text(query_get_entry, 0);
+    qentry_buf.endp_url = (char*)sqlite3_column_text(query_get_entry, 1);
+    qentry_buf.tree_name = (char*)sqlite3_column_text(query_get_entry, 2);
+    qentry_buf.n_events = sqlite3_column_int64(query_get_entry, 3);    
+    qentry_buf.n_failures = sqlite3_column_int(query_get_entry, 4);
+    qentry_buf.size_bytes = sqlite3_column_int(query_get_entry, 5);
+    qentry_buf.status = (qstat_t)*sqlite3_column_text(query_get_entry, 6);
 
     return &qentry_buf;
   }
 
   sqlite3_reset(query_get_entry);
   sqlite3_clear_bindings(query_get_entry);
-
-  printf("sqlite3_step() returned %d: %s\n", r, sqlite3_column_text(query_get_entry, 0));
-
-//sqlite3_column_int(comp_query,   0);
 
   return NULL;
 }

@@ -4,7 +4,7 @@
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
  * A queue that holds the files to be processed with their status. It is
- * implemented as an SQLite database for holding large amounts of data without
+ * implemented as a SQLite database for holding large amounts of data without
  * eating up the memory.
  */
 
@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "sqlite3.h"
 
@@ -33,21 +34,49 @@ namespace af {
   class queueEntry {
 
     public:
-      const char *main_url;
-      const char *endp_url;
-      const char *tree_name;
+
+      queueEntry();
+      queueEntry(const char *_main_url, const char *_endp_url,
+        const char *_tree_name, unsigned long _n_events,
+        unsigned int _n_failures, unsigned long _size_bytes, bool _own);
+      virtual ~queueEntry();
+    
+      // Getters
+      inline const char *get_main_url() { return main_url; };
+      inline const char *get_endp_url() { return endp_url; };
+      inline const char *get_tree_name() { return tree_name; };
+      inline unsigned long get_n_events() { return n_events; };
+      inline unsigned int get_n_failures() { return n_failures; };
+      inline unsigned long get_size_bytes() { return size_bytes; };
+
+      // Setters
+      inline void set_main_url(const char *_main_url);
+      inline void set_endp_url(const char *_endp_url);
+      inline void set_tree_name(const char *_tree_name);
+      inline void set_n_events(unsigned long _n_events) {
+        n_events = _n_events; };
+      inline void set_n_failures(unsigned int _n_failures) {
+        n_failures = _n_failures;
+      };
+      inline void set_size_bytes(unsigned long _size_bytes) {
+        size_bytes = _size_bytes;
+      };
+      inline void set_status(qstat_t _status) { status = _status; }
+
+      void print() const;
+
+      char *main_url;
+      char *endp_url;
+      char *tree_name;
       unsigned long n_events;
       unsigned int n_failures;
       unsigned long size_bytes;
       qstat_t status;
-      void print() const {
-        printf("main_url:   %s\n",  main_url);
-        printf("endp_url:   %s\n",  endp_url);
-        printf("tree_name:  %s\n",  tree_name);
-        printf("n_events:   %lu\n", n_events);
-        printf("n_failures: %u\n",  n_failures);
-        printf("size_bytes: %lu\n", size_bytes);
-      };
+
+    private:
+
+      bool own;
+      void set_str(char **dest, const char *src);
 
   };
 
