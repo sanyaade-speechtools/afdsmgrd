@@ -16,7 +16,10 @@
 #include <fstream>
 #include <string>
 #include <map>
+#include <limits>
 
+#include <string.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 

@@ -17,6 +17,9 @@
 #include <fstream>
 
 #include <time.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdarg.h>
 
 namespace af {
 

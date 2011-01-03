@@ -95,8 +95,8 @@ void directive_callback(const char *val, void *args) {
  */
 void test_log(unsigned long max_iters = 10) {
 
-  //af::log log(std::cout, af::log_level_normal);
-  af::log log("logfile", af::log_level_normal);
+  af::log log(std::cout, af::log_level_normal);
+  //af::log log("logfile", af::log_level_normal);
   unsigned long iter = 0;
 
   while (true) {

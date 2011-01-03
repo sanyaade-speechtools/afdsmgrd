@@ -124,7 +124,7 @@ void log::rotate_say(log_type_t type, log_level_t level, const char *fmt,
   vsay(type, level, fmt, vargs);
 }
 
-/** Says something: varargs prototype. This function is private and used
+/** Says a log message, varargs version. This function is private and used
  *  internally to format the messages.
  */
 void log::vsay(log_type_t type, log_level_t level, const char *fmt,
