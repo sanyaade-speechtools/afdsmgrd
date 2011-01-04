@@ -14,12 +14,12 @@ using namespace af;
 // Member functions for the af::queueEntry class
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Default constructor. Constructs an empty instance of this class which does
- *  not own its content.
+/** Default constructor. Constructs an empty instance of this class with the
+ *  defined ownership.
  */
-queueEntry::queueEntry() : main_url(NULL), endp_url(NULL), tree_name(NULL),
-  n_events(0L), n_failures(0), size_bytes(0L), status(qstat_queue),
-  own(false) {};
+queueEntry::queueEntry(bool _own) : main_url(NULL), endp_url(NULL),
+  tree_name(NULL), n_events(0L), n_failures(0), size_bytes(0L),
+  status(qstat_queue), own(_own) {};
 
 /** Constructor that assigns passed values to the members. The _own parameter
  *  decides if this class should dispose the strings when destroying. NULL
@@ -44,6 +44,18 @@ queueEntry::~queueEntry() {
     if (endp_url) free(endp_url);
     if (tree_name) free(tree_name);
   }
+}
+
+/** Resets the data members to initial values.
+ */
+void queueEntry::reset() {
+  n_events = 0L;
+  n_failures = 0;
+  size_bytes = 0L;
+  status = qstat_queue;
+  set_main_url(NULL);
+  set_endp_url(NULL);
+  set_tree_name(NULL);
 }
 
 /** Private auxiliary function to assign a value to a string depending on the
@@ -82,22 +94,18 @@ void queueEntry::set_tree_name(const char *_tree_name) {
   set_str(&tree_name, _tree_name);
 };
 
-
-
-
 /** Debug function to print on stdout the members of this class.
  */
 void queueEntry::print() const {
-  printf("is owner:   %s\n",  (own ? "yes" : "no"));
-  printf("main_url:   %s\n",  main_url);
-  printf("endp_url:   %s\n",  endp_url);
-  printf("tree_name:  %s\n",  tree_name);
+  printf("is owner:   %s\n", (own ? "yes" : "no"));
+  printf("main_url:   %s\n", AF_NULL_STR(main_url));
+  printf("endp_url:   %s\n", AF_NULL_STR(endp_url));
+  printf("tree_name:  %s\n", AF_NULL_STR(tree_name));
   printf("n_events:   %lu\n", n_events);
-  printf("n_failures: %u\n",  n_failures);
+  printf("n_failures: %u\n", n_failures);
   printf("size_bytes: %lu\n", size_bytes);
+  printf("status:     %c\n", status);
 };
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Member functions for the af::opQueue class
@@ -111,7 +119,7 @@ void queueEntry::print() const {
  *  removing ("flushing") the element from the queue. Zero means never flush it.
  */
 opQueue::opQueue(unsigned int max_failures) :
-  fail_threshold(max_failures) {
+  fail_threshold(max_failures), qentry_buf(false) {
 
   const char *db_filename = ":memory:";
 
@@ -146,22 +154,35 @@ opQueue::opQueue(unsigned int max_failures) :
   }
 
   // Query for exists()
-  r = sqlite3_prepare_v2(db,
+  /*r = sqlite3_prepare_v2(db,
     "SELECT COUNT(rank) FROM queue WHERE main_url=?", -1, &query_exists, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing SQL query for exists(): %s\n", r, sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
-  }
+  }*/
 
-  // Query for get_entry()
+  // Query for get_full_entry()
   r = sqlite3_prepare_v2(db,
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,status"
-    "  FROM queue WHERE main_url=?", -1, &query_get_entry, NULL);
+    "  FROM queue WHERE main_url=? LIMIT 1", -1, &query_get_full_entry, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
-      "Error #%d while preparing SQL query for get_entry(): %s\n", r, sql_err);
+      "Error #%d while preparing query_get_full_entry: %s\n", r,
+      sql_err);
+    sqlite3_free(sql_err);
+    throw std::runtime_error(strbuf);
+  }
+
+  // Query for get_status()
+  r = sqlite3_prepare_v2(db,
+    "SELECT status FROM queue WHERE main_url=? LIMIT 1", -1,
+    &query_get_status, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_get_status: %s\n", r,
+      sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
   }
@@ -169,7 +190,7 @@ opQueue::opQueue(unsigned int max_failures) :
 }
 
 /** Removes from queue elements that are in status Success (D) or Failed (F).
- *  Returns the number of elements flushed.
+ *  Returns the number of elements flushed (TODO: prepare query).
  */
 int opQueue::flush() {
 
@@ -318,7 +339,7 @@ bool opQueue::failed(const char *url) {
  */
 opQueue::~opQueue() {
   sqlite3_close(db);
-  sqlite3_finalize(query_exists);
+  //sqlite3_finalize(query_exists);
 }
 
 /** Enqueue URL. Returns true on success, false on failure.
@@ -351,7 +372,7 @@ bool opQueue::insert(const char *url) {
 /** Returns true if a given URL is in the queue, elsewhere it returns false. The
  *  query is prepared in the constructor, and finalized in the destructor.
  */
-bool opQueue::exists(const char *url) {
+/*bool opQueue::exists(const char *url) {
 
   if (!url) return false;
 
@@ -366,37 +387,89 @@ bool opQueue::exists(const char *url) {
 
   if (count) return true;
   return false;
+}*/
+
+/** Searches for an entry and returns its status inside a queueEntry class.
+ *  The other members of the class are left intacts. This method can be used
+ *  to check if an element exists.
+ */
+const queueEntry *opQueue::get_status(const char *url) {
+
+  if (!url) return NULL;
+
+  sqlite3_reset(query_get_status);
+  sqlite3_clear_bindings(query_get_status);
+
+  sqlite3_bind_text(query_get_status, 1, url, -1, SQLITE_STATIC);
+
+  int r = sqlite3_step(query_get_status);
+
+  // See http://www.sqlite.org/c3ref/c_abort.html for SQLite3 constants
+  if (r == SQLITE_ROW) {
+    qentry_buf.reset();
+    qentry_buf.set_main_url(url);
+    qentry_buf.set_status(
+      (qstat_t)*sqlite3_column_text(query_get_status, 0) );
+    return &qentry_buf;
+  }
+
+  return NULL;
 }
 
-/** Finds an entry with the given main URL and returns it; it returns NULL if
- *  the URL was not found in the list.
+/** Returns the full entry if it has finished processing (success or failed
+ *  status), and a partial entry containing only the main_url and status if
+ *  it hasn't. If entry does not exist or the given URL is NULL, it returns
+ *  NULL. This function avoids unnecessarily allocating memory for elements that
+ *  haven't finished processing yet.
  */
 const queueEntry *opQueue::get_entry(const char *url) {
 
   if (!url) return NULL;
 
-  sqlite3_bind_text(query_get_entry, 1, url, -1, SQLITE_STATIC);
+  const queueEntry *qe = get_status(url);
 
-  int r = sqlite3_step(query_get_entry);
-  printf("sqlite3_step() returned %d\n", r);
+  if (qe) {
+    qstat_t status = qe->get_status();
+    if ((status == qstat_success) || (status == qstat_failed))
+      return get_full_entry(url);
+  }
 
-  // See http://www.sqlite.org/c3ref/c_abort.html for constants
+  return qe;
+}
+
+/** Finds an entry with the given main URL and returns it; it returns NULL if
+ *  the URL was not found in the list.
+ */
+const queueEntry *opQueue::get_full_entry(const char *url) {
+
+  if (!url) return NULL;
+
+  sqlite3_reset(query_get_full_entry);
+  sqlite3_clear_bindings(query_get_full_entry);
+
+  sqlite3_bind_text(query_get_full_entry, 1, url, -1, SQLITE_STATIC);
+
+  int r = sqlite3_step(query_get_full_entry);
+
+  // See http://www.sqlite.org/c3ref/c_abort.html for SQLite3 constants
   if (r == SQLITE_ROW) {
     // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events
     // 4:n_failures, 5:size_bytes, 6:status
-    qentry_buf.main_url = (char*)sqlite3_column_text(query_get_entry, 0);
-    qentry_buf.endp_url = (char*)sqlite3_column_text(query_get_entry, 1);
-    qentry_buf.tree_name = (char*)sqlite3_column_text(query_get_entry, 2);
-    qentry_buf.n_events = sqlite3_column_int64(query_get_entry, 3);    
-    qentry_buf.n_failures = sqlite3_column_int(query_get_entry, 4);
-    qentry_buf.size_bytes = sqlite3_column_int(query_get_entry, 5);
-    qentry_buf.status = (qstat_t)*sqlite3_column_text(query_get_entry, 6);
+
+    qentry_buf.set_main_url(
+      (char*)sqlite3_column_text(query_get_full_entry, 0) );
+    qentry_buf.set_endp_url(
+      (char*)sqlite3_column_text(query_get_full_entry, 1) );
+    qentry_buf.set_tree_name(
+      (char*)sqlite3_column_text(query_get_full_entry, 2) );
+    qentry_buf.set_n_events( sqlite3_column_int64(query_get_full_entry, 3) );
+    qentry_buf.set_n_failures( sqlite3_column_int64(query_get_full_entry, 4) );
+    qentry_buf.set_size_bytes( sqlite3_column_int64(query_get_full_entry, 5) );
+    qentry_buf.set_status(
+      (qstat_t)*sqlite3_column_text(query_get_full_entry, 6) );
 
     return &qentry_buf;
   }
-
-  sqlite3_reset(query_get_entry);
-  sqlite3_clear_bindings(query_get_entry);
 
   return NULL;
 }

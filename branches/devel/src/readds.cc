@@ -223,6 +223,7 @@ void test_queue() {
   const af::queueEntry *ent = opq.get_entry(
     "root://www.google.it/num000000004/root_archive.zip#AliESDs.root");
 
+  printf("\n=== GET_ENTRY ===\n");
   if (ent) ent->print();
   else printf("Entry not found.\n");
 

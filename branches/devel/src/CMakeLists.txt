@@ -20,7 +20,6 @@ add_library (afOpQueue afOpQueue.cc)
 add_library (afExtCmd afExtCmd.cc)
 add_library (afConfig afConfig.cc)
 add_library (afLog afLog.cc)
-#add_library (afQueueEntry afQueueEntry.cc)
 add_library (sqlite3 sqlite3.c)
 
 target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)

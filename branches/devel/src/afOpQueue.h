@@ -19,6 +19,7 @@
 
 #include <stdexcept>
 
+#define AF_NULL_STR(STR) ((STR) ? (STR) : "#null#")
 #define AF_OPQUEUE_BUFSIZE 1000
 
 namespace af {
@@ -28,26 +29,28 @@ namespace af {
                  qstat_success = 'D',
                  qstat_failed  = 'F' } qstat_t;
 
-  /** In-memory representation of an entry of the opQueue. It is a very simple
-   *  class with direct access to members (no getters or setters).
+  /** In-memory representation of an entry of the opQueue. It can own the
+   *  members or not.
    */
   class queueEntry {
 
     public:
 
-      queueEntry();
+      // Constructors/destructors
+      queueEntry(bool _own);
       queueEntry(const char *_main_url, const char *_endp_url,
         const char *_tree_name, unsigned long _n_events,
         unsigned int _n_failures, unsigned long _size_bytes, bool _own);
       virtual ~queueEntry();
     
       // Getters
-      inline const char *get_main_url() { return main_url; };
-      inline const char *get_endp_url() { return endp_url; };
-      inline const char *get_tree_name() { return tree_name; };
-      inline unsigned long get_n_events() { return n_events; };
-      inline unsigned int get_n_failures() { return n_failures; };
-      inline unsigned long get_size_bytes() { return size_bytes; };
+      inline const char *get_main_url() const { return main_url; };
+      inline const char *get_endp_url() const { return endp_url; };
+      inline const char *get_tree_name() const { return tree_name; };
+      inline unsigned long get_n_events() const { return n_events; };
+      inline unsigned int get_n_failures() const { return n_failures; };
+      inline unsigned long get_size_bytes() const { return size_bytes; };
+      inline qstat_t get_status() const { return status; };
 
       // Setters
       inline void set_main_url(const char *_main_url);
@@ -64,7 +67,13 @@ namespace af {
       inline void set_status(qstat_t _status) { status = _status; }
 
       void print() const;
+      void reset();
 
+    private:
+
+      void set_str(char **dest, const char *src);
+
+      bool own;
       char *main_url;
       char *endp_url;
       char *tree_name;
@@ -72,11 +81,6 @@ namespace af {
       unsigned int n_failures;
       unsigned long size_bytes;
       qstat_t status;
-
-    private:
-
-      bool own;
-      void set_str(char **dest, const char *src);
 
   };
 
@@ -96,7 +100,9 @@ namespace af {
       bool failed(const char *url);
       void arbitrary_query(const char *query);
       void dump();
-      bool exists(const char *url);
+      //bool exists(const char *url);
+      const queueEntry *get_full_entry(const char *url);
+      const queueEntry *get_status(const char *url);
       const queueEntry *get_entry(const char *url);
 
     private:
@@ -107,8 +113,9 @@ namespace af {
       unsigned long last_queue_rowid;
       unsigned int fail_threshold;
 
-      sqlite3_stmt *query_exists;
-      sqlite3_stmt *query_get_entry;
+      //sqlite3_stmt *query_exists;
+      sqlite3_stmt *query_get_full_entry;
+      sqlite3_stmt *query_get_status;
 
       queueEntry qentry_buf;
   };
