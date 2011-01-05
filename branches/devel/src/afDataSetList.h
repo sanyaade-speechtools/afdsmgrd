@@ -16,6 +16,9 @@
 #include <stdexcept>
 
 #include <TDataSetManager.h>
+#include <TFileCollection.h>
+#include <THashList.h>
+#include <TFileInfo.h>
 #include <TObjString.h>
 
 namespace af {
@@ -23,21 +26,38 @@ namespace af {
   class dataSetList {
 
     public:
+
       dataSetList(TDataSetManager *_ds_mgr);
       virtual ~dataSetList();
-      void fetch();
+
+      // Browse dataset names
+      void fetch_datasets();
+      void free_datasets();
+      void rewind_datasets();
+      const char *next_dataset();
+
+      // Browse entries of a dataset
+      bool fetch_files(const char *ds_name = NULL);
+      void free_files();
+      void rewind_files();
+      TFileInfo *next_file();
+
       void set_dataset_mgr(TDataSetManager *_ds_mgr);
-      void free();
-      void rewind();
-      const char *next();
 
     private:
+
       TDataSetManager *ds_mgr;
+
       TMap            *ds_list;
       TIter           *ds_iter;
-      TObjString      *ds_os_name;
-      char             buf[AF_DSNAME_BUFSIZE];
-      bool             inited;
+      TObjString      *ds_objstr_name;
+      bool             ds_inited;
+      char             ds_curr[AF_DSNAME_BUFSIZE];
+
+      TFileCollection *fi_coll;
+      TIter           *fi_iter;
+      TFileInfo       *fi_curr;
+      bool             fi_inited;
 
   };
 

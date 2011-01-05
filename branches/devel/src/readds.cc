@@ -36,8 +36,6 @@ void wait_user() {
 
 bool quit_requested = false;
 
-//af::log stdlog
-
 /** Manages the stop signal (kill -15)
  */
 void signal_quit_callback(int signum) {
@@ -100,32 +98,28 @@ void test_dsmanip() {
 
   TDataSetManager *prfdsm = new TDataSetManagerFile(NULL, NULL,
     "dir:/home/volpe/storage/datasets");
+
   af::dataSetList dsm( prfdsm );
 
-  const char *name;
+  const char *s;
+  TFileInfo *fi;
+  TUrl *turl;
 
-  dsm.rewind();
-  dsm.fetch();
-  while (name = dsm.next()) {
-    printf("+--+ %s\n", name);
-    TFileCollection *fc = prfdsm->GetDataSet(name);
-    TList *f_list = fc->GetList(); // internal pointer to TFileCollection (ownd)
-    TIter i_list(f_list);
-    TObject *o;
-    while (o = i_list.Next()) {
-      printf("|  +--+ list_of_urls\n");
-      TFileInfo *fi = (TFileInfo *)o;
-      TUrl *turl;
-      fi->ResetUrl();  // must be the first call, not the last call
-      while (turl = fi->NextUrl()) {
-        printf("|  |  +-- %s\n", turl->GetUrl());
-      }
-      fi->ResetUrl();  // ok, harmless anyway
+  dsm.fetch_datasets();
+  while (s = dsm.next_dataset()) {
+    printf("--> %s\n", s);
+
+    dsm.fetch_files(NULL);
+    while (fi = dsm.next_file()) {
+      printf("    entry (%d urls):\n", fi->GetNUrls());
+      fi->ResetUrl();
+      while (turl = fi->NextUrl()) printf("     - %s\n", turl->GetUrl());
     }
-    delete fc;
+    dsm.free_files();
+
   }
 
-  dsm.free();
+  dsm.free_datasets();
 
   delete prfdsm;
 
