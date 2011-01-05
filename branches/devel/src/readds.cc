@@ -13,6 +13,9 @@
 #include <stdexcept>
 
 #include <TDataSetManagerFile.h>
+#include <TFileCollection.h>
+#include <THashList.h>
+#include <TFileInfo.h>
 
 #include "afDataSetList.h"
 #include "afOpQueue.h"
@@ -89,6 +92,43 @@ void directive_callback(const char *val, void *args) {
       "and a generic text to remember is \"%s\"\n",
       val, *(long *)array[0], (const char *)array[1]);
   }
+}
+
+/** Test dataset manipulation facility.
+ */
+void test_dsmanip() {
+
+  TDataSetManager *prfdsm = new TDataSetManagerFile(NULL, NULL,
+    "dir:/home/volpe/storage/datasets");
+  af::dataSetList dsm( prfdsm );
+
+  const char *name;
+
+  dsm.rewind();
+  dsm.fetch();
+  while (name = dsm.next()) {
+    printf("+--+ %s\n", name);
+    TFileCollection *fc = prfdsm->GetDataSet(name);
+    TList *f_list = fc->GetList(); // internal pointer to TFileCollection (ownd)
+    TIter i_list(f_list);
+    TObject *o;
+    while (o = i_list.Next()) {
+      printf("|  +--+ list_of_urls\n");
+      TFileInfo *fi = (TFileInfo *)o;
+      TUrl *turl;
+      fi->ResetUrl();  // must be the first call, not the last call
+      while (turl = fi->NextUrl()) {
+        printf("|  |  +-- %s\n", turl->GetUrl());
+      }
+      fi->ResetUrl();  // ok, harmless anyway
+    }
+    delete fc;
+  }
+
+  dsm.free();
+
+  delete prfdsm;
+
 }
 
 /** Test external command facility.
@@ -254,7 +294,8 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
-  test_queue();
+  test_dsmanip();
+  //test_queue();
   //test_extcmd(argv[0]);
   //test_config();
   //test_log();

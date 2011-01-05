@@ -14,8 +14,9 @@ using namespace af;
  *  dataset manager used for the datasets requests. The class does not own the
  *  dataset manager!
  */
-dataSetList::dataSetList(TDataSetManager *dsm) : ds_mgr(dsm), inited(false) {
-  if (!dsm) throw std::runtime_error("Invalid dataset manager");
+dataSetList::dataSetList(TDataSetManager *_ds_mgr) :
+  ds_mgr(_ds_mgr), inited(false) {
+  if (!ds_mgr) throw std::runtime_error("Invalid dataset manager");
 }
 
 /** The destructor. It frees the memory taken by requests.
@@ -26,9 +27,9 @@ dataSetList::~dataSetList() {
 
 /** Frees the resources used by the former dataset manager and sets the new one.
  */
-void dataSetList::set_dataset_mgr(TDataSetManager *dsm) {
+void dataSetList::set_dataset_mgr(TDataSetManager *_ds_mgr) {
   free();
-  ds_mgr = dsm;
+  ds_mgr = _ds_mgr;
 }
 
 /** Initializes the list: this is the first function to call if you want to
@@ -36,9 +37,12 @@ void dataSetList::set_dataset_mgr(TDataSetManager *dsm) {
  *  the dataset manager and takes memory.
  *
  *  All the memory allocations must be subsequently freed with the member free()
- *  function, or by destroying the class.
+ *  function, or by deleting the instance.
+ *
+ *  This function is protected against erroneous double calls: if called a 2nd
+ *  time, it does nothing.
  */
-void dataSetList::init() {
+void dataSetList::fetch() {
   if (inited) return;
 
   ds_list = ds_mgr->GetDataSets("/*/*");
@@ -51,7 +55,8 @@ void dataSetList::init() {
 }
 
 /** Frees the memory taken by previously querying the dataset manager for a
- *  datasets list.
+ *  datasets list. It is safe to call it even if no previous request has been
+ *  performed.
  */
 void dataSetList::free() {
   if (!inited) return;
@@ -61,7 +66,8 @@ void dataSetList::free() {
 }
 
 /** Rewind the list pointer to the first element without re-performing the
- *  dataset request.
+ *  dataset request. It is safe to call it even if no previous request has been
+ *  performed.
  */
 void dataSetList::rewind() {
   if (!inited) return;
@@ -72,7 +78,8 @@ void dataSetList::rewind() {
  *  or if last element was reached. Elsewhere it returns a pointer to a buffer
  *  that contains the dataset name: the class owns buffer's memory which is
  *  overwritten by the next call of next(), so if you want to manipulate or
- *  store the dataset name you must make a copy of the returned buffer.
+ *  store the dataset name you must make a copy of the returned buffer. Returned
+ *  data is not ordered to avoid performance issues.
  */
 const char *dataSetList::next() {
   if (!inited) return NULL;

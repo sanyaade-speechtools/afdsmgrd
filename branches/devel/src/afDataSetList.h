@@ -11,7 +11,7 @@
 #ifndef AFDATASETLIST_H
 #define AFDATASETLIST_H
 
-#define AF_DSNAME_BUFSIZE 200
+#define AF_DSNAME_BUFSIZE 300
 
 #include <stdexcept>
 
@@ -23,10 +23,10 @@ namespace af {
   class dataSetList {
 
     public:
-      dataSetList(TDataSetManager *dsm);
-      ~dataSetList();
-      void init();
-      void set_dataset_mgr(TDataSetManager *dsm);
+      dataSetList(TDataSetManager *_ds_mgr);
+      virtual ~dataSetList();
+      void fetch();
+      void set_dataset_mgr(TDataSetManager *_ds_mgr);
       void free();
       void rewind();
       const char *next();
