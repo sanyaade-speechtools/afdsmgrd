@@ -29,7 +29,7 @@ namespace af {
                  qstat_success = 'D',
                  qstat_failed  = 'F' } qstat_t;
 
-  /** In-memory representation of an entry of the opQueue. It can own the
+  /** In-memory representation of an entry of the opQueue. It can own its
    *  members or not.
    */
   class queueEntry {

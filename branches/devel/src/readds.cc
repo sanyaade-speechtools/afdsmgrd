@@ -22,6 +22,7 @@
 #include "afExtCmd.h"
 #include "afConfig.h"
 #include "afLog.h"
+#include "afUrlRegex.h"
 
 /** Waits for user input (debug)
  */
@@ -281,6 +282,14 @@ void test_queue() {
   else printf("entry not found\n");*/
 }
 
+/** Test URL regex facility.
+ */
+void test_urlregex() {
+
+  af::urlRegex();
+
+}
+
 /** Entry point.
  */
 int main(int argc, char *argv[]) {
@@ -288,7 +297,8 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
-  test_dsmanip();
+  test_urlregex();
+  //test_dsmanip();
   //test_queue();
   //test_extcmd(argv[0]);
   //test_config();
