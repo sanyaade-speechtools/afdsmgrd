@@ -286,8 +286,31 @@ void test_queue() {
  */
 void test_urlregex() {
 
-  af::urlRegex();
+  af::urlRegex re_url;
 
+  if (!re_url.set_regex_subst("^([^:]+)://(.+)$", "ftp://cern.ch/$2?proto=$1")) {
+    printf("invalid regex");
+  }
+  else {
+    const char *strings[] = {
+      "http://www.google.it/",
+      "root:///alice/sim/period/esd.root",
+      "alien:///cern.ch/users/d/dberzano/esd.root",
+      "not_an_url",
+      ""
+    };
+    unsigned int sz = sizeof(strings)/sizeof(const char *);
+
+    const char *res;
+
+    for (unsigned int i=0; i<sz; i++) {
+      res = re_url.subst(strings[i]);
+      printf("%s --> %s\n", strings[i], res);
+      //if (re_url.match(strings[i])) printf("[ OK ] %s\n", strings[i]);
+      //else printf("[ NO ] %s\n", strings[i]);
+    }
+
+  }
 }
 
 /** Entry point.
