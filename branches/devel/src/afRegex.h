@@ -1,16 +1,16 @@
 /**
- * afUrlRegex.h -- by Dario Berzano <dario.berzano@gmail.com>
+ * afRegex.h -- by Dario Berzano <dario.berzano@gmail.com>
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
- * This class matches and translates URLs based on a given list of extended
- * regular expressions.
+ * A wrapper around POSIX regex.h to match and substitute through the usage of
+ * extended regular expressions.
  */
 
-#ifndef AFURLREGEX_H
-#define AFURLREGEX_H
+#ifndef AFREGEX_H
+#define AFREGEX_H
 
-#define AF_URLREGEX_BUFSIZE 2000
+#define AF_REGEX_BUFSIZE 2000
 
 #include <iostream>
 #include <vector>
@@ -30,12 +30,12 @@ namespace af {
 
   typedef std::vector<submatch_t> subparts_t;
 
-  class urlRegex {
+  class regex {
 
     public:
 
-      urlRegex();
-      virtual ~urlRegex();
+      regex();
+      virtual ~regex();
       bool set_regex_match(const char *ptn);
       void unset_regex_match();
       void unset_regex_subst();
@@ -46,7 +46,7 @@ namespace af {
 
     private:
 
-      char strbuf[AF_URLREGEX_BUFSIZE];
+      char strbuf[AF_REGEX_BUFSIZE];
       regex_t *re_match;
       regex_t *re_subst;
       char *sub_ptn;
@@ -56,4 +56,4 @@ namespace af {
 
 };
 
-#endif // AFURLREGEX_H
+#endif // AFREGEX_H

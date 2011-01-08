@@ -22,7 +22,7 @@
 #include "afExtCmd.h"
 #include "afConfig.h"
 #include "afLog.h"
-#include "afUrlRegex.h"
+#include "afRegex.h"
 
 /** Waits for user input (debug)
  */
@@ -282,13 +282,13 @@ void test_queue() {
   else printf("entry not found\n");*/
 }
 
-/** Test URL regex facility.
+/** Test regex facility.
  */
-void test_urlregex() {
+void test_regex() {
 
-  af::urlRegex re_url;
+  af::regex re;
 
-  if (!re_url.set_regex_subst("^([^:]+)://(.+)$", "ftp://cern.ch/$2?proto=$1")) {
+  if (!re.set_regex_subst("^([^:]+)://(.+)$", "ftp://cern.ch/$2?proto=$1")) {
     printf("invalid regex");
   }
   else {
@@ -304,9 +304,9 @@ void test_urlregex() {
     const char *res;
 
     for (unsigned int i=0; i<sz; i++) {
-      res = re_url.subst(strings[i]);
+      res = re.subst(strings[i]);
       printf("%s --> %s\n", strings[i], res);
-      //if (re_url.match(strings[i])) printf("[ OK ] %s\n", strings[i]);
+      //if (re.match(strings[i])) printf("[ OK ] %s\n", strings[i]);
       //else printf("[ NO ] %s\n", strings[i]);
     }
 
@@ -320,7 +320,7 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
-  test_urlregex();
+  test_regex();
   //test_dsmanip();
   //test_queue();
   //test_extcmd(argv[0]);

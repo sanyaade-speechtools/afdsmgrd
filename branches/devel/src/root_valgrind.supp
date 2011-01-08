@@ -1,0 +1,38 @@
+{
+   ROOT leaks/1
+   Memcheck:Leak
+   fun:*
+   obj:*/libCore.so
+}
+{
+   ROOT leaks/2
+   Memcheck:Leak
+   fun:malloc
+   fun:nss_parse_service_list
+   fun:__nss_database_lookup
+   obj:*
+   obj:*
+   fun:getpwuid_r@@GLIBC_2.2.5
+   fun:getpwuid
+   fun:_ZN11TUnixSystem17UnixHomedirectoryEPKc
+   fun:_ZN5TROOT10InitSystemEv
+   fun:_ZN5TROOTC1EPKcS1_PPFvvE
+   fun:_ZN4ROOT7GetROOTEv
+   fun:_Z41__static_initialization_and_destruction_0ii
+}
+{
+   ROOT leaks/3
+   Memcheck:Leak
+   fun:_Znwm
+   fun:_ZNSs4_Rep9_S_createEmmRKSaIcE
+   fun:_ZNSs9_M_mutateEmmm
+   fun:_ZNSs15_M_replace_safeEmmPKcm
+   fun:_ZN9TClassRefaSEP6TClass
+   fun:_ZN4ROOT14TSchemaRuleSet8SetClassEP6TClass
+   fun:_ZN6TClass14GetSchemaRulesEb
+   fun:_ZN6TClass7AddRuleEPKc
+   fun:_ZN21_GLOBAL__N_gCINTMutex16ReadRulesContentEP8_IO_FILE
+   fun:_ZN6TClass9ReadRulesEv
+   fun:_ZN5TROOTC1EPKcS1_PPFvvE
+   fun:_ZN4ROOT7GetROOTEv
+}
