@@ -101,8 +101,14 @@ namespace af {
       };
       bool touched;
       dir_type_t type;
-      mixed_t min;
-      mixed_t max;
+      union {
+        mixed_t min;
+        std::string *prev_val;
+      };
+      union {
+        mixed_t max;
+        bool first_callback;
+      };
       mixed_t def_val;
       void (*ext_callback)(const char *val, void *args);
 

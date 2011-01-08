@@ -65,12 +65,15 @@ cfg_binding::cfg_binding(std::string *_dest_ptr, const char *_def_val) :
  */
 cfg_binding::cfg_binding(void (callback)(const char *val, void *args),
   void *args) :
-  type(dir_type_custom), ext_callback(callback), callback_args(args) {}
+  type(dir_type_custom), ext_callback(callback), callback_args(args),
+  prev_val(NULL), first_callback(true) {}
 
-/** Destructor. It deletes the pointer to the string, if directive type is such.
+/** Destructor. It deletes some string pointers, if the directive type is
+ *  appropriate.
  */
 cfg_binding::~cfg_binding() {
   if (type == dir_type_text) delete def_val.s;
+  else if ((type == dir_type_custom) && (prev_val)) delete prev_val;
 }
 
 /** Constructor helper (templatized).
@@ -178,7 +181,16 @@ void cfg_binding::assign(const char *val_str) {
     ////////////////////////////////////////////////////////////////////////////
     case dir_type_custom:
 
-      ext_callback(val_str, callback_args);
+      if (prev_val == NULL) {
+        prev_val = new std::string(val_str);
+        ext_callback(val_str, callback_args);
+      }
+      else if (*prev_val != val_str) {
+        *prev_val = val_str;
+        ext_callback(val_str, callback_args);
+      }
+
+      if (first_callback) first_callback = false;
 
     break;
 
@@ -210,11 +222,21 @@ void cfg_binding::assign_default() {
     break;
 
     case dir_type_text:
-      *(std::string *)dest = def_val.s->c_str();
+      if ( *(std::string *)dest != *(def_val.s) )
+        *(std::string *)dest = *def_val.s;
     break;
 
     case dir_type_custom:
-      ext_callback(NULL, callback_args);
+      if (prev_val) {
+        delete prev_val;
+        prev_val = NULL;
+        ext_callback(NULL, callback_args);
+      }
+      else if (first_callback) {
+        first_callback = false;
+        ext_callback(NULL, callback_args);
+      }
+
     break;
 
   }
@@ -414,8 +436,6 @@ bool config::update() {
 
 /** Assigns default values to every directive.
  */
-// TODO: Support NULL pointer in callback to signal missing directive (and
-//       trigger default value management).
 void config::default_all() {
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
     (*it).second->assign_default();

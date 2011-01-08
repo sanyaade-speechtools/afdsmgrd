@@ -187,8 +187,7 @@ void test_log(unsigned long max_iters = 10) {
 void test_config(unsigned int iter_limits = 20) {
 
   // Configuration file management
-  af::config cfg("/Users/volpe/Fisica/ALICE/alz118wx_backup/afdsmgrd/devel/"
-    "etc/xrootd/test.cf");
+  af::config cfg("../../src/test.cf");
 
   // Directives (bound)
   long test_int = -1;
@@ -320,11 +319,11 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
-  test_regex();
+  //test_regex();
   //test_dsmanip();
   //test_queue();
   //test_extcmd(argv[0]);
-  //test_config();
+  test_config(999);
   //test_log();
 
   printf("!!! goodbye !!!\n");
