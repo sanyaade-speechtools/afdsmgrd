@@ -25,48 +25,51 @@ size_t cfg_binding::false_str_len = sizeof(false_str)/sizeof(const char *);
 
 /** Constructor of the directive binding for booleal type.
  */
-cfg_binding::cfg_binding(bool *_dest_ptr, bool _def_val) :
-  dest(_dest_ptr), type(dir_type_bool) {
+cfg_binding::cfg_binding(const char *name, bool *_dest_ptr, bool _def_val) :
+  dir_name(name), dest(_dest_ptr), type(dir_type_bool) {
   def_val.b = _def_val;
 }
 
 /** Constructor of the directive binding for numeric type "integer".
  */
-cfg_binding::cfg_binding(long *_dest_ptr, long _def_val, long _min, long _max) :
-  dest(_dest_ptr), type(dir_type_int) {
+cfg_binding::cfg_binding(const char *name, long *_dest_ptr, long _def_val,
+  long _min, long _max) :
+  dir_name(name), dest(_dest_ptr), type(dir_type_int) {
   ctor_helper(_def_val, _min, _max);
 }
 
 /** Constructor of the directive binding for numeric type "unsigned integer".
  */
-cfg_binding::cfg_binding(unsigned long *_dest_ptr, unsigned long _def_val,
-  unsigned long _min, unsigned long _max) :
-  dest(_dest_ptr), type(dir_type_uint) {
+cfg_binding::cfg_binding(const char *name, unsigned long *_dest_ptr,
+  unsigned long _def_val, unsigned long _min, unsigned long _max) :
+  dir_name(name), dest(_dest_ptr), type(dir_type_uint) {
   ctor_helper(_def_val, _min, _max);
 }
 
 /** Constructor of the directive binding for numeric type "real".
  */
-cfg_binding::cfg_binding(double *_dest_ptr, double _def_val, double _min,
-  double _max) : dest(_dest_ptr), type(dir_type_real) {
+cfg_binding::cfg_binding(const char *name, double *_dest_ptr, double _def_val,
+  double _min, double _max) :
+  dir_name(name), dest(_dest_ptr), type(dir_type_real) {
   ctor_helper(_def_val, _min, _max);
 }
 
 /** Constructor of the directive binding for text type. Default value is copied
  *  in an internal buffer (destroyed on exit).
  */
-cfg_binding::cfg_binding(std::string *_dest_ptr, const char *_def_val) :
-  dest(_dest_ptr), type(dir_type_text) {
+cfg_binding::cfg_binding(const char *name, std::string *_dest_ptr,
+  const char *_def_val) :
+  dir_name(name), dest(_dest_ptr), type(dir_type_text) {
   def_val.s = new std::string(_def_val);
 }
 
 /** Constructor of the directive binding for text type. Default value is copied
  *  in an internal buffer.
  */
-cfg_binding::cfg_binding(void (callback)(const char *val, void *args),
-  void *args) :
-  type(dir_type_custom), ext_callback(callback), callback_args(args),
-  prev_val(NULL), first_callback(true) {}
+cfg_binding::cfg_binding(const char *name,
+  void (callback)(const char *name, const char *val, void *args), void *args) :
+  dir_name(name), type(dir_type_custom), ext_callback(callback),
+  callback_args(args), prev_val(NULL), first_callback(true) {}
 
 /** Destructor. It deletes some string pointers, if the directive type is
  *  appropriate.
@@ -88,7 +91,7 @@ template<typename T> void cfg_binding::ctor_helper(T _def_val, T _min, T _max) {
 /** Prints on stdout the directive type and the pointer.
  */
 void cfg_binding::print() const {
-  printf("type:");
+  printf("name:%s type:", dir_name.c_str());
   switch (type) {
     case dir_type_int:  printf("int");  break;
     case dir_type_uint: printf("uint"); break;
@@ -183,11 +186,11 @@ void cfg_binding::assign(const char *val_str) {
 
       if (prev_val == NULL) {
         prev_val = new std::string(val_str);
-        ext_callback(val_str, callback_args);
+        ext_callback(dir_name.c_str(), val_str, callback_args);
       }
       else if (*prev_val != val_str) {
         *prev_val = val_str;
-        ext_callback(val_str, callback_args);
+        ext_callback(dir_name.c_str(), val_str, callback_args);
       }
 
       if (first_callback) first_callback = false;
@@ -230,11 +233,11 @@ void cfg_binding::assign_default() {
       if (prev_val) {
         delete prev_val;
         prev_val = NULL;
-        ext_callback(NULL, callback_args);
+        ext_callback(dir_name.c_str(), NULL, callback_args);
       }
       else if (first_callback) {
         first_callback = false;
-        ext_callback(NULL, callback_args);
+        ext_callback(dir_name.c_str(), NULL, callback_args);
       }
 
     break;
@@ -260,56 +263,57 @@ config::config(const char *config_file) :
  */
 config::~config() {
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
-    delete (*it).second;
+    delete *it;
   directives.clear();
 }
 
 /** Prints fields (used for debug and tests).
  */
 void config::print_bindings() {
-  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
-    printf("%s: ", (*it).first.c_str());
-    (*it).second->print();
-  }
+  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
+    (*it)->print();
 }
 
 /** Binds a "boolean" directive to a pointer.
  */
 void config::bind_bool(const char *dir_name, bool *dest_ptr, bool def_val) {
-  cfg_binding *binding = new cfg_binding(dest_ptr, def_val);
-  directives.insert( dir_t(dir_name, binding) );
+  cfg_binding *binding = new cfg_binding(dir_name, dest_ptr, def_val);
+  directives.push_back(binding);
 }
 
 /** Binds an "integer" directive to a pointer.
  */
 void config::bind_int(const char *dir_name, long *dest_ptr, long def_val,
   long min_eq, long max_eq) {
-  cfg_binding *binding = new cfg_binding(dest_ptr, def_val, min_eq, max_eq);
-  directives.insert( dir_t(dir_name, binding) );
+  cfg_binding *binding = new cfg_binding(dir_name, dest_ptr, def_val, min_eq,
+    max_eq);
+  directives.push_back(binding);
 }
 
 /** Binds an "unsigned integer" directive to a pointer.
  */
 void config::bind_uint(const char *dir_name, unsigned long *dest_ptr,
   unsigned long def_val, unsigned long min_eq, unsigned long max_eq) {
-  cfg_binding *binding = new cfg_binding(dest_ptr, def_val, min_eq, max_eq);
-  directives.insert( dir_t(dir_name, binding) );
+  cfg_binding *binding = new cfg_binding(dir_name, dest_ptr, def_val, min_eq,
+    max_eq);
+  directives.push_back(binding);
 }
 
 /** Binds a "real" directive to a pointer.
  */
 void config::bind_real(const char *dir_name, double *dest_ptr, double def_val,
   double min_eq, double max_eq) {
-  cfg_binding *binding = new cfg_binding(dest_ptr, def_val, min_eq, max_eq);
-  directives.insert( dir_t(dir_name, binding) );
+  cfg_binding *binding = new cfg_binding(dir_name, dest_ptr, def_val, min_eq,
+    max_eq);
+  directives.push_back(binding);
 }
 
 /** Binds a "text" directive to a STL string pointer.
  */
 void config::bind_text(const char *dir_name, std::string *dest_ptr,
   const char *def_val) {
-  cfg_binding *binding = new cfg_binding(dest_ptr, def_val);
-  directives.insert( dir_t(dir_name, binding) );
+  cfg_binding *binding = new cfg_binding(dir_name, dest_ptr, def_val);
+  directives.push_back(binding);
 }
 
 /** Binds a generic directive whose control (limits check, assignment, pointer
@@ -318,9 +322,9 @@ void config::bind_text(const char *dir_name, std::string *dest_ptr,
  *  exists in configuration file, and the default value should be used instead.
  */
 void config::bind_callback(const char *dir_name,
-  void (callback)(const char *val, void *args), void *args) {
-  cfg_binding *binding = new cfg_binding(callback, args);
-  directives.insert( dir_t(dir_name, binding) );
+  void (callback)(const char *name, const char *val, void *args), void *args) {
+  cfg_binding *binding = new cfg_binding(dir_name, callback, args);
+  directives.push_back(binding);
 }
 
 /** Returns a pointer to the first non-blank char of the input string. The
@@ -380,14 +384,15 @@ void config::read_file() {
       }
     }
 
-    conf_dirs_iter_t it = directives.find(dir);
-    if (it == directives.end()) continue;  // directive does not exist
-
-    cfg_binding &binding = *((*it).second);
-    val = rtrim(ltrim(val));
-
-    binding.assign(val);
-    binding.touch();
+    for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
+     cfg_binding &binding = **it;
+      if (strcmp(binding.get_name(), dir) == 0) {
+        val = rtrim(ltrim(val));
+        binding.assign(val);
+        binding.touch();
+        break;
+      }
+    }
 
   }
 
@@ -397,7 +402,7 @@ void config::read_file() {
   // the untouched directives
 
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
-   cfg_binding &binding = *((*it).second);
+   cfg_binding &binding = **it;
    if (!binding.is_touched()) binding.assign_default();
    else binding.touch(false);
   }
@@ -438,5 +443,5 @@ bool config::update() {
  */
 void config::default_all() {
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
-    (*it).second->assign_default();
+    (*it)->assign_default();
 }

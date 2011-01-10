@@ -79,8 +79,10 @@ char *exec_path(const char *cmd) {
 
 /** A callback function to test the bind_callback() feature of af::config.
  */
-void directive_callback(const char *val, void *args) {
+void directive_callback(const char *name, const char *val, void *args) {
   void **array = (void **)args;
+
+  printf("%s --> ", name);
 
   if (val == NULL) {
     printf("\033[1;31mcallback for default value called\033[m\n");

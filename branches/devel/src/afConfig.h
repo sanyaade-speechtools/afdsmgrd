@@ -15,7 +15,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <map>
+#include <vector>
 #include <limits>
 
 #include <string.h>
@@ -62,19 +62,24 @@ namespace af {
 
     public:
 
-      /** Constructors.
-       */
-      cfg_binding(bool *_dest_ptr, bool _def_val);
-      cfg_binding(long *_dest_ptr, long _def_val, long _min, long _max);
-      cfg_binding(unsigned long *_dest_ptr, unsigned long _def_val,
-        unsigned long _min, unsigned long _max);
-      cfg_binding(double *_dest_ptr, double _def_val, double _min, double _max);
-      cfg_binding(std::string *_dest_ptr, const char *_def_val);
-      cfg_binding( void (*callback)(const char *val, void *args), void *args );
+      // Constructors
+      cfg_binding(const char *name, bool *_dest_ptr, bool _def_val);
+      cfg_binding(const char *name, long *_dest_ptr, long _def_val, long _min,
+        long _max);
+      cfg_binding(const char *name, unsigned long *_dest_ptr,
+        unsigned long _def_val, unsigned long _min, unsigned long _max);
+      cfg_binding(const char *name, double *_dest_ptr, double _def_val,
+        double _min, double _max);
+      cfg_binding(const char *name, std::string *_dest_ptr,
+        const char *_def_val);
+      cfg_binding(const char *name,
+        void (*callback)(const char *name, const char *val, void *args),
+        void *args );
 
       virtual ~cfg_binding();
       inline void *get_dest() const { return dest; };
       inline dir_type_t get_type() const { return type; };
+      inline const char *get_name() const { return dir_name.c_str(); };
 
       void assign_default();
       void assign(const char *value);
@@ -95,6 +100,7 @@ namespace af {
       template<typename T>
         void inline ctor_helper(T _def_val, T _min, T _max);
 
+      std::string dir_name;
       union {
         void *dest;
         void *callback_args;
@@ -110,7 +116,7 @@ namespace af {
         bool first_callback;
       };
       mixed_t def_val;
-      void (*ext_callback)(const char *val, void *args);
+      void (*ext_callback)(const char *name, const char *val, void *args);
 
       static const char *true_str[];
       static const char *false_str[];
@@ -121,8 +127,7 @@ namespace af {
 
   /** Useful typedefs.
    */
-  typedef std::map<std::string,cfg_binding *> conf_dirs_t;
-  typedef std::pair<std::string,cfg_binding *> dir_t;
+  typedef std::vector<cfg_binding *> conf_dirs_t;
   typedef conf_dirs_t::iterator conf_dirs_iter_t;
 
   /** Manages a configuration file.
@@ -151,7 +156,7 @@ namespace af {
       void bind_text(const char *dir_name, std::string *dest_ptr,
         const char *def_val);
       void bind_callback(const char *dir_name,
-        void (*callback)(const char *val, void *args), void *args);
+        void (*callback)(const char *name, const char *val, void *args), void *args);
 
     private:
 
