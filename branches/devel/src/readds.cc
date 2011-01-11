@@ -8,6 +8,7 @@
  */
 #include <stdio.h>
 #include <libgen.h>
+#include <dlfcn.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -114,7 +115,10 @@ void test_dsmanip() {
 
     dsm.fetch_files(NULL);
     while (fi = dsm.next_file()) {
-      printf("    entry (%d urls):\n", fi->GetNUrls());
+      TFileInfoMeta *meta = fi->GetMetaData(NULL);
+      long evts = -1;
+      if (meta) evts = meta->GetEntries();
+      printf("    entry (%d urls, %ld evts):\n", fi->GetNUrls(), evts);
       fi->ResetUrl();
       while (turl = fi->NextUrl()) printf("     - %s\n", turl->GetUrl());
     }
@@ -148,7 +152,7 @@ void test_extcmd(const char *argv0) {
   af::extCmd my_cmd("xrdstagetool -d 0 root://localhost//alien/alice/cern.ch/user/d/dberzano/MeoniPt/AliESDs-00175.root");
   my_cmd.run();
 
-  std::cout << "Downloading file..." << std::flush;
+  std::cout << "Downloading file" << std::flush;
 
   while (my_cmd.is_running()) {
     std::cout << '.' << std::flush;
@@ -285,7 +289,7 @@ void test_queue() {
 
 /** Test regex facility.
  */
-void test_regex() {
+extern "C" void test_regex() {
 
   af::regex re;
 
@@ -314,6 +318,44 @@ void test_regex() {
   }
 }
 
+/** Test the loading of dynamic libraries and symbols.
+ */
+void test_dl() {
+
+  void *dlh1 = dlopen("./libshared_1.so", RTLD_LAZY);
+  void *dlh2 = dlopen("./libshared_2.so", RTLD_LAZY);
+
+  if ((!dlh1) || (!dlh2)) {
+    printf("Cannot open shared libraries, sorry!\n");
+    if (dlh1) dlclose(dlh1);
+    if (dlh2) dlclose(dlh2);
+    return;
+  }
+
+  typedef void (*plugin_hello_init)();
+
+  const char *dlerr;
+  plugin_hello_init hi1 = (plugin_hello_init)dlsym(dlh1, "hello_init");
+  if (dlerr = dlerror()) {
+    printf("Cannot find symbols in first library\n");
+    dlclose(dlh1);
+    dlclose(dlh2);
+  }
+
+  plugin_hello_init hi2 = (plugin_hello_init)dlsym(dlh2, "hello_init");
+  if (dlerr = dlerror()) {
+    printf("Cannot find symbols in second library\n");
+    dlclose(dlh1);
+    dlclose(dlh2);
+  }
+
+  hi1();
+  hi2();
+
+  dlclose(dlh1);
+  dlclose(dlh2);
+}
+
 /** Entry point.
  */
 int main(int argc, char *argv[]) {
@@ -325,8 +367,9 @@ int main(int argc, char *argv[]) {
   //test_dsmanip();
   //test_queue();
   //test_extcmd(argv[0]);
-  test_config(999);
+  //test_config(999);
   //test_log();
+  test_dl();
 
   printf("!!! goodbye !!!\n");
 

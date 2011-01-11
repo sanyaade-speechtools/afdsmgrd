@@ -99,7 +99,7 @@ const char *dataSetList::next_dataset() {
     return NULL;
   }
 
-  strncpy(ds_curr, ds_objstr_name->String().Data(), AF_DSNAME_BUFSIZE);
+  strncpy(ds_curr, ds_objstr_name->String().Data(), AF_DATASETLIST_BUFSIZE);
   return ds_curr;
 }
 
@@ -110,8 +110,14 @@ const char *dataSetList::next_dataset() {
  *  returns true. This function has to be called at the beginning of TFileInfos
  *  reading. It is safe to double call it - 2nd call does nothing (and returns
  *  true for success).
+ *
+ *  The filter argument tells the class to return only files that match some
+ *  criteria (staged, corrupted, has event count...) via next_file() method.
+ *  See header file for possible constants to combine via OR operator. Default
+ *  is to show all files.
  */
-bool dataSetList::fetch_files(const char *ds_name) {
+bool dataSetList::fetch_files(const char *ds_name, unsigned short filter) {
+
   if (fi_inited) return true;
 
   if (!ds_name) {
@@ -123,6 +129,7 @@ bool dataSetList::fetch_files(const char *ds_name) {
   if (!fi_coll) return false;
 
   fi_iter = new TIter(fi_coll->GetList());
+  fi_filter = filter;
   fi_inited = true;
 
   return true;
@@ -154,7 +161,30 @@ void dataSetList::rewind_files() {
  *  is returned instead.
  */
 TFileInfo *dataSetList::next_file() {
+
+  bool s, c, e;
+
   if (!fi_inited) return NULL;
-  fi_curr = dynamic_cast<TFileInfo *>(fi_iter->Next());
+
+  while (true) {
+    fi_curr = dynamic_cast<TFileInfo *>(fi_iter->Next());
+    if (fi_curr == NULL) break;
+
+    TFileInfoMeta *meta = fi_curr->GetMetaData(NULL);
+    e = ((meta) && (meta->GetEntries() >=0));
+
+    s = fi_curr->TestBit(TFileInfo::kStaged);
+    c = fi_curr->TestBit(TFileInfo::kCorrupted);
+
+    if ((s && (fi_filter & AF_STAGED)) ||
+        (!s && (fi_filter & AF_NOTSTAGED)) ||
+        (c && (fi_filter & AF_CORRUPTED)) ||
+        (!c && (fi_filter & AF_NOTCORRUPTED)) ||
+        (e && (fi_filter & AF_HASEVENTS)) ||
+        (!e && (fi_filter & AF_HASNOEVENTS))) {
+      break;
+    }
+  }
+
   return fi_curr;  // may be NULL
 }
