@@ -11,8 +11,9 @@
 
 set (ROOTSYS $ENV{ROOTSYS})
 if (ROOTSYS)
-  message (STATUS "[ROOT] ROOTSYS envvar: ${ROOTSYS}")
-  set (ROOTSYS $ENV{ROOTSYS} CACHE PATH "The root of the ROOT installation };-)")
+  get_filename_component (ROOTSYS ${ROOTSYS} ABSOLUTE)
+  message (STATUS "[ROOT] ROOTSYS (from environment): ${ROOTSYS}")
+  set (ROOTSYS ${ROOTSYS} CACHE PATH "The root of the ROOT installation };-)")
 else ()
   if (Root_FIND_REQUIRED)
     message (FATAL_ERROR "ROOTSYS is not set!")

@@ -80,7 +80,7 @@ function PrintHelp() {
   echo "Parameters:"
   echo "  --prefix=<dir>        the installation prefix (default=/usr/local)"
   echo "  --with-rootsys=<dir>  the directory of ROOT (default=\$ROOTSYS)"
-  echo "  --with-apmon=<dir>    the directory where to search for ApMon " \
+  echo "  --with-apmon=<dir>    the directory where to search for ApMon" \
     "libraries and includes (default=<auto>)"
   echo "  --disable-apmon       disable support for ApMon"
 }
