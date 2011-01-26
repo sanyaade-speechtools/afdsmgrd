@@ -38,14 +38,13 @@ target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 # List of executables and their link-time dependencies
 #
 
-#add_executable (afdsmgrd afdsmgrd.cc)
-#target_link_libraries(afdsmgrd AfDataSetsManager AfConfReader AfDataSetSrc AfLog AfStageUrl AfDict ${Root_LIBS} ${ApMon_LIBRARY})
-
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
 add_executable (readds readds.cc)
 target_link_libraries (readds afDataSetList afOpQueue afConfig afLog afExtCmd afRegex ${Root_LIBS})
 
+add_executable (afdsmgrd afdsmgrd.cc)
+target_link_libraries (afdsmgrd afLog afConfig ${Root_LIBS})
 
 #
 # Where to install the stuff

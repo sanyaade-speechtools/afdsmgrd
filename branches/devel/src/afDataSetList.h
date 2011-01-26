@@ -52,6 +52,7 @@ namespace af {
       TFileInfo *next_file();
 
       void set_dataset_mgr(TDataSetManager *_ds_mgr);
+      inline TDataSetManager *get_dataset_mgr() const { return ds_mgr; };
 
     private:
 

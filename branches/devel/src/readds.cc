@@ -368,8 +368,8 @@ int main(int argc, char *argv[]) {
   //test_queue();
   //test_extcmd(argv[0]);
   //test_config(999);
-  //test_log();
-  test_dl();
+  test_log();
+  //test_dl();
 
   printf("!!! goodbye !!!\n");
 

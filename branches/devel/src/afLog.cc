@@ -133,19 +133,21 @@ void log::vsay(log_type_t type, log_level_t level, const char *fmt,
   if (level < min_log_level) return;
 
   char pref;
+  static char color[8] = "";
 
   switch (type) {
-    case log_type_ok:      pref = 'O'; break;
-    case log_type_info:    pref = 'I'; break;
-    case log_type_warning: pref = 'W'; break;
-    case log_type_error:   pref = 'E'; break;
-    case log_type_fatal:   pref = 'F'; break;
+    case log_type_ok:      pref = 'O'; strcpy(color, "\033[1;32m"); break;
+    case log_type_info:    pref = 'I'; strcpy(color, "\033[1;36m"); break;
+    case log_type_warning: pref = 'W'; strcpy(color, "\033[1;33m"); break;
+    case log_type_error:   pref = 'E'; strcpy(color, "\033[1;31m"); break;
+    case log_type_fatal:   pref = 'F'; strcpy(color, "\033[1;35m"); break;
   }
 
   time_t cur_time = time(NULL);
   struct tm *cur_tm = localtime(&cur_time);
-  strftime(strbuf, AF_LOG_BUFSIZE, "-[%Y%m%d-%H%M%S] ", cur_tm);
-  *out << pref << strbuf;
+  strftime(strbuf, AF_LOG_BUFSIZE, "-[%Y%m%d-%H%M%S]", cur_tm);
+  if (!out_file) *out << color << pref << strbuf << " \033[m";
+  else *out << pref << strbuf << " ";
 
   vsnprintf(strbuf, AF_LOG_BUFSIZE, fmt, vargs);
   *out << strbuf << std::endl;

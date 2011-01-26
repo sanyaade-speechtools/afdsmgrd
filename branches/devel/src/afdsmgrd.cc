@@ -1,292 +1,257 @@
-/* Exit codes
- * 
- * Ok          :  0
- * ----------------
- * Arguments   : 1?
- * Files       : 2?
- * Fork        : 3?
- * Permissions : 4?
- * Suid        : 5?
+/**
+ * afdsmgrd.cc -- by Dario Berzano <dario.berzano@gmail.com>
  *
+ * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+ *
+ * Entry point of the daemon with some extra functions. Functions that are meant
+ * to be used by external plugins are demangled by means of the extern "C"
+ * keyword.
  */
 
-// Standard includes
-#include <cstdlib>
-#include <pwd.h>
-#include <grp.h>
-
-// This project's includes
-#include "AfVersion.h"
-#include "AfLog.h"
-#include "AfConfReader.h"
-#include "AfDataSetsManager.h"
-
-// ROOT includes
-#include <TSystem.h>
-#include <TString.h>
-#include <TError.h>
-#include <TObjectTable.h>
-
-// POSIX includes
+#include <stdio.h>
+#include <unistd.h>
+#include <libgen.h>
 #include <signal.h>
 
-AfLog *gLog = NULL;
+#include <fstream>
+#include <memory>
 
-void PrintObjTableOnSignal(Int_t signum) {
-  gObjectTable->Print();
+#include "afLog.h"
+#include "afConfig.h"
+
+#include <TDataSetManagerFile.h>
+
+#define AF_ERR_LOG 1
+#define AF_ERR_CONFIG 2
+#define AF_ERR_MEM 3
+
+/** Global variables.
+ */
+bool quit_requested = false;
+
+/** Returns an instance of the log facility based on the given logfile. In case
+ *  the logfile can't be opened, it returns NULL.
+ */
+af::log *set_logfile(const char *log_file) {
+
+  af::log *log;
+
+  if (log_file) {
+    try { log = new af::log(log_file, af::log_level_normal); }
+    catch (std::ios_base::failure &exc) {
+      log = new af::log(std::cout, af::log_level_normal);
+      af::log::fatal(af::log_level_urgent, "Can't open %s as log file",
+        log_file);
+      delete log;
+      return NULL;
+    }
+  }
+  else log = new af::log(std::cout, af::log_level_normal);
+
+  return log;
+
 }
 
+/** Writes the given pid on pidfile. Returns true if written, false otherwise.
+ */
+bool write_pidfile(pid_t pid, const char *pid_file) {
+  if (!pid_file) {
+    af::log::warning(af::log_level_urgent, "No pidfile given (use -p)");
+    return false;
+  }
+  std::ofstream pf(pid_file);
+  if (!pf) {
+    af::log::error(af::log_level_urgent, "Can't write pidfile %s", pid_file);
+    return false;
+  }
+  pf << pid << std::endl;
+  pf.close();
+  return true;
+}
+
+/** Returns a pointer to std::string containing the base path (without trailing
+ *  slashes) of the command executed as "cmd" from current working directory
+ *  (i.e. the argv[0]). The returned pointer is dynamically allocated and must
+ *  be freed by the caller.
+ */
+std::string *get_exec_path(const char *cmd) {
+
+  char *base = dirname((char *)cmd);  // dirname() returns a ptr to static buf
+  char *buf;
+  std::string *path;
+  size_t maxlen;
+
+  if (base[0] == '/') {
+    path = new std::string(base);
+  }
+  else {
+    buf = getcwd(NULL, 0);  // getcwd() uses malloc()
+
+    if (!buf) return NULL;
+    else {
+      path = new std::string(buf);
+      free(buf);
+    }
+
+    if (strcmp(base, ".") != 0) {
+      *path += "/";
+      *path += base;
+    }
+  }
+
+  return path;
+}
+
+/** Handles a typical quit signal (see signal()).
+ */
+void signal_quit_callback(int signum) {
+  af::log::info(af::log_level_urgent, "Quit requested with signal %d", signum);
+  quit_requested = true;
+}
+
+/** Callback called when directive xpd.datasetsrc changes.
+ */
+void config_callback_datasetsrc(const char *name, const char *val, void *args) {
+
+  void **args_array = (void **)args;
+
+  TDataSetManager **root_dsm = (TDataSetManager **)args_array[0];
+  std::string *dsm_url = (std::string *)args_array[1];
+  std::string *dsm_mss = (std::string *)args_array[2];
+  std::string *dsm_opt = (std::string *)args_array[3];
+
+  af::log::info(af::log_level_normal, "name=%s val=%s", name, val);
+
+  char *cfgline = strdup(val);
+  char *tok;
+
+  tok = strtok(cfgline, " \t");
+  while (tok != NULL) {
+    if (strncmp(tok, "url:", 4) == 0) *dsm_url = &tok[4];
+    else if (strncmp(tok, "mss:", 4) == 0) *dsm_mss = &tok[4];
+    else if (strncmp(tok, "opt:", 4) == 0) *dsm_opt = &tok[4];
+    tok = strtok(NULL, " \t");
+  }
+
+  // url:
+  // mss:
+  // opt:
+
+
+
+}
+
+/** The main loop. The loop breaks when the external variable quit_requested is
+ *  set to true.
+ */
+void main_loop(af::config &config) {
+
+  static bool inited = false;
+
+  TDataSetManager *root_dsm = NULL;
+  std::string dsm_url;
+  std::string dsm_mss;
+  std::string dsm_opt;
+  void *dsm_cbk_args[] = { &root_dsm, &dsm_url, &dsm_mss, &dsm_opt };
+
+  if (!inited) {
+    config.bind_callback("xpd.datasetsrc", &config_callback_datasetsrc,
+      dsm_cbk_args);
+  }
+
+  while (!quit_requested) {
+    af::log::info(af::log_level_normal, "This is the main loop");
+    if (config.update())
+      af::log::info(af::log_level_normal, "Config file modified");
+    else af::log::info(af::log_level_low, "Config file unmodified");
+    sleep(1);
+  }
+
+}
+
+/*void AfDataSetsManager::DoSuid() {
+  if (!fSuid) {
+    return;
+  }
+  fUnpUid = geteuid();
+  fUnpGid = getegid();
+  if (!((seteuid(0) == 0) && (setegid(0) == 0))) {
+    AfLogFatal("Failed to obtain superuser privileges");
+    gSystem->Exit(51);
+  }
+}
+
+void AfDataSetsManager::UndoSuid() {
+  if (!fSuid) {
+    return;
+  }
+  if (!((setegid(fUnpGid) == 0) && (seteuid(fUnpUid) == 0))) {
+    AfLogFatal("Can't drop privileges!");
+    gSystem->Exit(51);
+  }
+}*/
+
+/** Entry point of afdsmgrd.
+ */
 int main(int argc, char *argv[]) {
 
-  if (TObject::GetObjectStat()) {
-    signal(SIGUSR1, PrintObjTableOnSignal);
-  }
+  int c;
+  const char *config_file = NULL;
+  const char *log_file = NULL;
+  const char *pid_file = NULL;
+  bool daemon = false;
 
-  Int_t c;
+  opterr = 0;
 
-  opterr = 0;  // getopt lib: do not show standard errors
+  // c <config>
+  // l <logfile>
+  // b
+  // p <pidfile>
+  // d <low|normal|high|urgent> --> log level
+  while ((c = getopt(argc, argv, ":c:l:p:d:b")) != -1) {
 
-  AfLog::Init();
-
-  TString logFile;
-  TString confFile;
-  TString pidFile;
-  char *dropUser = NULL;
-  char *dropGroup = NULL;
-  Bool_t bkg = kFALSE;
-  Bool_t resetDs = kFALSE;
-  Bool_t showRootMsg = kFALSE;
-  Int_t debugLevel = -999;
-
-  while ((c = getopt(argc, argv, ":bl:c:R:p:rtd:")) != -1) {
     switch (c) {
-      case 'b':
-        bkg = kTRUE;
-      break;
-
-      case 'c':
-        confFile = optarg;
-      break;
-
-      case 'l':
-        logFile = optarg;
-      break;
-
-      case 'p':
-        pidFile = optarg;
-      break;
-
-      case 'R':
-        dropUser = optarg;
-      break;
-
-      case 'r':
-        resetDs = kTRUE;
-      break;
-
-      case 't':
-        showRootMsg = kTRUE;
-      break;
-
-      case 'd':
-        {
-          TString *dl = new TString(optarg);
-          debugLevel = dl->Atoi();
-          delete dl;
-        }
-      break;
-
-      case ':':
-        AfLogFatal("Option '-%c' requires an argument", optopt);
-        return 11;
-      break;
-
-      case '?':
-        AfLogFatal("Unknown option: '-%c'", optopt);
-        return 12;
-      break;
-    } // switch
-  } // while
-
-  // Show debug messages?
-  gLog->SetDebugLevel(debugLevel);
-
-  // Determine the full path of the executable
-  TString fullPath;
-  {
-    TString fullPathExec;
-
-    if (*argv[0] == '/') {
-      fullPathExec = argv[0];
-    }
-    else {
-      fullPathExec = Form("%s/%s", gSystem->WorkingDirectory(), argv[0]);
+      case 'c': config_file = optarg; break;
+      case 'l': log_file = optarg; break;
+      case 'p': pid_file = optarg; break;
+      case 'd': /* TODO */ break;
+      case 'b': daemon = true; break;
     }
 
-    fullPath = realpath(gSystem->DirName(fullPathExec.Data()), NULL);
   }
 
-  // Check if log filename is absolute
-  if ((!logFile.IsNull()) && (!logFile.BeginsWith("/"))) {
-    logFile = Form("%s/%s", gSystem->WorkingDirectory(), logFile.Data());
-  }
+  std::auto_ptr<af::log> log( set_logfile(log_file) );
+  if (!log.get()) return AF_ERR_LOG;
 
-  // Open logfile just to check if it can be opened
-  if ((logFile.IsNull()) && (bkg)) {
-    AfLogFatal("Logfile is compulsory if daemonizing");
-    return 13;
-  }
+  /* fork() */
 
-  // Check if PID filename is absolute
-  if ((!pidFile.IsNull()) && (!pidFile.BeginsWith("/"))) {
-    pidFile = Form("%s/%s", gSystem->WorkingDirectory(), pidFile.Data());
-  }
+  pid_t pid = getpid();
+  write_pidfile(pid, pid_file);
 
-  // Eventually forking
-  if (bkg) {
-    pid_t pid = fork();
+  af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
 
-    if (pid < 0) { // Cannot fork
-      gSystem->Exit(31);
-    }
-
-    if (pid > 0) { // This is the parent process, and pid is the child's pid
-      gSystem->Exit(0);
-    }
-
-    pid_t sid = setsid();
-    if (sid < 0) {
-      gSystem->Exit(32);
-    }
-
-    //umask(0);
-    if (chdir("/") != 0) {
-      gSystem->Exit(33);
-    }
-
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
-  }
-
-  // Files should be opened after fork() (because terminating the parent
-  // would close the fd of the child too)
-  if (!logFile.IsNull()) {
-    if (!gLog->SetFile(logFile.Data())) {
-      return 21;  // no error message can be seen at this point, it is pointless
-                  // to print something
-    }
-  }
-
-  // After having the logfile, we should check the rest!
-
-  // Write PID to the pidfile
-  if (!pidFile.IsNull()) {
-    ofstream pids(pidFile.Data());
-    if (pids) {
-      pids << gSystem->GetPid() << endl;
-      pids.close();
-    }
-    else {
-      AfLogWarning("Can't write process PID on the specified pidfile.");
-    }
+  std::auto_ptr<std::string> exec_path( get_exec_path(argv[0]) );
+  if (!exec_path.get()) {
+    af::log::fatal(af::log_level_urgent, "Memory error");
+    return AF_ERR_MEM;
   }
   else {
-    if (bkg) {
-      AfLogWarning("PID file not specified: the PID is %d", gSystem->GetPid());
-    }
-    else {
-      AfLogInfo("Running as PID %d", gSystem->GetPid());
-    }
+    af::log::info(af::log_level_normal, "Executable path (unnormalized): %s",
+      exec_path->c_str());
   }
 
-  // Configuration file checks
-  if (confFile.IsNull()) {
-    AfLogFatal("Configuration file is compulsory");
-    return 14;
-  }
-  else if (!confFile.BeginsWith("/")) {
-    confFile = Form("%s/%s", gSystem->WorkingDirectory(), confFile.Data());
-    char *buf = realpath(confFile.Data(), NULL);
-    if (buf) {
-      confFile = buf;
-      delete[] buf;
-    }
-    else {
-      AfLogWarning("Cannot get real path for %s", confFile.Data());
-    }
+  if (!config_file) {
+    af::log::fatal(af::log_level_urgent, "No config file given (use -c)");
+    return AF_ERR_CONFIG;
   }
 
-  // From this point on, configuration file and logfile are set
+  af::config config(config_file);
 
-  // The banner will be printed at each logfile rotation
-  gLog->SetBanner(Form("##### afdsmgrd %s compiled %s %s #####", AFVER,
-    __DATE__, __TIME__));
+  signal(SIGTERM, signal_quit_callback);
+  signal(SIGINT, signal_quit_callback);
 
-  gLog->PrintBanner();
-
-  // Drop current effective user: it can revert back to the former at any time,
-  // and only when needed
-  if (dropUser) {
-    struct passwd *p = getpwnam(dropUser);
-    if (p) {
-      if ((setegid(p->pw_gid) != -1) && (seteuid(p->pw_uid) != -1)) {
-          struct group *g = getgrgid(p->pw_gid);
-          AfLogOk("Dropped user privileges: now running as user %s (%d), " \
-            "group %s (%d)", dropUser, p->pw_uid, g->gr_name, p->pw_gid);
-      }
-      else {
-        AfLogFatal("Can't drop privileges to user %s", dropUser);
-        return 41;
-      }
-    }
-    else {
-      AfLogFatal("Can't become user %s because it does not exist", dropUser);
-      return 42;
-    }
-  }
-  else if (geteuid() == 0) {
-    // We are root
-    AfLogWarning("Running as user root: this is potentially dangerous!");
-  }
-  else {
-    // We are not root
-    AfLogWarning("Running as an unprivileged user: this may impair " \
-      "dataset writing");
-  }
-
-  // ROOT messages above the threshold are shown
-  if (showRootMsg) {
-    gErrorIgnoreLevel = 0;
-  }
-  else {
-    gErrorIgnoreLevel = 10000;
-  }
-
-  //AfLogOk("If you are here, everything went fine");
-
-  AfDataSetsManager *dsm = new AfDataSetsManager();
-  dsm->SetBinPrefix(fullPath.Data());
-
-  if (dropUser) {
-    dsm->SetSuid(kTRUE);
-  }
-
-  if ( !dsm->ReadConf(confFile.Data()) ) {
-    delete dsm;
-    return 22;
-  }
-
-  if (resetDs) {
-    dsm->ProcessAllDataSetsOnce(kDsReset);
-  }
-  else {
-    dsm->Loop();
-  }
-
-  delete dsm;
-
-  AfLog::Delete();
+  main_loop(config);
 
   return 0;
+
 }

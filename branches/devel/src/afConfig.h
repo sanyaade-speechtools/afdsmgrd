@@ -156,7 +156,8 @@ namespace af {
       void bind_text(const char *dir_name, std::string *dest_ptr,
         const char *def_val);
       void bind_callback(const char *dir_name,
-        void (*callback)(const char *name, const char *val, void *args), void *args);
+        void (*callback)(const char *name, const char *val, void *args),
+        void *args);
 
     private:
 
