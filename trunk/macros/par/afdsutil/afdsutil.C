@@ -153,7 +153,7 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
     groups = mgr->GetDataSets(dsMask, TDataSetManager::kReadShort);
   }
   else {
-    groups = gProof->GetDataSets(dsMask);
+    groups = gProof->GetDataSets(dsMask, ":lite:");
   }
 
   if (!groups) {
