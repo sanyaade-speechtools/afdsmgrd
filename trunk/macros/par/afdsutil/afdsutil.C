@@ -1827,7 +1827,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     TString um;
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
-    Printf("%-45s : %4llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
+    Printf("%-45s : %6llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
       (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
     // If requested, "verify" the dataset (fast mode) and "cache"
