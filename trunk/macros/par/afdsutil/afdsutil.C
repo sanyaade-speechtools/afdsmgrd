@@ -1,5 +1,5 @@
 /* ========================================================================== *
- * afdsmgrd -- by Dario Berzano <dario.berzano@gmail.com>                     *
+ * afdsmgrd -- by Dario Berzano <dario.berzano@to.infn.it>                    *
  *                                                                            *
  * This macro is part of the AAF package VO_ALICE@AFDSUtils::0.4.3            *
  *                                                                            *
@@ -58,7 +58,7 @@ void _afRootQuietOff() {
  */
 Bool_t _afProofMode() {
   Bool_t proofMode = gEnv->GetValue("af.proofmode", 1);
-  if ((proofMode) && (!gProof)) {
+  if ((proofMode) && ((!gProof) || (!gProof->IsValid()))) {
     TProof::Open(gEnv->GetValue("af.userhost", "alice-caf.cern.ch"),
       "masteronly");
   }
@@ -188,8 +188,8 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
         while ((dn = dynamic_cast<TObjString *>(di.Next()))) {
 
           // No COMMON user/group mapping is done here...
-          TString dsUri = TDataSetManager::CreateUri( gn->String(), un->String(),
-            dn->String() );
+          TString dsUri = TDataSetManager::CreateUri( gn->String(),
+            un->String(), dn->String() );
 
           listOfDs->Add( new TObjString(dsUri.Data()) );
 
@@ -1267,9 +1267,11 @@ void afFindUrl(const char *fileUrl, const char *dsMask = "/*/*") {
 /** Repair datasets: this function gives the possibility to take actions on
  *  corrupted files. Possible actions are:
  *
- *   - unlist:    files are removed from dataset
- *   - unstage:   files are deleted from storage and marked as unstaged
- *   - uncorrupt: files are marked as unstaged/uncorrupted
+ *   - unlist:      files are removed from dataset
+ *   - unstage:     files are deleted from storage and marked as unstaged
+ *   - condunstage: same as unstage, but storage deletion is triggered only if
+ *                  file is marked as staged
+ *   - uncorrupt:   files are marked as unstaged/uncorrupted
  *
  *  Actions can be combined, separe them with colon ':'. Actions "unlist" and
  *  "uncorrupt" can not be combined.
@@ -1290,6 +1292,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
   Bool_t aUncorrupt = kFALSE;
   Bool_t aUnstage = kFALSE;
+  Bool_t aCondUnstage = kFALSE;
   Bool_t aUnlist = kFALSE;
 
   TObjArray *tokens = action.Tokenize(":");
@@ -1304,6 +1307,9 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     else if (tok->String() == "unstage") {
       aUnstage = kTRUE;
     }
+    else if (tok->String() == "condunstage") {
+      aCondUnstage = kTRUE;
+    }
     else if (tok->String() == "unlist") {
       aUnlist = kTRUE;
     }
@@ -1315,6 +1321,10 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
   // Check for incompatible options
   if (aUncorrupt && aUnlist) {
     Printf("Can't mark as uncorrupted and unlist at the same time.");
+    return;
+  }
+  if (aUnstage && aCondUnstage) {
+    Printf("Please specify only one amongst \"unstage\" and \"condunstage\".");
     return;
   }
 
@@ -1357,7 +1367,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
       fc = gProof->GetDataSet(dsUri.Data());
     }
 
-    if (aUncorrupt || aUnstage || aUnlist) {
+    if (aUncorrupt || aUnstage || aCondUnstage || aUnlist) {
       newFc = new TFileCollection();
       newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
     }
@@ -1390,6 +1400,13 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
           if ((aUnstage) && (_afUnstage(url, kTRUE, unstageRemotely))) {
             fi->ResetBit(TFileInfo::kStaged);
+          }
+
+          if (aCondUnstage) {
+            if ((fi->TestBit(TFileInfo::kStaged)) &&
+              (_afUnstage(url, kTRUE, unstageRemotely))) {
+              fi->ResetBit(TFileInfo::kStaged);
+            }
           }
 
           if (!aUnlist) {
@@ -1447,13 +1464,30 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   TIter i(dsList);
   Int_t count = 0;
 
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
+
   while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
-    Printf("% 4d. %s", ++count, nameObj->String().Data());
+    TFileCollection *fc;
+    if (mgr) fc = mgr->GetDataSet(nameObj->String().Data());
+    else fc = gProof->GetDataSet(nameObj->String().Data());
+
+    if (!fc) {
+      Printf("% 4d. %-45s | problems fetching dataset information!", ++count,
+        nameObj->String().Data());
+    }
+    else {
+      Printf("% 4d. %-45s | %5.1f%% staged | %5.1f%% corrupted", ++count,
+        nameObj->String().Data(), fc->GetStagedPercentage(),
+        fc->GetCorruptedPercentage());
+      delete fc;
+    }
   }
 
   Printf(">> There are %d dataset(s) matching your criteria",
     dsList->GetSize());
 
+  if (mgr) delete mgr;
   delete dsList;
 }
 
@@ -1842,17 +1876,105 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   delete runNumsPtr;
 }
 
+/** Writes the contents of the specified dataset (or pattern of datasets) on
+ *  text files placed in the specified outDir. outDir is created if nonexistent,
+ *  and only the nUrl'th URL of each entry is written to the text file. If nUrl
+ *  is a "big" number, it represents the last URL, while 1 represents the first
+ *  one. If aliEnToRedirector is kTRUE and the selected URL is of alien:// type,
+ *  it is converted to the corresponding redirector URL before being written on
+ *  the list. If onlyGood is kTRUE, only staged and noncorrupted files are
+ *  considered.
+ */
+void afDsToPlainText(TString dsMask, TString outDir = "/tmp", UInt_t nUrl = 999,
+  Bool_t aliEnToRedirector = kTRUE, Bool_t onlyGood = kTRUE) {
+
+  if (nUrl == 0) {
+    Printf("Valid values for nUrl start from 1 for the first URL.");
+    return;
+  }
+
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
+
+  TList *listOfDs = _afGetListOfDs(dsMask);
+
+  TString redirPtn = gEnv->GetValue("af.redirurl", "root://localhost:1234/$1");
+  TPMERegexp alienRe("^alien:\\/\\/(.*)$");
+
+  // Objects to eliminate unwanted characters in dataset name
+  TString substPtn = "$2$3_";
+  TPMERegexp re("(^/|(.))([^/]*)/");
+
+  // Create output directory
+  gSystem->mkdir(outDir.Data(), kTRUE);  // kTRUE means "recursive" (i.e. "-p")
+
+  TIter i(listOfDs);
+  TObjString *dsUriObj;
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+
+    TString ofName = dsUriObj->String();
+    while (re.Substitute(ofName, substPtn)) {}
+    ofName = Form("%s/%s.txt", outDir.Data(), ofName.Data());
+
+    ofstream of( ofName.Data() );
+    if (!of) {
+      Printf("Can't write dataset %s on %s, skipping",
+        dsUriObj->String().Data(), ofName.Data());
+      continue;
+    }
+    else Printf("Writing dataset %s on %s...", dsUriObj->String().Data(),
+      ofName.Data());
+
+    TFileCollection *fc;
+    if (mgr) fc = mgr->GetDataSet(dsUriObj->String().Data());
+    else fc = gProof->GetDataSet(dsUriObj->String().Data());
+
+    TIter j(fc->GetList());
+    TFileInfo *fi;
+    UInt_t thisNUrl;
+    while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
+
+      if (onlyGood) {
+        if ((fi->TestBit(TFileInfo::kCorrupted)) ||
+          (!fi->TestBit(TFileInfo::kStaged))) continue;
+      }
+
+      TUrl *url = NULL;
+
+      thisNUrl = fi->GetNUrls();
+      if (nUrl <= thisNUrl) thisNUrl = nUrl;
+
+      fi->ResetUrl();
+      for (UInt_t k=1; k<=thisNUrl; k++) url = fi->NextUrl();
+
+      if (!url) continue;
+
+      TString buf = url->GetUrl();
+      if (aliEnToRedirector && (strcmp(url->GetProtocol(), "alien") == 0)) {
+        alienRe.Substitute(buf, redirPtn);
+      }
+
+      of << buf.Data() << endl;
+    }
+
+    of.close();
+
+  }
+
+  if (mgr) delete mgr;
+  delete listOfDs;
+}
 
 /* ========================================================================== *
  *                                ENTRY POINT                                 *
  * ========================================================================== */
 
-/** Init function, it only prints a welcome message with the default parameters.
+/** Init function: it just prints a welcome message with the default parameters.
  */
 void afdsutil() {
   cout << endl;
   Printf("Dataset management utilities -- "
-    "by Dario Berzano <dario.berzano@gmail.com>");
+    "by Dario Berzano <dario.berzano@to.infn.it>");
   Printf("Bugs: https://savannah.cern.ch/projects/aaf/");
   Printf("Available functions start with \"af\", use autocompletion to list.");
   cout << endl;
