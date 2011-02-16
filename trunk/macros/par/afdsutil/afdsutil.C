@@ -327,11 +327,12 @@ Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE,
   return kTRUE;
 }
 
-/** Formats a file size returning the new size and the unit of measurement.
+/** Formats a file size returning the new size and the unit of measurement. Unit
+ *  of measurement is always three characters long.
  */
 void _afNiceSize(Long64_t bytes, TString &um, Double_t &size) {
 
-  const char *ums[] = { "bytes", "KiB", "MiB", "GiB", "TiB" };
+  const char *ums[] = { "byt", "KiB", "MiB", "GiB", "TiB" };
   Int_t maxDiv = sizeof(ums)/sizeof(const char *);
   Int_t nDiv = 0;
   Double_t b = bytes;
@@ -1467,19 +1468,24 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   TDataSetManagerFile *mgr = NULL;
   if (!_afProofMode()) mgr = _afCreateDsMgr();
 
+  TString um;
+  Double_t sz;
+
   while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
     TFileCollection *fc;
     if (mgr) fc = mgr->GetDataSet(nameObj->String().Data());
     else fc = gProof->GetDataSet(nameObj->String().Data());
 
     if (!fc) {
-      Printf("% 4d. %-45s | problems fetching dataset information!", ++count,
+      Printf("% 5d. %-45s | problems fetching dataset information!", ++count,
         nameObj->String().Data());
     }
     else {
-      Printf("% 4d. %-45s | %5.1f%% staged | %5.1f%% corrupted", ++count,
-        nameObj->String().Data(), fc->GetStagedPercentage(),
-        fc->GetCorruptedPercentage());
+      _afNiceSize(fc->GetTotalSize(), um, sz);
+      Printf("%5d. %-45s | %4lld files | %6.1lf %s | %5.1f%% stg "
+        "| %5.1f%% cor",
+        ++count, nameObj->String().Data(), fc->GetNFiles(), sz, um.Data(),
+        fc->GetStagedPercentage(), fc->GetCorruptedPercentage());
       delete fc;
     }
   }
