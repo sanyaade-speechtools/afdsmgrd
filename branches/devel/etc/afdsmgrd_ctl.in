@@ -51,6 +51,8 @@ declare -a CONF_FILES
 CONF_FILES=(
   "/etc/sysconfig/$BASENAME" \
   "/etc/default/$BASENAME" \
+  "@CMAKE_INSTALL_PREFIX@/etc/sysconfig/$BASENAME" \
+  "@CMAKE_INSTALL_PREFIX@/etc/default/$BASENAME" \
   "$HOME/.$BASENAME.cf"
 )
 
@@ -64,7 +66,7 @@ done
 unset CF
 
 # Full path of program
-export PROG="$AFRENEWAUTHD_PROG"
+export PROG="$AFDSMGRD_PROG"
 
 # Silently fails if program is missing (for spurious init.d scripts)
 [ -x "$PROG" ] || exit 0
