@@ -31,5 +31,6 @@ export AFDSMGRD_USER=aaf
 # Files created by the init.d script will belong to AFDSMGRD_USER and this group
 export AFDSMGRD_GROUP=aaf
 
-# Set to 1 to enable verbose debug output
-export AFDSMGRD_DEBUG=0
+# Choose the log level amongst: low, normal, high, urgent. All messages below
+# the chosen log level won't be shown
+export AFDSMGRD_LOGLEVEL=low

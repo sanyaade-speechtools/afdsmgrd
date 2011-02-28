@@ -50,4 +50,4 @@ target_link_libraries (afdsmgrd afLog afConfig ${Root_LIBS})
 # Where to install the stuff
 #
 
-#install (TARGETS afdsmgrd RUNTIME DESTINATION bin)
+install (TARGETS afdsmgrd RUNTIME DESTINATION bin)

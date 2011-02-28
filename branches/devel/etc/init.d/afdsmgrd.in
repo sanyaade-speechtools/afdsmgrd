@@ -80,8 +80,14 @@ export PIDFILE="$AFDSMGRD_PIDFILE"
 # Log file
 export LOGFILE="$AFDSMGRD_LOGFILE"
 
+# Configuration file
+export CONF="$AFDSMGRD_CONF"
+
 # Daemon user
 export SUSER="$AFDSMGRD_USER"
+
+# Log level
+export LOG_LEVEL="$AFDSMGRD_LOGLEVEL"
 
 #
 # Functions
@@ -135,7 +141,10 @@ function LaunchDaemon() {
 
   local RETVAL
 
-  echo ciao
+  #echo "$AFDSMGRD_PROG" -p "$PIDFILE" -c "$CONF"
+
+  ( export LD_LIBRARY_PATH="$AFDSMGRD_LIBS:$LD_LIBRARY_PATH" ; \
+    "$AFDSMGRD_PROG" -b -p "$PIDFILE" -c "$CONF" -d "$LOG_LEVEL" -l "$LOGFILE" )
 
   return $?
 }
@@ -234,9 +243,16 @@ esac
 
 
 
-
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
+#                                                                             #
+#                    NO ADMITTANCE BEYOND THIS POINT :)                       #
+#                                                                             #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
 exit 0
+
+
+
 
 
 

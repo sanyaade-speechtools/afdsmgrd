@@ -61,6 +61,7 @@ namespace af {
 
       log(std::ostream &out_stream, log_level_t min_level);
       log(const char *log_file, log_level_t min_level);
+      void set_level(log_level_t min_level) { min_log_level = min_level; };
       virtual ~log();
       void say(log_type_t type, log_level_t level, const char *fmt, ...);
       static void ok(log_level_t level, const char *fmt, ...);

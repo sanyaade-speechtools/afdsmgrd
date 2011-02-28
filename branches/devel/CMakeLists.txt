@@ -71,11 +71,13 @@ add_subdirectory (src)
 configure_file (
   "${PROJECT_SOURCE_DIR}/src/AfConfigure.h.in"
   "${PROJECT_BINARY_DIR}/src/AfConfigure.h"
+  @ONLY
 )
 
 configure_file (
   "${PROJECT_SOURCE_DIR}/etc/sysconfig/afdsmgrd.in"
   "${PROJECT_BINARY_DIR}/etc/sysconfig/afdsmgrd"
+  @ONLY
 )
 
 configure_file (

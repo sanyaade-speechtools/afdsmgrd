@@ -24,6 +24,9 @@
 #define AF_ERR_LOG 1
 #define AF_ERR_CONFIG 2
 #define AF_ERR_MEM 3
+#define AF_ERR_LOGLEVEL 4
+#define AF_ERR_FORK 5
+#define AF_ERR_CWD 6
 
 /** Global variables.
  */
@@ -122,22 +125,65 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
   af::log::info(af::log_level_normal, "name=%s val=%s", name, val);
 
-  char *cfgline = strdup(val);
-  char *tok;
+  char *cfgline = NULL;
+  char *tok = NULL;
+  bool rw = false;
+  bool invalid = false;
 
-  tok = strtok(cfgline, " \t");
-  while (tok != NULL) {
-    if (strncmp(tok, "url:", 4) == 0) *dsm_url = &tok[4];
-    else if (strncmp(tok, "mss:", 4) == 0) *dsm_mss = &tok[4];
-    else if (strncmp(tok, "opt:", 4) == 0) *dsm_opt = &tok[4];
-    tok = strtok(NULL, " \t");
+  // If val == NULL, directive is invalid
+  if (!val) {
+    invalid = true;
+  }
+  else {
+
+    cfgline = strdup(val);
+    tok = strtok(cfgline, " \t");
+
+    if (strncmp(tok, "file", 4) != 0) invalid = true;
+    else {
+      while (tok != NULL) {
+        if (strncmp(tok, "url:", 4) == 0) *dsm_url = &tok[4];
+        else if (strncmp(tok, "mss:", 4) == 0) *dsm_mss = &tok[4];
+        else if (strncmp(tok, "opt:", 4) == 0) *dsm_opt = &tok[4];
+        else if (strncmp(tok, "rw=1", 4) == 0) rw = true;
+        tok = strtok(NULL, " \t");
+      }
+    }
+
+    if (dsm_opt->empty()) *dsm_opt = (rw ? "Av:Ar" : "-Av:-Ar");
+    if (dsm_mss->empty() || dsm_url->empty()) invalid = true;
+
+    free(cfgline);
+
   }
 
-  // url:
-  // mss:
-  // opt:
+  if (invalid) {
 
+    // Error message for the masses
+    if (!val) {
+      af::log::error(af::log_level_urgent,
+        "Mandatory directive %s is missing", name);
+    }
+    else {
+      af::log::error(af::log_level_urgent,
+        "Invalid directive \"%s\" value: %s", name, val);
+    }
 
+    // Destroy previous TDataSetManagerFile: other parts of the program must
+    // not assume that it is !NULL
+    if (*root_dsm) {
+      delete *root_dsm;
+      *root_dsm = NULL;
+    }
+  }
+  else {
+    *root_dsm = new TDataSetManagerFile(NULL, NULL,
+      Form("dir:%s opt:%s", dsm_url->c_str(), dsm_opt->c_str()));
+    af::log::ok(af::log_level_urgent, "ROOT dataset manager reinitialized");
+    af::log::ok(af::log_level_normal, ">> Local path: %s", dsm_url->c_str());
+    af::log::ok(af::log_level_normal, ">> MSS: %s", dsm_mss->c_str());
+    af::log::ok(af::log_level_normal, ">> Options: %s", dsm_opt->c_str());
+  }
 
 }
 
@@ -146,25 +192,44 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
  */
 void main_loop(af::config &config) {
 
+  // These are static variables: they are initialized only at the first call of
+  // this function, and their value stays intact between calls
   static bool inited = false;
 
-  TDataSetManager *root_dsm = NULL;
-  std::string dsm_url;
-  std::string dsm_mss;
-  std::string dsm_opt;
-  void *dsm_cbk_args[] = { &root_dsm, &dsm_url, &dsm_mss, &dsm_opt };
+  static TDataSetManager *root_dsm = NULL;
+  static std::string dsm_url;
+  static std::string dsm_mss;
+  static std::string dsm_opt;
+  static void *dsm_cbk_args[] = { &root_dsm, &dsm_url, &dsm_mss, &dsm_opt };
+
+  // Bound to dsmgrd.sleepsecs
+  static long sleep_secs = 1;
 
   if (!inited) {
+
+    // Exotic directive (from PROOF): xpd.datasetsrc
     config.bind_callback("xpd.datasetsrc", &config_callback_datasetsrc,
       dsm_cbk_args);
+
+    // Bind dsmgrd.sleepsecs
+    config.bind_int("dsmgrd.sleepsecs", &sleep_secs, 30, 5, AF_INT_MAX);
+
+    inited = true;
+
   }
 
+  // The actual loop
   while (!quit_requested) {
-    af::log::info(af::log_level_normal, "This is the main loop");
-    if (config.update())
-      af::log::info(af::log_level_normal, "Config file modified");
+
+    af::log::info(af::log_level_low, "Inside main loop");
+    if (config.update()) {
+      af::log::info(af::log_level_urgent, "Config file modified");
+    }
     else af::log::info(af::log_level_low, "Config file unmodified");
-    sleep(1);
+
+    af::log::info(af::log_level_low, "Sleeping %ld seconds", sleep_secs);
+    sleep(sleep_secs);
+
   }
 
 }
@@ -199,29 +264,91 @@ int main(int argc, char *argv[]) {
   const char *config_file = NULL;
   const char *log_file = NULL;
   const char *pid_file = NULL;
-  bool daemon = false;
+  const char *log_level = NULL;
+  bool daemonize = false;
 
   opterr = 0;
 
   // c <config>
   // l <logfile>
-  // b
+  // b --> TODO: fork to background
   // p <pidfile>
   // d <low|normal|high|urgent> --> log level
-  while ((c = getopt(argc, argv, ":c:l:p:d:b")) != -1) {
+  while ((c = getopt(argc, argv, ":c:l:p:bd:")) != -1) {
 
     switch (c) {
       case 'c': config_file = optarg; break;
       case 'l': log_file = optarg; break;
       case 'p': pid_file = optarg; break;
-      case 'd': /* TODO */ break;
-      case 'b': daemon = true; break;
+      case 'd': log_level = optarg; break;
+      case 'b': daemonize = true; break;
     }
 
   }
 
+  // Fork must be done before everything else: in particular, before getting the
+  // PID (because it changes!) and before opening any file (because fds are not
+  // inherited)
+  if (daemonize) {
+
+    pid_t pid = fork();
+
+    if (pid < 0) {
+      // Cannot fork: we are still in parent process
+      exit(AF_ERR_FORK);
+    }
+
+    if (pid > 0) {
+      // We are in parent process and pid holds child's process: we exit with
+      // success
+      exit(0);
+    }
+
+    /*pid_t sid = setsid();
+    if (sid < 0) {
+      gSystem->Exit(32);
+    }*/
+
+    if (chdir("/") != 0) {
+      // Current directory may change, but root directory will always be
+      exit(AF_ERR_CWD);
+    }
+
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+  }
+
   std::auto_ptr<af::log> log( set_logfile(log_file) );
   if (!log.get()) return AF_ERR_LOG;
+
+  // Set the log level amongst low, normal, high and urgent
+  if (log_level) {
+    if (strcmp(log_level, "low") == 0)
+      log->set_level(af::log_level_low);
+    else if (strcmp(log_level, "normal") == 0)
+      log->set_level(af::log_level_normal);
+    else if (strcmp(log_level, "high") == 0)
+      log->set_level(af::log_level_high);
+    else if (strcmp(log_level, "urgent") == 0)
+      log->set_level(af::log_level_urgent);
+    else {
+      // Invalid log level is fatal for the daemon
+      af::log::fatal(af::log_level_urgent,
+        "Invalid log level \"%s\": specify with -d one amongst: "
+        "low, normal, high, urgent", log_level);
+      return AF_ERR_LOGLEVEL;
+    }
+    af::log::info(af::log_level_normal, "Log level set to %s", log_level);
+  }
+  else {
+    af::log::warning(af::log_level_normal, "No log level specified (with -d): "
+      "defaulted to normal");
+  }
+
+  if (daemonize) {
+    af::log::warning(af::log_level_urgent, "We are supposed to fork to background");
+  }
 
   /* fork() */
 
