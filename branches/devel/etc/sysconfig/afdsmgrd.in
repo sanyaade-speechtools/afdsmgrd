@@ -9,10 +9,11 @@ export AFDSMGRD_PROG=@CMAKE_INSTALL_PREFIX@/bin/afdsmgrd
 
 # The configuration file - configuration may be shared with xrootd, cmsd and
 # proof without conflicts
-export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/xrootd/afdsmgrd.cf
+export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/afdsmgrd.conf
 
-# Library paths required by afdsmgrd: it should contain both ROOT libraries and
-# eventually the xrootd libraries to run the custom staging command
+# Library paths required by afdsmgrd: it should contain ROOT libraries, ApMon
+# libraries and eventually the xrootd libraries to run the custom staging
+# command
 export AFDSMGRD_LIBS=@Root_LIBDIR@:/path/to/xrootd/lib
 
 # The log directory
@@ -25,10 +26,10 @@ export AFDSMGRD_LOGFILE=$AFDSMGRD_LOGDIR/afdsmgrd.log
 export AFDSMGRD_PIDFILE=/var/run/afdsmgrd.pid
 
 # Unprivileged user that launches the daemon
-export AFDSMGRD_USER=xrd
+export AFDSMGRD_USER=aaf
 
 # Files created by the init.d script will belong to AFDSMGRD_USER and this group
-export AFDSMGRD_GROUP=xrd
+export AFDSMGRD_GROUP=aaf
 
 # Set to 1 to enable verbose debug output
 export AFDSMGRD_DEBUG=0

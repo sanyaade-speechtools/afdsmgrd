@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #
 # Start and stop the afdsmgrd daemon.
@@ -6,7 +6,8 @@
 # by Dario Berzano <dario.berzano@gmail.com>
 #
 # This script is conform to the LSB specifications and it is compatible with
-# the chkconfig custom header format.
+# the chkconfig custom header format. It can also be run by an unprivileged
+# user and without being installed system-wide.
 #
 
 #
@@ -28,34 +29,214 @@
 # Provides: afdsmgrd
 # Default-Start: 2 3 4 5
 # Default-Stop: 0 1 6
-# Required-Start: $local_fs
-# Required-Stop: $local_fs
+# Required-Start: $local_fs $network
+# Required-Stop: $local_fs $network
 # Short-Description: Dataset manager for PROOF-based AFs
 # Description: afdsmgrd, which stands for Analysis Facility Dataset Manager
 #              Daemon, is a ROOT-based daemon that scans the stored datasets in
 #              order to issue the actual data staging
 ### END INIT INFO
 
-# Source function library
-if [ -r /lib/lsb/init-functions ]; then
-  . /lib/lsb/init-functions
-elif [ -r /etc/init.d/functions ]; then
-  . /etc/init.d/functions
-fi
+#
+# External libraries and global variables
+#
 
-# Get the configuration variables
-if [ -r /etc/sysconfig/afdsmgrd ]; then
-  . /etc/sysconfig/afdsmgrd
-fi
+# Basename of the script
+export BASENAME=`readlink "$0"`
+[ "$BASENAME" == "" ] && BASENAME="$0"
+BASENAME=`basename "$BASENAME"`
 
-[ -x $AFDSMGRD_PROG ] || exit 0
+# Get the configuration variables from the first configuration file found
+declare -a CONF_FILES
+CONF_FILES=(
+  "/etc/sysconfig/$BASENAME" \
+  "/etc/default/$BASENAME" \
+  "$HOME/.$BASENAME.cf"
+)
 
-RETVAL=0
-PROG=afdsmgrd
+for CF in "${CONF_FILES[@]}"; do
+  if [ -r "$CF" ]; then
+    source "$CF"
+    break
+  fi
+done
 
-cleanup() {
-  rm -rf /tmp/afdsmgrd-stagecmd-err-*
+unset CF
+
+# Full path of program
+export PROG="$AFRENEWAUTHD_PROG"
+
+# Silently fails if program is missing (for spurious init.d scripts)
+[ -x "$PROG" ] || exit 0
+
+# Basename of program
+export BASEPROG=`basename "$PROG"`
+
+# File that holds the PID
+export PIDFILE="$AFDSMGRD_PIDFILE"
+
+# Log file
+export LOGFILE="$AFDSMGRD_LOGFILE"
+
+# Daemon user
+export SUSER="$AFDSMGRD_USER"
+
+#
+# Functions
+#
+
+# Auxiliary messaging function: normal echo
+function Msg() {
+  echo "$@"
 }
+
+# Auxiliary messaging function: begin of operation
+function MsgBegin() {
+  echo -n "$@: "
+}
+
+# Auxiliary messaging function: end of operation
+function MsgEnd() {
+  local STATUS
+  [ "$1" == 0 ] && STATUS="\033[1;32mOK\033[m" || STATUS="\033[1;31mfailed\033[m"
+  shift
+  if [ "$*" != "" ]; then
+    echo -e "$STATUS ($@)"
+  else
+    echo -e "$STATUS"
+  fi
+}
+
+# Echoes the PID of the program if running; empty string otherwise
+function GetPid() {
+  local PID=`cat "$PIDFILE" 2> /dev/null`
+  kill -0 "$PID" 2> /dev/null && echo $PID
+}
+
+# Tries to stop, then kills the specified PID
+function StopKill() {
+  local PID="$1"
+  kill -15 "$PID" 2> /dev/null
+  for ((I=0; $I<3; I++)); do
+    sleep 1
+    kill -0 "$PID" 2> /dev/null
+    [ $? != 0 ] && return 0
+  done
+  kill -9 "$PID" 2> /dev/null
+  sleep 1
+  kill -0 "$PID" 2> /dev/null && return 1 || return 0
+}
+
+# This is most likely the only function to edit: it contains the custom
+# commands to effectively launch the daemon
+function LaunchDaemon() {
+
+  local RETVAL
+
+  echo ciao
+
+  return $?
+}
+
+# Starts the daemon (if not running)
+function Start() {
+  local PID RETVAL
+  MsgBegin "Starting $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    LaunchDaemon
+    RETVAL=$?
+    MsgEnd $RETVAL
+  else
+    MsgEnd 1 "already running with PID=$PID"
+    RETVAL=1
+  fi
+  return $RETVAL
+}
+
+# Stops the daemon
+function Stop() {
+  local PID RETVAL
+  MsgBegin "Stopping $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    MsgEnd 0 "not running"
+    RETVAL=0
+  else
+    StopKill $PID
+    RETVAL=$?
+    [ $RETVAL == 0 ] && rm -f "$PIDFILE"
+    MsgEnd $RETVAL
+  fi
+  return $RETVAL
+}
+
+# Status of the daemon; returns 0 if running, nonzero otherwise
+function Status() {
+  local PID
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    Msg "$BASEPROG is not running"
+    return 1
+  else
+    Msg "$BASEPROG is running with PID=$PID"
+    return 0
+  fi
+}
+
+# Last lines of log
+function ShowLog() {
+  Status
+  if [ $? == 0 ]; then
+    echo "Showing last lines of $LOGFILE with tail -f (abort with Ctrl+C):"
+    tail -f "$LOGFILE"
+  fi
+}
+
+#
+# Entry point
+#
+
+case "$1" in
+  start)
+    Start
+    exit $?
+  ;;
+  stop)
+    Stop
+    exit $?
+  ;;
+  status)
+    Status
+    exit 0
+  ;;
+  log)
+    ShowLog
+    exit 0
+  ;;
+  restart|condrestart|reload)
+    Stop && Start
+    exit $?
+  ;;
+  #drain)
+  # to be implemented
+  #;;
+  *)
+    echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status|log}"
+    exit 1
+  ;;
+esac
+
+
+
+
+
+
+
+
+exit 0
+
+
 
 start() {
   echo -n "Starting $PROG..."
