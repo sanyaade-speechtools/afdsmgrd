@@ -78,10 +78,16 @@ configure_file (
   "${PROJECT_BINARY_DIR}/etc/sysconfig/afdsmgrd"
 )
 
+configure_file (
+  "${PROJECT_SOURCE_DIR}/etc/init.d/afdsmgrd.in"
+  "${PROJECT_BINARY_DIR}/etc/init.d/afdsmgrd"
+  @ONLY
+)
+
 #
 # Install directives for non-src files
 #
 
-#install (FILES etc/xrootd/afdsmgrd.cf.example etc/xrootd/single_dataset_src.cf.example DESTINATION etc/xrootd)
-#install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd etc/sysconfig)
-#install (FILES etc/init.d/afdsmgrd DESTINATION etc/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (FILES etc/afdsmgrd.conf.example DESTINATION etc)
+install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd etc/sysconfig)
+install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION etc/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
