@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <libgen.h>
 #include <signal.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <fstream>
 #include <memory>
@@ -27,6 +29,14 @@
 #define AF_ERR_LOGLEVEL 4
 #define AF_ERR_FORK 5
 #define AF_ERR_CWD 6
+#define AF_ERR_SETSID 7
+#define AF_ERR_DROP_IMPOSSIBLE 8
+#define AF_ERR_DROP_FAILED 9
+#define AF_ERR_DROP_INVALID 10
+#define AF_ERR_SUID_NORMAL_GID 11
+#define AF_ERR_SUID_NORMAL_UID 12
+#define AF_ERR_SUID_ROOT_GID 13
+#define AF_ERR_SUID_ROOT_UID 14
 
 /** Global variables.
  */
@@ -79,7 +89,7 @@ bool write_pidfile(pid_t pid, const char *pid_file) {
  *
  * TODO TODO TODO TODO TODO TODO TODO TODO TODO !! ERRORS !! ERRORS !!
  */
-std::string *get_exec_path(const char *cmd) {
+/*std::string *get_exec_path(const char *cmd) {
 
   // HERE LIES THE ERROR: dirname() modifies the input string!!!!!
   char *base = dirname((char *)cmd);  // dirname() returns a ptr to static buf
@@ -106,7 +116,7 @@ std::string *get_exec_path(const char *cmd) {
   }
 
   return path;
-}
+}*/
 
 /** Handles a typical quit signal (see signal()).
  */
@@ -237,27 +247,61 @@ void main_loop(af::config &config) {
 
 }
 
-/*void AfDataSetsManager::DoSuid() {
-  if (!fSuid) {
-    return;
-  }
-  fUnpUid = geteuid();
-  fUnpGid = getegid();
-  if (!((seteuid(0) == 0) && (setegid(0) == 0))) {
-    AfLogFatal("Failed to obtain superuser privileges");
-    gSystem->Exit(51);
-  }
-}
+/** Toggles between unprivileged user and super user. Saves the unprivileged UID
+ *  and GID inside static variables.
+ *
+ *  Group must be changed before user! See [1] for further details.
+ *
+ *  [1] http://stackoverflow.com/questions/3357737/dropping-root-privileges
+ */
+void toggle_suid() {
 
-void AfDataSetsManager::UndoSuid() {
-  if (!fSuid) {
-    return;
+  static uid_t unp_uid = 0;
+  static gid_t unp_gid = 0;
+
+  if (geteuid() == 0) {
+
+    // Revert to normal user
+    if (setegid(unp_gid) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to revert to unprivileged gid %d", unp_gid);
+      exit(AF_ERR_SUID_NORMAL_GID);
+    }
+    else if (seteuid(unp_uid) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to revert to unprivileged uid %d", unp_uid);
+      exit(AF_ERR_SUID_NORMAL_UID);
+    }
+    else {
+      af::log::ok(af::log_level_low, "Reverted to unprivileged uid=%d gid=%d",
+        unp_uid, unp_gid);
+    }
+
   }
-  if (!((setegid(fUnpGid) == 0) && (seteuid(fUnpUid) == 0))) {
-    AfLogFatal("Can't drop privileges!");
-    gSystem->Exit(51);
+  else {
+
+    // Try to become root
+
+    unp_uid = geteuid();
+    unp_gid = getegid();
+
+    if (setegid(0) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to escalate to privileged gid");
+      exit(AF_ERR_SUID_ROOT_GID);
+    }
+    else if (seteuid(0) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to escalate to privileged uid");
+      exit(AF_ERR_SUID_ROOT_UID);
+    }
+    else {
+      af::log::ok(af::log_level_low, "Superuser privileges obtained");
+    }
+
   }
-}*/
+
+}
 
 /** Entry point of afdsmgrd.
  */
@@ -268,6 +312,7 @@ int main(int argc, char *argv[]) {
   const char *log_file = NULL;
   const char *pid_file = NULL;
   const char *log_level = NULL;
+  const char *drop_user = NULL;
   bool daemonize = false;
 
   opterr = 0;
@@ -277,7 +322,7 @@ int main(int argc, char *argv[]) {
   // b --> TODO: fork to background
   // p <pidfile>
   // d <low|normal|high|urgent> --> log level
-  while ((c = getopt(argc, argv, ":c:l:p:bd:")) != -1) {
+  while ((c = getopt(argc, argv, ":c:l:p:bu:d:")) != -1) {
 
     switch (c) {
       case 'c': config_file = optarg; break;
@@ -285,6 +330,7 @@ int main(int argc, char *argv[]) {
       case 'p': pid_file = optarg; break;
       case 'd': log_level = optarg; break;
       case 'b': daemonize = true; break;
+      case 'u': drop_user = optarg; break;
     }
 
   }
@@ -296,26 +342,10 @@ int main(int argc, char *argv[]) {
 
     pid_t pid = fork();
 
-    if (pid < 0) {
-      // Cannot fork: we are still in parent process
-      exit(AF_ERR_FORK);
-    }
-
-    if (pid > 0) {
-      // We are in parent process and pid holds child's process: we exit with
-      // success
-      exit(0);
-    }
-
-    /*pid_t sid = setsid();
-    if (sid < 0) {
-      gSystem->Exit(32);
-    }*/
-
-    if (chdir("/") != 0) {
-      // Current directory may change, but root directory will always be
-      exit(AF_ERR_CWD);
-    }
+    if (pid < 0) exit(AF_ERR_FORK);  // in parent process: cannot fork
+    if (pid > 0) exit(0);  // in parent proc: terminate because fork succeeded
+    if (setsid() < 0) exit(AF_ERR_SETSID);
+    if (chdir("/") != 0) exit(AF_ERR_CWD);
 
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
@@ -354,6 +384,50 @@ int main(int argc, char *argv[]) {
   write_pidfile(pid, pid_file);
 
   af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
+
+  // Drop current effective user to an unprivileged one
+  if (drop_user) {
+
+    if (geteuid() != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "You cannot drop privileges to user \"%s\" if you are not root",
+        drop_user);
+      return AF_ERR_DROP_IMPOSSIBLE;
+    }
+
+    struct passwd *pwd = getpwnam(drop_user);
+    if (pwd) {
+      // See http://stackoverflow.com/questions/3357737/dropping-root-privileges
+      if ((setegid(pwd->pw_gid) == 0) && (seteuid(pwd->pw_uid) == 0)) {
+        struct group *grp = getgrgid(pwd->pw_gid);
+        af::log::ok(af::log_level_urgent,
+          "Dropped privileges to user \"%s\" (%d), group \"%s\" (%d)",
+          drop_user, pwd->pw_uid, grp->gr_name, pwd->pw_gid);
+      }
+      else {
+        af::log::fatal(af::log_level_urgent,
+          "Failed to drop privileges to user \"%s\"", drop_user);
+        return AF_ERR_DROP_FAILED;
+      }
+    }
+    else {
+      af::log::fatal(af::log_level_urgent,
+        "Can't become user \"%s\" because it appears to not exist", drop_user);
+      return AF_ERR_DROP_INVALID;
+    }
+  }
+  else if (geteuid() == 0) {
+    // Running as root, privileges undropped
+    af::log::warning(af::log_level_urgent,
+      "Running as user root: this is potentially dangerous");
+  }
+  else {
+    // Running as unprivileged, privileges undropped
+    struct passwd *pwd = getpwuid(geteuid());
+    af::log::warning(af::log_level_urgent,
+      "Running as unprivileged user \"%s\": this may prevent dataset writing",
+      pwd->pw_name);
+  }
 
   /* IMPORTANT -- Get Executable Path -- dirname() error!!!
 

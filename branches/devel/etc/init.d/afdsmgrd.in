@@ -80,6 +80,9 @@ export PIDFILE="$AFDSMGRD_PIDFILE"
 # Log file
 export LOGFILE="$AFDSMGRD_LOGFILE"
 
+# Log dir
+export LOGDIR="$AFDSMGRD_LOGDIR"
+
 # Configuration file
 export CONF="$AFDSMGRD_CONF"
 
@@ -139,12 +142,15 @@ function StopKill() {
 # commands to effectively launch the daemon
 function LaunchDaemon() {
 
-  local RETVAL
-
-  #echo "$AFDSMGRD_PROG" -p "$PIDFILE" -c "$CONF"
+  # Change permissions of log directory
+  mkdir -p "$LOGDIR" > /dev/null 2>&1
+  touch "$LOGFILE" > /dev/null 2>&1
+  chmod -R u=rwX,g=rX,o=rX "$LOGDIR" > /dev/null 2>&1
+  chown -R "$SUSER" "$LOGDIR" > /dev/null 2>&1
 
   ( export LD_LIBRARY_PATH="$AFDSMGRD_LIBS:$LD_LIBRARY_PATH" ; \
-    "$AFDSMGRD_PROG" -b -p "$PIDFILE" -c "$CONF" -d "$LOG_LEVEL" -l "$LOGFILE" )
+    "$AFDSMGRD_PROG" -b -u "$SUSER" -p "$PIDFILE" -c "$CONF" -d "$LOG_LEVEL" \
+    -l "$LOGFILE" > /dev/null 2>&1 )
 
   return $?
 }
