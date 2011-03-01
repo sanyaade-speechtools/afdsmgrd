@@ -29,12 +29,6 @@ add_library (shared_2 SHARED shared_2.cc)
 target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 
 #
-# Classes which need a dictionary
-#
-
-#root_generate_dictionaries ( AfDict AfStageUrl.h AfDataSetSrc.h )
-
-#
 # List of executables and their link-time dependencies
 #
 

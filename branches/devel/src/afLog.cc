@@ -27,11 +27,13 @@ log::log(std::ostream &out_stream, log_level_t min_level) :
  *  class throws an exception any time a file open call fails (because disk is
  *  full or no permissions on output file or whatever).
  *
+ *  By default, the log file is rotated every 12 hours.
+ *
  *  See http://www.cplusplus.com/reference/iostream/ios/exceptions/
  */
 log::log(const char *log_file, log_level_t min_level) :
   file_name(log_file), min_log_level(min_level), rotated_time(time(NULL)),
-  secs_rotate(86400.) {
+  secs_rotate(43200.) {
 
   out_file = new std::ofstream();
   out_file->exceptions(std::ios::failbit);
@@ -68,24 +70,31 @@ void log::say(log_type_t type, log_level_t level, const char *fmt, ...) {
  *  for more information.
  */
 rotate_err_t log::rotate() {
+
   struct tm *rotated_tm = localtime(&rotated_time);
-  strcpy(strbuf, "bzip2 -9 \"");
-  size_t pos = strlen(strbuf);
-  char *old_log_file_name = &strbuf[pos];
-  strftime(old_log_file_name, AF_LOG_BUFSIZE-pos, "logfile-%Y%m%d-%H%M%S",
-    rotated_tm);
+
+  // Formatted date/time
+  static char datetime_fmt[20];
+  strftime(datetime_fmt, 19, "%Y%m%d-%H%M%S", rotated_tm);
+
+  // Compose archive log file name (the uncompressed one) on strbuf
+  snprintf(strbuf, AF_LOG_BUFSIZE, "%s-%s", file_name.c_str(), datetime_fmt);
 
   out_file->close();
 
   rotate_err_t ret = rotate_err_ok;
 
-  if (rename(file_name.c_str(), old_log_file_name)) ret = rotate_err_rename;
+  if (rename(file_name.c_str(), strbuf)) ret = rotate_err_rename;
   else {
-    strncat(strbuf, "\" > /dev/null 2>&1", AF_LOG_BUFSIZE);
+
+    // Compose compress command
+    snprintf(strbuf, AF_LOG_BUFSIZE, "bzip2 -9 \"%s-%s\" > /dev/null 2>&1",
+      file_name.c_str(), datetime_fmt);
+
     if (system(strbuf)) ret = rotate_err_compress;
   }
 
-  out_file->open(file_name.c_str(), std::ios::app);
+  out_file->open(file_name.c_str(), std::ios::app);  // might throw an exception
 
   return ret;
 }
@@ -98,7 +107,9 @@ void log::rotate_say(log_type_t type, log_level_t level, const char *fmt,
   va_list vargs) {
 
   if (out_file) {
+
     time_t cur_time = time(NULL);
+
     if (difftime(cur_time, rotated_time) >= secs_rotate) {
 
       switch (rotate()) {
@@ -116,9 +127,10 @@ void log::rotate_say(log_type_t type, log_level_t level, const char *fmt,
           vsay(log_type_ok, log_level_urgent, "Logfile rotated", vargs);
         break;
       }
-    }
 
-    rotated_time = cur_time;
+      rotated_time = cur_time;
+
+    }
   }
 
   vsay(type, level, fmt, vargs);

@@ -76,9 +76,12 @@ bool write_pidfile(pid_t pid, const char *pid_file) {
  *  slashes) of the command executed as "cmd" from current working directory
  *  (i.e. the argv[0]). The returned pointer is dynamically allocated and must
  *  be freed by the caller.
+ *
+ * TODO TODO TODO TODO TODO TODO TODO TODO TODO !! ERRORS !! ERRORS !!
  */
 std::string *get_exec_path(const char *cmd) {
 
+  // HERE LIES THE ERROR: dirname() modifies the input string!!!!!
   char *base = dirname((char *)cmd);  // dirname() returns a ptr to static buf
   char *buf;
   std::string *path;
@@ -346,16 +349,13 @@ int main(int argc, char *argv[]) {
       "defaulted to normal");
   }
 
-  if (daemonize) {
-    af::log::warning(af::log_level_urgent, "We are supposed to fork to background");
-  }
-
-  /* fork() */
-
+  // Report current PID on log facility
   pid_t pid = getpid();
   write_pidfile(pid, pid_file);
 
   af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
+
+  /* IMPORTANT -- Get Executable Path -- dirname() error!!!
 
   std::auto_ptr<std::string> exec_path( get_exec_path(argv[0]) );
   if (!exec_path.get()) {
@@ -365,7 +365,7 @@ int main(int argc, char *argv[]) {
   else {
     af::log::info(af::log_level_normal, "Executable path (unnormalized): %s",
       exec_path->c_str());
-  }
+  }*/
 
   if (!config_file) {
     af::log::fatal(af::log_level_urgent, "No config file given (use -c)");

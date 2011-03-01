@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <libgen.h>
 
 namespace af {
 
