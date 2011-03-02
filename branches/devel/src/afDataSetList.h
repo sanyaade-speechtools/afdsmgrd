@@ -21,6 +21,8 @@
 #define AF_HASNOEVENTS  32
 #define AF_EVERYFILE    63
 
+#include "afLog.h"
+
 #include <stdexcept>
 
 #include <TDataSetManager.h>
@@ -56,19 +58,16 @@ namespace af {
 
     private:
 
-      TDataSetManager *ds_mgr;
+      TDataSetManager            *ds_mgr;
+      std::vector<std::string *>  ds_list;
+      unsigned int                ds_cur_idx;
+      bool                        ds_inited;
 
-      TMap            *ds_list;
-      TIter           *ds_iter;
-      TObjString      *ds_objstr_name;
-      bool             ds_inited;
-      char             ds_curr[AF_DATASETLIST_BUFSIZE];
-
-      TFileCollection *fi_coll;
-      TIter           *fi_iter;
-      TFileInfo       *fi_curr;
-      bool             fi_inited;
-      unsigned short   fi_filter;
+      TFileCollection            *fi_coll;
+      TIter                      *fi_iter;
+      TFileInfo                  *fi_curr;
+      bool                        fi_inited;
+      unsigned short              fi_filter;
 
   };
 

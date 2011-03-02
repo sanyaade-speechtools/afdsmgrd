@@ -49,16 +49,45 @@ void dataSetList::set_dataset_mgr(TDataSetManager *_ds_mgr) {
  *  time, it does nothing.
  */
 void dataSetList::fetch_datasets() {
+
   if (ds_inited) return;
 
-  ds_list = ds_mgr->GetDataSets("/*/*");
-  if (!ds_list) throw std::runtime_error("Can't obtain the list of datasets");
+  TMap *groups = ds_mgr->GetDataSets("/*/*", TDataSetManager::kReadShort);
 
-  ds_list->SetOwnerKeyValue();
-  ds_iter = new TIter(ds_list);
-  *ds_curr = '\0';
+  groups->SetOwnerKeyValue();  // important to avoid leaks!
+  TIter gi(groups);
+  TObjString *gn;
+
+  while ((gn = dynamic_cast<TObjString *>(gi.Next()))) {
+
+    TMap *users = dynamic_cast<TMap *>( groups->GetValue( gn->String() ) );
+    users->SetOwnerKeyValue();
+    TIter ui(users);
+    TObjString *un;
+
+    while ((un = dynamic_cast<TObjString *>(ui.Next()))) {
+
+      TMap *dss = dynamic_cast<TMap *>( users->GetValue( un->String() ) );
+      dss->SetOwnerKeyValue();
+      TIter di(dss);
+      TObjString *dn;
+
+      while ((dn = dynamic_cast<TObjString *>(di.Next()))) {
+
+        // No COMMON user/group mapping is done here...
+        TString dsUri = TDataSetManager::CreateUri( gn->String(),
+          un->String(), dn->String() );
+
+        ds_list.push_back( new std::string(dsUri.Data()) );
+
+      }
+    }
+  }
+
+  delete groups;
 
   ds_inited = true;
+  ds_cur_idx = 0;
 }
 
 /** Frees the memory taken by previously querying the dataset manager for a
@@ -67,9 +96,10 @@ void dataSetList::fetch_datasets() {
  */
 void dataSetList::free_datasets() {
   if (!ds_inited) return;
-  delete ds_list;
-  delete ds_iter;
-  *ds_curr = '\0';
+  unsigned int sz = ds_list.size();
+  for (unsigned int i=0; i<sz; i++)
+    delete ds_list[i];
+  ds_list.clear();
   ds_inited = false;
 }
 
@@ -79,8 +109,7 @@ void dataSetList::free_datasets() {
  */
 void dataSetList::rewind_datasets() {
   if (!ds_inited) return;
-  ds_iter->Reset();
-  *ds_curr = '\0';
+  ds_cur_idx = 0;
 }
 
 /** Gets the next dataset name in the list. Returns NULL if list is not inited
@@ -91,16 +120,8 @@ void dataSetList::rewind_datasets() {
  *  data is not ordered to avoid performance issues.
  */
 const char *dataSetList::next_dataset() {
-  if (!ds_inited) return NULL;
-
-  ds_objstr_name = dynamic_cast<TObjString *>(ds_iter->Next());
-  if (!ds_objstr_name) {
-    *ds_curr = '\0';
-    return NULL;
-  }
-
-  strncpy(ds_curr, ds_objstr_name->String().Data(), AF_DATASETLIST_BUFSIZE);
-  return ds_curr;
+  if ((!ds_inited) || (ds_cur_idx >= ds_list.size())) return NULL;
+  return ds_list[ds_cur_idx++]->c_str();
 }
 
 /** Asks for the list of files (TFileInfo objs) for a given dataset name in
@@ -121,7 +142,8 @@ bool dataSetList::fetch_files(const char *ds_name, unsigned short filter) {
   if (fi_inited) return true;
 
   if (!ds_name) {
-    if ((ds_inited) && (*ds_curr != '\0')) ds_name = ds_curr;
+    if ((ds_inited) && (ds_cur_idx < ds_list.size()))
+      ds_name = ds_list[ds_cur_idx++]->c_str();
     else return false;
   }
 

@@ -38,7 +38,7 @@ add_executable (readds readds.cc)
 target_link_libraries (readds afDataSetList afOpQueue afConfig afLog afExtCmd afRegex ${Root_LIBS})
 
 add_executable (afdsmgrd afdsmgrd.cc)
-target_link_libraries (afdsmgrd afLog afConfig ${Root_LIBS})
+target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex ${Root_LIBS})
 
 #
 # Where to install the stuff

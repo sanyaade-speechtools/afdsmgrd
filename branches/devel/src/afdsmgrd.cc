@@ -14,12 +14,15 @@
 #include <signal.h>
 #include <pwd.h>
 #include <grp.h>
+#include <sys/resource.h>
 
 #include <fstream>
 #include <memory>
 
 #include "afLog.h"
 #include "afConfig.h"
+#include "afDataSetList.h"
+#include "afRegex.h"
 
 #include <TDataSetManagerFile.h>
 
@@ -125,7 +128,32 @@ void signal_quit_callback(int signum) {
   quit_requested = true;
 }
 
-/** Callback called when directive xpd.datasetsrc changes.
+/** Callback called when directive dsmgrd.urlregex changes. Remember that val is
+ *  NULL if no value was specified (i.e., directive is missing).
+ */
+void config_callback_urlregex(const char *name, const char *val, void *args) {
+
+  af::regex *url_regex = (af::regex *)args;
+
+  if (!val) url_regex->unset_regex_subst();
+  else {
+    char *ptn = strdup(val);
+    char *subst = strchr(ptn, ' ');
+    if (!subst) url_regex->unset_regex_subst();
+    else {
+      *subst = '\0';
+      subst++;
+      af::log::info(af::log_level_low, "Regex to match: <%s>", ptn);
+      af::log::info(af::log_level_low, "Substitute pattern: <%s>", subst);
+      url_regex->set_regex_subst(ptn, subst);
+    }
+    free(ptn);
+  }
+
+}
+
+/** Callback called when directive xpd.datasetsrc changes. Remember that val is
+ *  NULL if no value was specified (i.e., directive is missing).
  */
 void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
@@ -210,13 +238,17 @@ void main_loop(af::config &config) {
   static bool inited = false;
 
   static TDataSetManager *root_dsm = NULL;
+  static af::regex url_regex;
   static std::string dsm_url;
   static std::string dsm_mss;
   static std::string dsm_opt;
   static void *dsm_cbk_args[] = { &root_dsm, &dsm_url, &dsm_mss, &dsm_opt };
 
-  // Bound to dsmgrd.sleepsecs
-  static long sleep_secs = 1;
+  // Directives in configuration files are bound to the following variables
+  static long sleep_secs = 0;  // dsmgrd.sleepsecs
+  static long scan_ds_every_loops = 0;  // dsmgrd.scandseveryloops
+  static long max_concurrent_xfrs = 0;  // dsmgrd.parallelxfrs
+  static std::string stage_cmd;
 
   if (!inited) {
 
@@ -224,8 +256,14 @@ void main_loop(af::config &config) {
     config.bind_callback("xpd.datasetsrc", &config_callback_datasetsrc,
       dsm_cbk_args);
 
-    // Bind dsmgrd.sleepsecs
     config.bind_int("dsmgrd.sleepsecs", &sleep_secs, 30, 5, AF_INT_MAX);
+    config.bind_int("dsmgrd.scandseveryloops", &scan_ds_every_loops, 10, 1,
+      AF_INT_MAX);
+    config.bind_int("dsmgrd.parallelxfrs", &max_concurrent_xfrs, 8, 1, 1000);
+    config.bind_text("dsmgrd.stagecmd", &stage_cmd, "/bin/false");
+
+    config.bind_callback("dsmgrd.urlregex", &config_callback_urlregex,
+      &url_regex);
 
     inited = true;
 
@@ -235,11 +273,93 @@ void main_loop(af::config &config) {
   while (!quit_requested) {
 
     af::log::info(af::log_level_low, "Inside main loop");
+
+    //af::log::info(af::log_level_low, "Match re: %s", url_regex.c_str());
+    //af::regex re;
+    //re.set_regex_subst("alien://(.*)$", "brut://pmaster/$1");
+    //const char *inp = "alien:///alice/data/2010/LHC10h/000137161/ESDs/pass1_4plus/10000137161001.10/root_archive.zip#AliESDs.root";
+    //const char *inp = "root://pmaster/alice/data/2010/LHC10h/000137161/ESDs/pass1_4plus/10000137161001.10/root_archive.zip#AliESDs.root";
+    //const char *outp;
+    //outp = re.subst(inp);
+    //af::log::info(af::log_level_normal, "BEF: <%s>", inp);
+    //af::log::info(af::log_level_normal, "AFT: <%s>", outp);
+
+    // Check and load updates from the configuration file
     if (config.update()) {
       af::log::info(af::log_level_urgent, "Config file modified");
     }
     else af::log::info(af::log_level_low, "Config file unmodified");
 
+    /* */
+
+    // List of datasets (così per gradire)
+
+    if (!root_dsm) {
+      af::log::warning(af::log_level_normal, "Datasets can not be read");
+    }
+    else {
+
+      af::dataSetList dsm(root_dsm);
+
+      const char *ds;
+      dsm.fetch_datasets();
+      while (ds = dsm.next_dataset()) {
+
+        af::log::info(af::log_level_normal, "Dataset: <%s>", ds);
+
+        TFileInfo *fi;
+        dsm.fetch_files();
+        int count = 0;
+        while (fi = dsm.next_file()) {
+
+          TUrl *curl = NULL;
+          TUrl *lurl;
+
+          // Get the last URL of each TFileInfo
+          fi->ResetUrl();
+          do { lurl = curl; }
+          while ( curl = (fi->NextUrl()) );
+
+          if (!lurl) continue;
+          const char *inp_url = lurl->GetUrl();
+          const char *out_url = url_regex.subst(inp_url);
+
+          af::log::info(af::log_level_normal, "[I] <%s>", inp_url);
+          af::log::info(af::log_level_normal, "[O] <%s>", out_url);
+          if (++count == 3) break;
+
+
+        }
+        dsm.free_files();
+
+      }
+      dsm.free_datasets();
+
+    }
+
+    /* */
+
+    // Report resources
+    // http://stackoverflow.com/questions/5120861/how-to-measure-memory-usage-from-inside-a-c-program
+    struct rusage rusg;
+    if (getrusage(RUSAGE_SELF, &rusg) == 0) {
+      af::log::info(af::log_level_low, "Mem usage (KiB) >> "
+        "Resident: %ld | Shared: %ld | Unsh. data: %ld | Unsh. stack: %ld",
+        rusg.ru_maxrss, rusg.ru_ixrss, rusg.ru_idrss, rusg.ru_isrss);
+    }
+    else {
+      af::log::warning(af::log_level_normal,
+        "Cannot get resource usage of current process");
+    }
+
+    //long   ru_maxrss;        /* maximum resident set size */
+    //long   ru_ixrss;         /* integral shared memory size */
+    //long   ru_idrss;         /* integral unshared data size */
+    //long   ru_isrss;         /* integral unshared stack size */
+
+    /* */
+
+    // Sleep until the next loop
     af::log::info(af::log_level_low, "Sleeping %ld seconds", sleep_secs);
     sleep(sleep_secs);
 
@@ -448,6 +568,7 @@ int main(int argc, char *argv[]) {
 
   af::config config(config_file);
 
+  // Trap some signals to terminate gently
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 

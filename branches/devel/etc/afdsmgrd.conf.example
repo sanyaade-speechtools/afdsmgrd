@@ -8,10 +8,22 @@
 # one.
 #
 
-# Datasets management: the destpath: is the path that will be prefixed to any
-# URL beginning with alien://, while dsconf: is the local path to the specific
-# configuration file (actions and synchronization) for this dataset source
-xpd.datasetsrc file url:/pool/datasets mss:root://$MASTER:1094 opt:Cq:Av:Ar: destpath:/alien dsconf:/etc/xrootd/single_dataset_src.cf rw=1
+# This is the standard PROOF directive that tells PROOF where to find the
+# datasets repository. For now afdsmgrd only supports dataset sources of type
+# "file", which means on a local filesystem. The syntax is:
+#
+# xpd.datasetsrc file url:<local_path> mss:<redir_path:port> opt:<opts> <rw=1>
+#
+# where some opts are: Cq (check quota), Av (allow verify), Ar (allow register).
+# Options can be prefixed with a minus to exclude them.
+xpd.datasetsrc file url:/pool/datasets mss:root://$MASTER:1094 opt:Cq:Av:Ar: rw=1
+
+# Regex and substitution pattern that will be used to translate the URLs. The
+# regex is interpreted as extended, and substitution pattern interprets
+# "dollar" substitutions from $1 to $9. If the n-th submatch (as in $n) is not
+# defined in regex, it will be substituted with "<?>"; instead, if the n-th
+# submatch did not match anything, it will be just an empty string
+dsmgrd.urlregex alien://(.*)$ root://$MASTER/$1
 
 # At each loop the transfer queue is checked: sleep time between each loop, in
 # seconds
