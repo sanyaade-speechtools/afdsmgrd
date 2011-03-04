@@ -4,8 +4,7 @@
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
  * This class implements a list of datasets and it is a wrapper around calls on
- * the TDataSetManager class (and subclasses). The class is defined inside the
- * namespace "af".
+ * the TDataSetManagerFile class. The class is defined inside the namespace af.
  */
 
 #ifndef AFDATASETLIST_H
@@ -25,7 +24,7 @@
 
 #include <stdexcept>
 
-#include <TDataSetManager.h>
+#include <TDataSetManagerFile.h>
 #include <TFileCollection.h>
 #include <THashList.h>
 #include <TFileInfo.h>
@@ -33,34 +32,49 @@
 
 namespace af {
 
+  /** Dataset manipulation errors.
+   */
+  typedef enum {
+    ds_manip_err_ok_mod = 0,   // success, data modified
+    ds_manip_err_ok_noop = 1,  // success, data not modified
+    ds_manip_err_fail = 2      // failure
+  } ds_manip_err_t;
+
   class dataSetList {
 
     public:
 
-      dataSetList(TDataSetManager *_ds_mgr);
+      dataSetList(TDataSetManagerFile *_ds_mgr);
       virtual ~dataSetList();
 
       // Browse dataset names
       void fetch_datasets();
-      void free_datasets();
-      void rewind_datasets();
       const char *next_dataset();
+      void rewind_datasets();
+      void free_datasets();
+      bool save_dataset();
+      // TODO: void set_toggle_suid();
 
       // Browse entries of a dataset
       bool fetch_files(const char *ds_name = NULL,
         unsigned short filter = AF_EVERYFILE);
-      void free_files();
-      void rewind_files();
       TFileInfo *next_file();
+      void rewind_files();
+      void free_files();
 
-      void set_dataset_mgr(TDataSetManager *_ds_mgr);
-      inline TDataSetManager *get_dataset_mgr() const { return ds_mgr; };
+      // Browse and manipulate URLs of a TFileInfo (entry)
+      TUrl *get_url(int idx);
+      ds_manip_err_t del_urls_but_last();
+
+      void set_dataset_mgr(TDataSetManagerFile *_ds_mgr);
+      inline TDataSetManagerFile *get_dataset_mgr() const { return ds_mgr; };
 
     private:
 
-      TDataSetManager            *ds_mgr;
+      TDataSetManagerFile        *ds_mgr;
       std::vector<std::string *>  ds_list;
-      unsigned int                ds_cur_idx;
+      int                         ds_cur_idx;
+      std::string                 ds_cur_name;
       bool                        ds_inited;
 
       TFileCollection            *fi_coll;

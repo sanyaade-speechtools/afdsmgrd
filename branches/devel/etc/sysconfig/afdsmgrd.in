@@ -16,6 +16,9 @@ export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/afdsmgrd.conf
 # command
 export AFDSMGRD_LIBS=@Root_LIBDIR@:/path/to/xrootd/lib
 
+# Path where to find helper executables for the stager daemon
+export AFDSMGRD_LIBEXEC=@CMAKE_INSTALL_PREFIX@/libexec
+
 # The log directory
 export AFDSMGRD_LOGDIR=/var/log/afdsmgrd
 

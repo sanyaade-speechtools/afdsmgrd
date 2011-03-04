@@ -34,8 +34,9 @@ target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
+# debug
 add_executable (readds readds.cc)
-target_link_libraries (readds afDataSetList afOpQueue afConfig afLog afExtCmd afRegex ${Root_LIBS})
+target_link_libraries (readds afLog afOpQueue afConfig afDataSetList afRegex ${Root_LIBS})
 
 add_executable (afdsmgrd afdsmgrd.cc)
 target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex ${Root_LIBS})
@@ -45,3 +46,7 @@ target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex ${Root_LIBS
 #
 
 install (TARGETS afdsmgrd RUNTIME DESTINATION bin)
+install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION libexec)
+
+# debug
+install (TARGETS readds RUNTIME DESTINATION bin)

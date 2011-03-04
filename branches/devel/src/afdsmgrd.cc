@@ -23,6 +23,7 @@
 #include "afConfig.h"
 #include "afDataSetList.h"
 #include "afRegex.h"
+#include "afExtCmd.h"
 
 #include <TDataSetManagerFile.h>
 
@@ -40,6 +41,7 @@
 #define AF_ERR_SUID_NORMAL_UID 12
 #define AF_ERR_SUID_ROOT_GID 13
 #define AF_ERR_SUID_ROOT_UID 14
+#define AF_ERR_LIBEXEC 15
 
 /** Global variables.
  */
@@ -159,7 +161,7 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
   void **args_array = (void **)args;
 
-  TDataSetManager **root_dsm = (TDataSetManager **)args_array[0];
+  TDataSetManagerFile **root_dsm = (TDataSetManagerFile **)args_array[0];
   std::string *dsm_url = (std::string *)args_array[1];
   std::string *dsm_mss = (std::string *)args_array[2];
   std::string *dsm_opt = (std::string *)args_array[3];
@@ -228,6 +230,62 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
 }
 
+/** Toggles between unprivileged user and super user. Saves the unprivileged UID
+ *  and GID inside static variables.
+ *
+ *  Group must be changed before user! See [1] for further details.
+ *
+ *  [1] http://stackoverflow.com/questions/3357737/dropping-root-privileges
+ */
+void toggle_suid() {
+
+  static uid_t unp_uid = 0;
+  static gid_t unp_gid = 0;
+
+  if (geteuid() == 0) {
+
+    // Revert to normal user
+    if (setegid(unp_gid) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to revert to unprivileged gid %d", unp_gid);
+      exit(AF_ERR_SUID_NORMAL_GID);
+    }
+    else if (seteuid(unp_uid) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to revert to unprivileged uid %d", unp_uid);
+      exit(AF_ERR_SUID_NORMAL_UID);
+    }
+    else {
+      af::log::ok(af::log_level_low, "Reverted to unprivileged uid=%d gid=%d",
+        unp_uid, unp_gid);
+    }
+
+  }
+  else {
+
+    // Try to become root
+
+    unp_uid = geteuid();
+    unp_gid = getegid();
+
+    if (setegid(0) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to escalate to privileged gid");
+      exit(AF_ERR_SUID_ROOT_GID);
+    }
+    else if (seteuid(0) != 0) {
+      af::log::fatal(af::log_level_urgent,
+        "Failed to escalate to privileged uid");
+      exit(AF_ERR_SUID_ROOT_UID);
+    }
+    else {
+      af::log::ok(af::log_level_low, "Superuser privileges obtained");
+    }
+
+  }
+
+}
+
 /** The main loop. The loop breaks when the external variable quit_requested is
  *  set to true.
  */
@@ -237,7 +295,7 @@ void main_loop(af::config &config) {
   // this function, and their value stays intact between calls
   static bool inited = false;
 
-  static TDataSetManager *root_dsm = NULL;
+  static TDataSetManagerFile *root_dsm = NULL;
   static af::regex url_regex;
   static std::string dsm_url;
   static std::string dsm_mss;
@@ -305,31 +363,51 @@ void main_loop(af::config &config) {
       dsm.fetch_datasets();
       while (ds = dsm.next_dataset()) {
 
-        af::log::info(af::log_level_normal, "Dataset: <%s>", ds);
+        af::log::info(af::log_level_low, "Processing dataset <%s>", ds);
 
         TFileInfo *fi;
         dsm.fetch_files();
         int count = 0;
+        int count_changed = 0;
         while (fi = dsm.next_file()) {
 
-          TUrl *curl = NULL;
-          TUrl *lurl;
+          /*TUrl *curl = dsm.get_url(-1);
+          if (!curl) continue;
 
-          // Get the last URL of each TFileInfo
-          fi->ResetUrl();
-          do { lurl = curl; }
-          while ( curl = (fi->NextUrl()) );
-
-          if (!lurl) continue;
-          const char *inp_url = lurl->GetUrl();
+          const char *inp_url = curl->GetUrl();
           const char *out_url = url_regex.subst(inp_url);
 
           af::log::info(af::log_level_normal, "[I] <%s>", inp_url);
-          af::log::info(af::log_level_normal, "[O] <%s>", out_url);
-          if (++count == 3) break;
+          af::log::info(af::log_level_normal, "[O] <%s>", out_url);*/
 
+          switch (dsm.del_urls_but_last()) {
+            case af::ds_manip_err_ok_mod:
+              count_changed++;
+            break;
+            case af::ds_manip_err_ok_noop:
+              /* nothing to do */
+            break;
+            case af::ds_manip_err_fail:
+              /* boh */
+            break;
+          }
 
         }
+
+        // Save only if necessary
+        if (count_changed > 0) {
+          if (dsm.save_dataset()) {
+            af::log::ok(af::log_level_normal, "Dataset <%s> saved", ds);
+          }
+          else {
+            af::log::error(af::log_level_normal,
+              "Dataset <%s> not saved (check permissions)", ds);
+          }
+        }
+        else {
+          af::log::info(af::log_level_low, "Dataset <%s> not modified", ds);
+        }
+
         dsm.free_files();
 
       }
@@ -367,62 +445,6 @@ void main_loop(af::config &config) {
 
 }
 
-/** Toggles between unprivileged user and super user. Saves the unprivileged UID
- *  and GID inside static variables.
- *
- *  Group must be changed before user! See [1] for further details.
- *
- *  [1] http://stackoverflow.com/questions/3357737/dropping-root-privileges
- */
-void toggle_suid() {
-
-  static uid_t unp_uid = 0;
-  static gid_t unp_gid = 0;
-
-  if (geteuid() == 0) {
-
-    // Revert to normal user
-    if (setegid(unp_gid) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to revert to unprivileged gid %d", unp_gid);
-      exit(AF_ERR_SUID_NORMAL_GID);
-    }
-    else if (seteuid(unp_uid) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to revert to unprivileged uid %d", unp_uid);
-      exit(AF_ERR_SUID_NORMAL_UID);
-    }
-    else {
-      af::log::ok(af::log_level_low, "Reverted to unprivileged uid=%d gid=%d",
-        unp_uid, unp_gid);
-    }
-
-  }
-  else {
-
-    // Try to become root
-
-    unp_uid = geteuid();
-    unp_gid = getegid();
-
-    if (setegid(0) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to escalate to privileged gid");
-      exit(AF_ERR_SUID_ROOT_GID);
-    }
-    else if (seteuid(0) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to escalate to privileged uid");
-      exit(AF_ERR_SUID_ROOT_UID);
-    }
-    else {
-      af::log::ok(af::log_level_low, "Superuser privileges obtained");
-    }
-
-  }
-
-}
-
 /** Entry point of afdsmgrd.
  */
 int main(int argc, char *argv[]) {
@@ -433,6 +455,7 @@ int main(int argc, char *argv[]) {
   const char *pid_file = NULL;
   const char *log_level = NULL;
   const char *drop_user = NULL;
+  const char *libexec_path = NULL;
   bool daemonize = false;
 
   opterr = 0;
@@ -442,7 +465,7 @@ int main(int argc, char *argv[]) {
   // b --> TODO: fork to background
   // p <pidfile>
   // d <low|normal|high|urgent> --> log level
-  while ((c = getopt(argc, argv, ":c:l:p:bu:d:")) != -1) {
+  while ((c = getopt(argc, argv, ":c:l:p:bu:d:e:")) != -1) {
 
     switch (c) {
       case 'c': config_file = optarg; break;
@@ -451,6 +474,7 @@ int main(int argc, char *argv[]) {
       case 'd': log_level = optarg; break;
       case 'b': daemonize = true; break;
       case 'u': drop_user = optarg; break;
+      case 'e': libexec_path = optarg; break;
     }
 
   }
@@ -492,11 +516,23 @@ int main(int argc, char *argv[]) {
         "low, normal, high, urgent", log_level);
       return AF_ERR_LOGLEVEL;
     }
-    af::log::info(af::log_level_normal, "Log level set to %s", log_level);
+    af::log::ok(af::log_level_normal, "Log level set to %s", log_level);
   }
   else {
     af::log::warning(af::log_level_normal, "No log level specified (with -d): "
       "defaulted to normal");
+  }
+
+  // "libexec" path
+  if (!libexec_path) {
+    af::log::fatal(af::log_level_urgent, "No path for auxiliary binaries "
+      "specified: specify one with -e");
+    return AF_ERR_LIBEXEC;
+  }
+  else {
+    af::log::ok(af::log_level_normal, "Path for auxiliary binaries: %s",
+      libexec_path);
+    
   }
 
   // Report current PID on log facility

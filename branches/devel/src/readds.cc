@@ -100,7 +100,7 @@ void directive_callback(const char *name, const char *val, void *args) {
  */
 void test_dsmanip() {
 
-  TDataSetManager *prfdsm = new TDataSetManagerFile(NULL, NULL,
+  TDataSetManagerFile *prfdsm = new TDataSetManagerFile(NULL, NULL,
     "dir:/home/volpe/storage/datasets");
 
   af::dataSetList dsm( prfdsm );
@@ -140,7 +140,7 @@ void test_extcmd(const char *argv0) {
   // This piece of code might be useful, do not remove it, leave it commented.
   {
     char *path = exec_path(argv0);
-    const char *helper_exec = "/afdsmgrd-exec-wrapper";
+    const char *helper_exec = "/../libexec/afdsmgrd-exec-wrapper";
     path = (char *)realloc(path, strlen(path)+strlen(helper_exec)+1);
     strcat(path, helper_exec);
     af::extCmd::set_helper_path(path);
@@ -149,8 +149,13 @@ void test_extcmd(const char *argv0) {
   }
 
   //af::extCmd my_cmd("../../src/donothing.sh 1");
-  af::extCmd my_cmd("xrdstagetool -d 0 root://localhost//alien/alice/cern.ch/user/d/dberzano/MeoniPt/AliESDs-00175.root");
+  af::extCmd my_cmd("xrdstagetool -d 2 root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root");
   my_cmd.run();
+  /*
+  if (!my_cmd.run()) {
+    std::cout << "Cannot start program!" << std::endl;
+    return;
+  }*/
 
   std::cout << "Downloading file" << std::flush;
 
@@ -166,6 +171,10 @@ void test_extcmd(const char *argv0) {
     const char *file_url = my_cmd.get_field_text("");
     printf("done (%ld bytes big)\n", size_bytes);
     printf("Returned file name: %s\n", file_url);
+
+    printf("*** All fields ***\n");
+    my_cmd.print_fields();
+
   }
   else printf("\nDownload failed\n");
 
@@ -366,9 +375,9 @@ int main(int argc, char *argv[]) {
   //test_regex();
   //test_dsmanip();
   //test_queue();
-  //test_extcmd(argv[0]);
+  test_extcmd(argv[0]);
   //test_config(999);
-  test_log();
+  //test_log();
   //test_dl();
 
   printf("!!! goodbye !!!\n");

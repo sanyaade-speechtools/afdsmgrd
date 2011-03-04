@@ -86,10 +86,17 @@ configure_file (
   @ONLY
 )
 
+configure_file (
+  "${PROJECT_SOURCE_DIR}/etc/afdsmgrd.conf.example.in"
+  "${PROJECT_BINARY_DIR}/etc/afdsmgrd.conf.example"
+  @ONLY
+)
+
 #
 # Install directives for non-src files
 #
 
-install (FILES etc/afdsmgrd.conf.example DESTINATION etc)
+install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afdsmgrd.conf.example DESTINATION etc)
 install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd etc/sysconfig)
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION etc/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (FILES macros/StageXrd.C DESTINATION libexec/afdsmgrd-macros)

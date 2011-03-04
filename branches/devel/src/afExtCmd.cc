@@ -87,7 +87,7 @@ bool extCmd::run() {
  *  the signal 0 (noop) to the process.
  */
 bool extCmd::is_running() {
-  if (kill(pid, 0) == -1) return false;
+  if ((pid <= 0) || (kill(pid, 0) == -1)) return false;
   else return true;
 }
 

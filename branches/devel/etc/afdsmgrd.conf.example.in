@@ -44,20 +44,28 @@ dsmgrd.syncdseveryloops 100
 # beginning of a new transfer, think about adding some "overbooking"
 dsmgrd.parallelxfrs 30
 
-# Custom command to stage a single file. $URLTOSTAGE will be substituted with
-# the file's URL when staging. Remember that this command has the environment
-# set by afdsmgrd, so if you use xrdstagetool from xrootd you should set the
-# $LD_LIBRARY_PATH properly when launching afdsmgrd. This command can be a
-# generic command: afdsmgrd doesn't care about the return value, but it assumes
-# the transfer went right when the stagecmd writes a line that begins with "OK"
-# followed by a space on stdout (in any other case it thinks it has failed).
-# Output on stderr is ignored
-dsmgrd.stagecmd /path/to/xrootd/bin/xrdstagetool -d 0 $URLTOSTAGE
+# Custom command to stage and verify a single file. $URLTOSTAGE will be
+# substituted with the file's URL when staging: URLs with anchors are supported.
+# Another variable, $TREENAME, will be substituted with the default tree to
+# look for.
+#
+# Look into the macros/StageXrd.C macro source code to see what a stager and
+# verifier command should return on stdout. stderr is completely ignored, while
+# only the first line beginning with either OK or FAIL is parsed on stdout.
+#
+# This macro may require additional libraries (e.g. xrootd ones, like the
+# StageXrd.C example), so remember to set them properly into the startup script
+# that sets the environment for afdsmgrd.
+#
+# Very important: it is common to use ROOT macros to verify the files; remember
+# to launch ROOT via the root.exe executable, and *not* via the sole root
+# command!
+dsmgrd.stagecmd root.exe -b -q @CMAKE_INSTALL_PREFIX@/libexec/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
 
 # Maximum number of files to place in the queue. If zero or if the directive is
 # omitted, defaults to "no limit". It is strongly advised to put a limit in
 # order to control the memory consumption.
-dsmgrd.maxfilesinqueue 500
+#dsmgrd.maxfilesinqueue 500
 
 # Set this to a number above zero to tell the daemon to mark files as corrupted
 # after a certain number of either download or verification failures. A value of
