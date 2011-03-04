@@ -149,7 +149,10 @@ void test_extcmd(const char *argv0) {
   }
 
   //af::extCmd my_cmd("../../src/donothing.sh 1");
-  af::extCmd my_cmd("xrdstagetool -d 2 root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root");
+  //af::extCmd my_cmd("xrdstagetool -d 2 root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root");
+
+  af::extCmd my_cmd("root.exe -b -q /opt/afdsmgrd/devel/dest/libexec/afdsmgrd-macros/StageXrd.C'(\"root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root\", \"/esdTree\")'");
+
   my_cmd.run();
   /*
   if (!my_cmd.run()) {
@@ -172,8 +175,9 @@ void test_extcmd(const char *argv0) {
     printf("done (%ld bytes big)\n", size_bytes);
     printf("Returned file name: %s\n", file_url);
 
-    printf("*** All fields ***\n");
+    printf("\n\n\n*** All fields ***\n");
     my_cmd.print_fields();
+    printf("\n\n");
 
   }
   else printf("\nDownload failed\n");

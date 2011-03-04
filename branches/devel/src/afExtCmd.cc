@@ -110,6 +110,7 @@ void extCmd::get_output() {
   while ( outfile.getline(strbuf, AF_EXTCMD_BUFSIZE) ) {
     //printf("line={%s}\n", strbuf);
     char *tok = strtok(strbuf, delims);
+    if (!tok) continue;
 
     if (( strcmp(tok, "OK") == 0 ) || ( strcmp(tok, "FAIL") == 0 )) {
 
