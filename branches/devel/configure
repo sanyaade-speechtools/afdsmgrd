@@ -1,11 +1,13 @@
 #!/bin/bash
 
 #
+# configure -- by Dario Berzano <dario.berzano@gmail.com>
+#
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
 # Configure script that uses CMake to allow the building of afdsmgrd. This
 # script is designed both to run as a standalone and to fit within the
-# xrd-installer system
-#
-# by Dario Berzano <dario.berzano@gmail.com>
+# xrd-installer system if distributed with xrootd.
 #
 
 #
@@ -16,6 +18,7 @@ export PREFIX="/usr/local"
 export ROOTSYS
 export APMON_PREFIX
 export APMON_DISABLED=0
+export BUILD_TYPE="Release"
 
 export BUILD_PREFIX="build"
 
@@ -61,6 +64,7 @@ function Main() {
   cd "$BUILD_PREFIX"
   cmake .. \
     -DCMAKE_INSTALL_PREFIX=$PREFIX \
+    -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
     -DApMon_PREFIX=$APMON_PREFIX \
     -DApMon_DISABLED=$APMON_DISABLED
   local R=$?
@@ -83,10 +87,13 @@ function PrintHelp() {
   echo "  --with-apmon=<dir>    the directory where to search for ApMon " \
     "libraries and includes (default=<auto>)"
   echo "  --disable-apmon       disable support for ApMon"
+  echo "  --debug               debug symbols and test executables (disabled " \
+    "by default)"
 }
 
 # Prints the configuration
 function PrintConfig() {
+  echo "BUILD_TYPE=$BUILD_TYPE"
   echo "PREFIX=$PREFIX"
   echo "ROOTSYS=$ROOTSYS"
   if [ $APMON_DISABLED == 0 ] && [ "$APMON_PREFIX" != "" ] ; then
@@ -149,6 +156,10 @@ function ConfigCustom() {
 
       --disable-apmon)
         APMON_DISABLED=1
+      ;;
+
+      --debug)
+        BUILD_TYPE="Debug"
       ;;
 
       *)

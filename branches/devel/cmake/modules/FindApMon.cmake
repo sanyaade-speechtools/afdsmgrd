@@ -1,7 +1,9 @@
 #
-# CMake module to search for ApMon (MonALISA client library) installation
+# FindApMon.cmake -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# CMake module to search for ApMon (MonALISA client library) installation.
 #
 
 #

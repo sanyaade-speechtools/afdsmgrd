@@ -1,8 +1,10 @@
 #
-# Cmake module to search for a ROOT installation. It only requires the ROOTSYS
-# envvar to be set.
+# FindApMon.cmake -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# CMake module to search for a ROOT installation. It requires the sole ROOTSYS
+# environment variable to be set.
 #
 
 #
@@ -11,7 +13,7 @@
 
 set (ROOTSYS $ENV{ROOTSYS})
 if (ROOTSYS)
-  message (STATUS "[ROOT] ROOTSYS envvar: ${ROOTSYS}")
+  message (STATUS "[ROOT] ROOTSYS environment variable: ${ROOTSYS}")
   set (ROOTSYS $ENV{ROOTSYS} CACHE PATH "The root of the ROOT installation };-)")
 else ()
   if (Root_FIND_REQUIRED)

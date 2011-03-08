@@ -1,12 +1,14 @@
 #
-# A Cmake complete test that links to ROOT libraries and generates dictionaries.
+# CMakeLists.txt -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# CMake build and install instructions for files into src of afdsmgrd.
 #
 
 #
-# For out-of-source builds, include the destination dir *before* (default
-# behavior) the others as the search base for includes
+# Directories to include when searching for files. For out-of-source builds,
+# include the destination directory before the other ones.
 #
 
 include_directories (${CMAKE_CURRENT_BINARY_DIR})
@@ -32,12 +34,10 @@ target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 # List of executables and their link-time dependencies
 #
 
+# Executable wrapper for af::extCmd class
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
-# debug
-add_executable (readds readds.cc)
-target_link_libraries (readds afLog afOpQueue afConfig afDataSetList afRegex ${Root_LIBS})
-
+# Daemon executable and its libraries
 add_executable (afdsmgrd afdsmgrd.cc)
 target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex ${Root_LIBS})
 
@@ -48,5 +48,14 @@ target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex ${Root_LIBS
 install (TARGETS afdsmgrd RUNTIME DESTINATION bin)
 install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION libexec)
 
-# debug
-install (TARGETS readds RUNTIME DESTINATION bin)
+#
+# Test executable build and install directives (only in Debug build type)
+#
+
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+
+  add_executable (test test.cc)
+  target_link_libraries (test afLog afOpQueue afConfig afDataSetList afRegex ${Root_LIBS})
+  install (TARGETS test RUNTIME DESTINATION bin)
+
+endif ()

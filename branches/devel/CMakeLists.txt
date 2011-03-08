@@ -1,7 +1,14 @@
 #
-# Main CMake configuration file for afdsmgrd
+# CMakeLists.txt -- by Dario Berzano <dario.berzano@gmail.com>
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Main CMake build and install file for afdsmgrd. Other CMakeLists.txt may be
+# included in subdirectories.
+#
+
+#
+# Common parameters
 #
 
 # Name of the project and minimum version required
@@ -12,10 +19,30 @@ cmake_minimum_required (VERSION 2.6)
 set (CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 # The build type
-set (CMAKE_BUILD_TYPE "Debug")
+#set (CMAKE_BUILD_TYPE "Debug")
 
 # Tells the user the installation path
 message (STATUS "Installation prefix: ${CMAKE_INSTALL_PREFIX}")
+
+#
+# asdfghjkl
+#
+
+if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
+
+  message (STATUS "Building in release mode")
+  message (STATUS "C++ common build flags: ${CMAKE_CXX_FLAGS_RELEASE}")
+
+elseif (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+
+  message (STATUS "Building in debug mode")
+  message (STATUS "C++ common build flags: ${CMAKE_CXX_FLAGS_DEBUG}")
+
+else ()
+
+  message (FATAL "Unsupported build type: ${CMAKE_BUILD_TYPE}")
+
+endif ()
 
 #
 # A handy macro to copy a file in install phase without overwriting it
@@ -69,8 +96,8 @@ add_subdirectory (src)
 #
 
 configure_file (
-  "${PROJECT_SOURCE_DIR}/src/AfConfigure.h.in"
-  "${PROJECT_BINARY_DIR}/src/AfConfigure.h"
+  "${PROJECT_SOURCE_DIR}/src/afOptions.h.in"
+  "${PROJECT_BINARY_DIR}/src/afOptions.h"
   @ONLY
 )
 
