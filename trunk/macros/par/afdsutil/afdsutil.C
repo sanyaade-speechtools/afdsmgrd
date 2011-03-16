@@ -1471,19 +1471,24 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   TString um;
   Double_t sz;
 
+  Printf("   # |                    dataset name                    | files |"
+    "    size    | staged |  cor  ");
+  Printf("-----+----------------------------------------------------+-------+"
+    "------------+--------+-------");
+
   while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
     TFileCollection *fc;
     if (mgr) fc = mgr->GetDataSet(nameObj->String().Data());
     else fc = gProof->GetDataSet(nameObj->String().Data());
 
     if (!fc) {
-      Printf("% 5d. %-45s | problems fetching dataset information!", ++count,
+      Printf("%4d | %-50s | problems fetching dataset information!", ++count,
         nameObj->String().Data());
     }
     else {
       _afNiceSize(fc->GetTotalSize(), um, sz);
-      Printf("%5d. %-45s | %4lld files | %6.1lf %s | %5.1f%% stg "
-        "| %5.1f%% cor",
+      Printf("%4d | %-50s | %5lld | %6.1lf %s | %5.1f%% "
+        "| %5.1f%%",
         ++count, nameObj->String().Data(), fc->GetNFiles(), sz, um.Data(),
         fc->GetStagedPercentage(), fc->GetCorruptedPercentage());
       delete fc;
@@ -1867,7 +1872,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     TString um;
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
-    Printf("%-45s : %6llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
+    Printf("%-50s : %6llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
       (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
     // If requested, "verify" the dataset (fast mode) and "cache"
