@@ -12,17 +12,10 @@
 
 #define AF_DATASETLIST_BUFSIZE 400
 
-#define AF_STAGED        1
-#define AF_NOTSTAGED     2
-#define AF_CORRUPTED     4
-#define AF_NOTCORRUPTED  8
-#define AF_HASEVENTS    16
-#define AF_HASNOEVENTS  32
-#define AF_EVERYFILE    63
-
 #include "afLog.h"
 
 #include <stdexcept>
+#include <bitset>
 
 #include <TDataSetManagerFile.h>
 #include <TFileCollection.h>
@@ -42,9 +35,17 @@ namespace af {
 
   class dataSetList {
 
+    /**
+     */
+    typedef enum {
+      idx_S = 0, idx_s = 1,
+      idx_C = 2, idx_c = 3,
+      idx_E = 4, idx_e = 5
+    } filter_idx;
+
     public:
 
-      dataSetList(TDataSetManagerFile *_ds_mgr);
+      dataSetList(TDataSetManagerFile *_ds_mgr = NULL);
       virtual ~dataSetList();
 
       // Browse dataset names
@@ -56,15 +57,14 @@ namespace af {
       // TODO: void set_toggle_suid();
 
       // Browse entries of a dataset
-      bool fetch_files(const char *ds_name = NULL,
-        unsigned short filter = AF_EVERYFILE);
+      bool fetch_files(const char *ds_name = NULL, const char *filter = "");
       TFileInfo *next_file();
       void rewind_files();
       void free_files();
 
       // Browse and manipulate URLs of a TFileInfo (entry)
       TUrl *get_url(int idx);
-      ds_manip_err_t del_urls_but_last();
+      ds_manip_err_t del_urls_but_last(unsigned int howmany = 1);
 
       void set_dataset_mgr(TDataSetManagerFile *_ds_mgr);
       inline TDataSetManagerFile *get_dataset_mgr() const { return ds_mgr; };
@@ -81,7 +81,10 @@ namespace af {
       TIter                      *fi_iter;
       TFileInfo                  *fi_curr;
       bool                        fi_inited;
-      unsigned short              fi_filter;
+
+      std::bitset<6>              fi_filter;
+
+      std::vector<std::string *>  urls_to_remove;
 
   };
 

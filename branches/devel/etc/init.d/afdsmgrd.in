@@ -49,10 +49,10 @@ BASENAME=`basename "$BASENAME"`
 # Get the configuration variables from the first configuration file found
 declare -a CONF_FILES
 CONF_FILES=(
-  "/etc/sysconfig/$BASENAME" \
-  "/etc/default/$BASENAME" \
   "@CMAKE_INSTALL_PREFIX@/etc/sysconfig/$BASENAME" \
   "@CMAKE_INSTALL_PREFIX@/etc/default/$BASENAME" \
+  "/etc/sysconfig/$BASENAME" \
+  "/etc/default/$BASENAME" \
   "$HOME/.$BASENAME.cf"
 )
 

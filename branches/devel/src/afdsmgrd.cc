@@ -14,7 +14,7 @@
 #include <signal.h>
 #include <pwd.h>
 #include <grp.h>
-#include <sys/resource.h>
+//#include <sys/resource.h>
 
 #include <fstream>
 #include <memory>
@@ -24,6 +24,7 @@
 #include "afDataSetList.h"
 #include "afRegex.h"
 #include "afExtCmd.h"
+#include "afOpQueue.h"
 
 #include <TDataSetManagerFile.h>
 
@@ -161,12 +162,14 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
   void **args_array = (void **)args;
 
-  TDataSetManagerFile **root_dsm = (TDataSetManagerFile **)args_array[0];
+  //TDataSetManagerFile **root_dsm = (TDataSetManagerFile **)args_array[0];
+  af::dataSetList *dsm = (af::dataSetList *)args_array[0];
   std::string *dsm_url = (std::string *)args_array[1];
   std::string *dsm_mss = (std::string *)args_array[2];
   std::string *dsm_opt = (std::string *)args_array[3];
 
-  af::log::info(af::log_level_normal, "name=%s val=%s", name, val);
+  af::log::info(af::log_level_normal, "(To Be Removed) name=%s val=%s", name,
+    val);
 
   char *cfgline = NULL;
   char *tok = NULL;
@@ -212,16 +215,14 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
         "Invalid directive \"%s\" value: %s", name, val);
     }
 
-    // Destroy previous TDataSetManagerFile: other parts of the program must
-    // not assume that it is !NULL
-    if (*root_dsm) {
-      delete *root_dsm;
-      *root_dsm = NULL;
-    }
+    // Unset TDataSetManagerFile (owned by instance of af::dataSetList)
+    dsm->set_dataset_mgr(NULL);
+
   }
   else {
-    *root_dsm = new TDataSetManagerFile(NULL, NULL,
+    TDataSetManagerFile *root_dsm = new TDataSetManagerFile(NULL, NULL,
       Form("dir:%s opt:%s", dsm_url->c_str(), dsm_opt->c_str()));
+    dsm->set_dataset_mgr(root_dsm);
     af::log::ok(af::log_level_urgent, "ROOT dataset manager reinitialized");
     af::log::ok(af::log_level_normal, ">> Local path: %s", dsm_url->c_str());
     af::log::ok(af::log_level_normal, ">> MSS: %s", dsm_mss->c_str());
@@ -233,14 +234,25 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 /** Toggles between unprivileged user and super user. Saves the unprivileged UID
  *  and GID inside static variables.
  *
+ *  By default, calls to toggle_suid() are ineffective. To enable suid toggling
+ *  one must first call toggle_suid(true).
+ *
  *  Group must be changed before user! See [1] for further details.
  *
  *  [1] http://stackoverflow.com/questions/3357737/dropping-root-privileges
  */
-void toggle_suid() {
+void toggle_suid(bool enable = false) {
 
+  static bool enabled = false;
   static uid_t unp_uid = 0;
   static gid_t unp_gid = 0;
+
+  if (enable) {
+    enabled = true;
+    return;
+  }
+
+  if (!enabled) return;
 
   if (geteuid() == 0) {
 
@@ -264,7 +276,6 @@ void toggle_suid() {
   else {
 
     // Try to become root
-
     unp_uid = geteuid();
     unp_gid = getegid();
 
@@ -286,6 +297,41 @@ void toggle_suid() {
 
 }
 
+/**
+ */
+void print_daemon_status(pid_t pid = 0) {
+  static pid_t daemon_pid = 0;
+  static char cmdline[50];
+  static char outp[200];
+
+  if (pid != 0) {
+    daemon_pid = pid;
+    return;
+  }
+
+  snprintf(cmdline, 50, "ps ax -o pid,size,vsize | grep '^\\s*%d'", daemon_pid);
+
+  FILE *ps_file = popen(cmdline, "r");
+  unsigned int size = 0;   // KiB
+  unsigned int vsize = 0;  // KiB
+
+  if (ps_file) {
+    if (fgets(outp, 200, ps_file)) {
+      sscanf(outp, "%*u %u %u", &size, &vsize);
+    }
+    pclose(ps_file);
+  }
+
+  if ((size != 0) && (vsize != 0)) {
+    af::log::info(af::log_level_normal,
+      "Daemom memory occupation: size: %u KiB, vsize: %u KiB", size, vsize);
+  }
+  else {
+    af::log::error(af::log_level_normal,
+      "Can't fetch daemon memory occupation");
+  }
+}
+
 /** The main loop. The loop breaks when the external variable quit_requested is
  *  set to true.
  */
@@ -295,17 +341,22 @@ void main_loop(af::config &config) {
   // this function, and their value stays intact between calls
   static bool inited = false;
 
-  static TDataSetManagerFile *root_dsm = NULL;
+  //static TDataSetManagerFile *root_dsm = NULL;
+  static af::dataSetList dsm;
   static af::regex url_regex;
   static std::string dsm_url;
   static std::string dsm_mss;
   static std::string dsm_opt;
-  static void *dsm_cbk_args[] = { &root_dsm, &dsm_url, &dsm_mss, &dsm_opt };
+  static void *dsm_cbk_args[] = { &dsm, &dsm_url, &dsm_mss, &dsm_opt };
+
+  // The operations queue (the most important piece of the daemon)
+  static af::opQueue opq;
 
   // Directives in configuration files are bound to the following variables
   static long sleep_secs = 0;  // dsmgrd.sleepsecs
   static long scan_ds_every_loops = 0;  // dsmgrd.scandseveryloops
   static long max_concurrent_xfrs = 0;  // dsmgrd.parallelxfrs
+  static long max_stage_retries = 0;    // dsmgrd.corruptafterfails
   static std::string stage_cmd;
 
   if (!inited) {
@@ -319,6 +370,7 @@ void main_loop(af::config &config) {
       AF_INT_MAX);
     config.bind_int("dsmgrd.parallelxfrs", &max_concurrent_xfrs, 8, 1, 1000);
     config.bind_text("dsmgrd.stagecmd", &stage_cmd, "/bin/false");
+    config.bind_int("dsmgrd.corruptafterfails", &max_stage_retries, 0, 0, 1000);
 
     config.bind_callback("dsmgrd.urlregex", &config_callback_urlregex,
       &url_regex);
@@ -330,17 +382,7 @@ void main_loop(af::config &config) {
   // The actual loop
   while (!quit_requested) {
 
-    af::log::info(af::log_level_low, "Inside main loop");
-
-    //af::log::info(af::log_level_low, "Match re: %s", url_regex.c_str());
-    //af::regex re;
-    //re.set_regex_subst("alien://(.*)$", "brut://pmaster/$1");
-    //const char *inp = "alien:///alice/data/2010/LHC10h/000137161/ESDs/pass1_4plus/10000137161001.10/root_archive.zip#AliESDs.root";
-    //const char *inp = "root://pmaster/alice/data/2010/LHC10h/000137161/ESDs/pass1_4plus/10000137161001.10/root_archive.zip#AliESDs.root";
-    //const char *outp;
-    //outp = re.subst(inp);
-    //af::log::info(af::log_level_normal, "BEF: <%s>", inp);
-    //af::log::info(af::log_level_normal, "AFT: <%s>", outp);
+    af::log::info(af::log_level_low, "*** Inside main loop ***");
 
     // Check and load updates from the configuration file
     if (config.update()) {
@@ -348,78 +390,156 @@ void main_loop(af::config &config) {
     }
     else af::log::info(af::log_level_low, "Config file unmodified");
 
-    /* */
+    //
+    // The operations queue
+    //
 
-    // List of datasets (così per gradire)
+    opq.set_max_failures((unsigned int)max_stage_retries);
+    af::log::info(af::log_level_normal, "/\\/\\/\\ Queue Dump /\\/\\/\\");
+    opq.dump();
+    af::log::info(af::log_level_normal, "\\/\\/\\/ Queue Dump \\/\\/\\/");
 
-    if (!root_dsm) {
-      af::log::warning(af::log_level_normal, "Datasets can not be read");
-    }
-    else {
+    //
+    // Big Loop over datasets
+    //
 
-      af::dataSetList dsm(root_dsm);
+    const char *ds;
+    dsm.fetch_datasets();
+    unsigned int count_ds = 0;
+    while (ds = dsm.next_dataset()) {
 
-      const char *ds;
-      dsm.fetch_datasets();
-      while (ds = dsm.next_dataset()) {
+      af::log::info(af::log_level_low, "Processing dataset <%s>", ds);
 
-        af::log::info(af::log_level_low, "Processing dataset <%s>", ds);
+      TFileInfo *fi;
+      dsm.fetch_files(NULL, "sc");  // sc == not staged and not corrupted
+      int count_changes = 0;
+      int count_files = 0;
+      while (fi = dsm.next_file()) {
 
-        TFileInfo *fi;
-        dsm.fetch_files();
-        int count = 0;
-        int count_changed = 0;
-        while (fi = dsm.next_file()) {
+        // Debug: we just count the retrieved files
+        count_files++;
 
-          /*TUrl *curl = dsm.get_url(-1);
-          if (!curl) continue;
+        // Originating URL is the last one; redirector URL is the last but one
+        TUrl *orig_url = dsm.get_url(-1);
+        TUrl *redir_url = dsm.get_url(-2);
 
-          const char *inp_url = curl->GetUrl();
-          const char *out_url = url_regex.subst(inp_url);
+        if (!orig_url) continue;  // no URLs in entry (should not happen)
 
-          af::log::info(af::log_level_normal, "[I] <%s>", inp_url);
-          af::log::info(af::log_level_normal, "[O] <%s>", out_url);*/
+        const char *inp_url = orig_url->GetUrl();
+        const char *out_url = url_regex.subst(inp_url);
 
-          switch (dsm.del_urls_but_last()) {
+        if (!out_url) continue;
+          // orig_url not matched regex (i.e., originating URL is unsupported)
+
+        if ((redir_url) && (strcmp(out_url, redir_url->GetUrl()) == 0)) {
+
+          //
+          // The translated redirector URL already exists in this entry: let us
+          // keep only the last two
+          //
+
+          switch (dsm.del_urls_but_last(2)) {
             case af::ds_manip_err_ok_mod:
-              count_changed++;
+              //af::log::info(af::log_level_low, "del_urls_but_last(2)");
+              count_changes++;
             break;
             case af::ds_manip_err_ok_noop:
-              /* nothing to do */
+              // nothing to do
             break;
-            case af::ds_manip_err_fail:
-              /* boh */
+            case af::ds_manip_err_fail:  // should not happen
+              af::log::error(af::log_level_normal,
+                "Error in dataset %s at entry %s (last URL) when pruning all "
+                  "URLs but last two", ds, inp_url);
             break;
           }
 
-        }
-
-        // Save only if necessary
-        if (count_changed > 0) {
-          if (dsm.save_dataset()) {
-            af::log::ok(af::log_level_normal, "Dataset <%s> saved", ds);
-          }
-          else {
-            af::log::error(af::log_level_normal,
-              "Dataset <%s> not saved (check permissions)", ds);
-          }
         }
         else {
-          af::log::info(af::log_level_low, "Dataset <%s> not modified", ds);
+
+          //
+          // We have to add the translated redirector URL
+          //
+
+          // Conserve only last URL of the given entry
+          switch (dsm.del_urls_but_last()) {
+            case af::ds_manip_err_ok_mod:
+              //af::log::info(af::log_level_low, "del_urls_but_last(1)");
+              count_changes++;
+            break;
+            case af::ds_manip_err_ok_noop:
+              // nothing to do
+            break;
+            case af::ds_manip_err_fail: // should not happen
+              af::log::error(af::log_level_normal,
+                "Error in dataset %s at entry %s (last URL) when pruning all "
+                  "URLs but last", ds, inp_url);
+            break;
+          }
+
+          // Add redirector URL
+          if ( fi->AddUrl(out_url, true) ) {
+            //af::log::info(af::log_level_low, "AddUrl()");
+            count_changes++;
+          }
+          else {  // should not happen
+            af::log::error(af::log_level_normal,
+              "Error in dataset %s at entry %s (last URL) when adding "
+                "redirector URLs %s", ds, inp_url, out_url);
+          }
+
         }
 
-        dsm.free_files();
+        //
+        // URL of redirector is added in queue
+        //
+        
+        bool insstat = opq.insert(out_url);
+        if (insstat) {
+          af::log::ok(af::log_level_low, "In queue: %s", out_url);
+        }
+        else {
+          af::log::error(af::log_level_low, "In queue: %s", out_url);
+        }
 
+      }  // end loop over dataset entries
+
+      // Save only if necessary
+      if (count_changes > 0) {
+
+        toggle_suid();
+        bool save_ok = dsm.save_dataset();
+        toggle_suid();
+
+        if (save_ok) {
+          af::log::ok(af::log_level_normal, "Dataset <%s> saved: %d entries, %d modifications", ds, count_files, count_changes);
+        }
+        else {
+          af::log::error(af::log_level_normal,
+            "Dataset <%s> not saved (check permissions)", ds);
+        }
       }
-      dsm.free_datasets();
+      else {
+        af::log::info(af::log_level_low, "Dataset <%s> not modified", ds);
+      }
+
+      dsm.free_files();
+
+      count_ds++;
 
     }
+    dsm.free_datasets();
+
+    af::log::info(af::log_level_low, "Number of datasets processed: %u",
+      count_ds);
 
     /* */
 
     // Report resources
+    print_daemon_status();
+
+    // Report resources -- apparently it works only on BSD-like systems
     // http://stackoverflow.com/questions/5120861/how-to-measure-memory-usage-from-inside-a-c-program
-    struct rusage rusg;
+    /*struct rusage rusg;
     if (getrusage(RUSAGE_SELF, &rusg) == 0) {
       af::log::info(af::log_level_low, "Mem usage (KiB) >> "
         "Resident: %ld | Shared: %ld | Unsh. data: %ld | Unsh. stack: %ld",
@@ -428,7 +548,7 @@ void main_loop(af::config &config) {
     else {
       af::log::warning(af::log_level_normal,
         "Cannot get resource usage of current process");
-    }
+    }*/
 
     //long   ru_maxrss;        /* maximum resident set size */
     //long   ru_ixrss;         /* integral shared memory size */
@@ -538,6 +658,7 @@ int main(int argc, char *argv[]) {
   // Report current PID on log facility
   pid_t pid = getpid();
   write_pidfile(pid, pid_file);
+  print_daemon_status(pid);
 
   af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
 
@@ -559,6 +680,7 @@ int main(int argc, char *argv[]) {
         af::log::ok(af::log_level_urgent,
           "Dropped privileges to user \"%s\" (%d), group \"%s\" (%d)",
           drop_user, pwd->pw_uid, grp->gr_name, pwd->pw_gid);
+        toggle_suid(true);  // makes toggle_suid() calls effective
       }
       else {
         af::log::fatal(af::log_level_urgent,

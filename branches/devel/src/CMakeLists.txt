@@ -39,7 +39,7 @@ add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
 # Daemon executable and its libraries
 add_executable (afdsmgrd afdsmgrd.cc)
-target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex ${Root_LIBS})
+target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afOpQueue ${Root_LIBS})
 
 #
 # Where to install the stuff

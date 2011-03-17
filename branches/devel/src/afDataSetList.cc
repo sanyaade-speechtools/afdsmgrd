@@ -11,30 +11,35 @@
 using namespace af;
 
 /** The only constructor for the class. It takes as an argument a pointer to the
- *  dataset manager used for the datasets requests. The class does not own the
- *  dataset manager! The dataset manager is required to be non-null: a runtime
- *  exception is thrown elsewhere.
+ *  dataset manager used for the datasets requests.
+ *
+ *  The dataset manager is allowed to be NULL: in this case the member functions
+ *  of this class will behave just like a dataset manager with no datasets
+ *  inside.
+ *
+ *  Beware! This class owns the instance of TDataSetManagerFile!
  */
 dataSetList::dataSetList(TDataSetManagerFile *_ds_mgr) :
-  ds_mgr(_ds_mgr), ds_inited(false), fi_inited(false) {
-  if (!ds_mgr) throw std::runtime_error("Invalid dataset manager");
-}
+  ds_mgr(_ds_mgr), ds_inited(false), fi_inited(false) {}
 
 /** The destructor. It frees the memory taken by requests.
  */
 dataSetList::~dataSetList() {
-  free_datasets();
-  free_files();
+  set_dataset_mgr(NULL);
 }
 
 /** Frees the resources used by the former dataset manager and sets the new one.
- *  The dataset manager is required to be non-null: a runtime exception is
- *  thrown elsewhere.
+ *
+ *  The dataset manager is allowed to be NULL: see ctor's description for
+ *  details.
+ *
+ *  Since the TDataSetManagerFile is owned by this class' instance, the former
+ *  dataset manager, if not NULL, will be deleted first.
  */
 void dataSetList::set_dataset_mgr(TDataSetManagerFile *_ds_mgr) {
-  if (!_ds_mgr) throw std::runtime_error("Invalid dataset manager");
   free_datasets();
   free_files();
+  if (ds_mgr) delete ds_mgr;  // achtung!
   ds_mgr = _ds_mgr;
 }
 
@@ -50,7 +55,7 @@ void dataSetList::set_dataset_mgr(TDataSetManagerFile *_ds_mgr) {
  */
 void dataSetList::fetch_datasets() {
 
-  if (ds_inited) return;
+  if ((ds_inited) || (ds_mgr == NULL)) return;
 
   TMap *groups = ds_mgr->GetDataSets("/*/*", TDataSetManager::kReadShort);
 
@@ -133,13 +138,25 @@ const char *dataSetList::next_dataset() {
  *  true for success).
  *
  *  The filter argument tells the class to return only files that match some
- *  criteria (staged, corrupted, has event count...) via next_file() method.
- *  See header file for possible constants to combine via OR operator. Default
- *  is to show all files.
+ *  criteria when calling next_file(). Valid characters that represent criteria
+ *  are:
+ *
+ *   - S (staged), s (not staged)
+ *   - C (corrupted), c (not corrupted)
+ *   - E (has number of events), e (hasn't number of events)
+ *
+ *  Criteria of the same type are combined with OR; different types are combined
+ *  with AND. This means:
+ *
+ *   --> ((S || s) && (C || c) && (E || e))
+ *
+ *  If you don't specify, e.g., neither S nor s, it's like specifying *both* S
+ *  and s. The same applies for Cc and Ee.
  */
-bool dataSetList::fetch_files(const char *ds_name, unsigned short filter) {
+bool dataSetList::fetch_files(const char *ds_name, const char *filter) {
 
   if (fi_inited) return true;
+  if (!filter) return false;
 
   if (!ds_name) {
     if ((ds_inited) && (ds_cur_idx < ds_list.size()))
@@ -152,9 +169,37 @@ bool dataSetList::fetch_files(const char *ds_name, unsigned short filter) {
   if (!fi_coll) return false;
 
   fi_iter = new TIter(fi_coll->GetList());
-  fi_filter = filter;
   fi_inited = true;
   fi_curr = NULL;
+
+  fi_filter.reset();
+
+  if (strchr(filter, 'S')) fi_filter.set(idx_S);
+  if (strchr(filter, 's')) fi_filter.set(idx_s);
+  if (!fi_filter.test(idx_S) && !fi_filter.test(idx_s)) {
+    fi_filter.set(idx_S);
+    fi_filter.set(idx_s);
+  }
+
+  if (strchr(filter, 'C')) fi_filter.set(idx_C);
+  if (strchr(filter, 'c')) fi_filter.set(idx_c);
+  if (!fi_filter.test(idx_C) && !fi_filter.test(idx_c)) {
+    fi_filter.set(idx_C);
+    fi_filter.set(idx_c);
+  }
+
+  if (strchr(filter, 'E')) fi_filter.set(idx_E);
+  if (strchr(filter, 'e')) fi_filter.set(idx_e);
+  if (!fi_filter.test(idx_E) && !fi_filter.test(idx_e)) {
+    fi_filter.set(idx_E);
+    fi_filter.set(idx_e);
+  }
+
+  af::log::info(af::log_level_low,
+    "Filter on files: (S:%d || s:%d) && (C:%d || c:%d) && (E:%d || e:%d)",
+    fi_filter.test(idx_S), fi_filter.test(idx_s),
+    fi_filter.test(idx_C), fi_filter.test(idx_c),
+    fi_filter.test(idx_E), fi_filter.test(idx_e));
 
   return true;
 }
@@ -188,28 +233,27 @@ void dataSetList::rewind_files() {
  */
 TFileInfo *dataSetList::next_file() {
 
+  TFileInfoMeta *meta;
   bool s, c, e;
 
   if (!fi_inited) return NULL;
 
   while (true) {
+
     fi_curr = dynamic_cast<TFileInfo *>(fi_iter->Next());
     if (fi_curr == NULL) break;
 
-    TFileInfoMeta *meta = fi_curr->GetMetaData(NULL);
+    meta = fi_curr->GetMetaData(NULL);
     e = ((meta) && (meta->GetEntries() >=0));
-
     s = fi_curr->TestBit(TFileInfo::kStaged);
     c = fi_curr->TestBit(TFileInfo::kCorrupted);
 
-    if ((s && (fi_filter & AF_STAGED)) ||
-        (!s && (fi_filter & AF_NOTSTAGED)) ||
-        (c && (fi_filter & AF_CORRUPTED)) ||
-        (!c && (fi_filter & AF_NOTCORRUPTED)) ||
-        (e && (fi_filter & AF_HASEVENTS)) ||
-        (!e && (fi_filter & AF_HASNOEVENTS))) {
-      break;
-    }
+    if (
+      ((fi_filter.test(idx_S) && s) || (fi_filter.test(idx_s) && !s)) &&
+      ((fi_filter.test(idx_C) && c) || (fi_filter.test(idx_c) && !c)) &&
+      ((fi_filter.test(idx_E) && e) || (fi_filter.test(idx_e) && !e))
+    ) break;
+
   }
 
   return fi_curr;  // may be NULL
@@ -238,21 +282,21 @@ TUrl *dataSetList::get_url(int idx) {
   return curl;
 }
 
-/** Deletes all URLs except the last one from the currently selected entry.
+/** Deletes all URLs except the last "howmany" (default to one) from the
+ *  currently selected entry.
  *
  *  Returns an error code of type ds_manip_err_t (see) which indicates if there
  *  is an error or not, and in the latter case it indicates if data has been
  *  changed or not.
  */
-ds_manip_err_t dataSetList::del_urls_but_last() {
+ds_manip_err_t dataSetList::del_urls_but_last(unsigned int howmany) {
 
   if (!fi_curr) return ds_manip_err_fail;
 
   int nurls = fi_curr->GetNUrls();
-  if ((nurls == 0) || (nurls == 1)) return ds_manip_err_ok_noop;
-  else nurls--;
+  if ((nurls == 0) || (nurls == howmany)) return ds_manip_err_ok_noop;
+  else nurls -= howmany;
 
-  std::vector<std::string *> lurls;
   bool all_ok = true;
 
   TUrl *curl;
@@ -264,21 +308,24 @@ ds_manip_err_t dataSetList::del_urls_but_last() {
       all_ok = false;
       break;
     }
-    lurls.push_back( new std::string(curl->GetUrl()) );
+    urls_to_remove.push_back( new std::string(curl->GetUrl()) );
   }
 
-  unsigned int sz = lurls.size();
+  unsigned int sz = urls_to_remove.size();
   for (unsigned int i=0; i<sz; i++) {
     if (all_ok) {
-      if ( !(fi_curr->RemoveUrl(lurls[i]->c_str())) ) all_ok = false;
+      if ( !(fi_curr->RemoveUrl(urls_to_remove[i]->c_str())) ) all_ok = false;
     }
-    delete lurls[i];
+    delete urls_to_remove[i];
   }
+
+  urls_to_remove.clear();
 
   return (all_ok ? ds_manip_err_ok_mod : ds_manip_err_fail);
 }
 
-/**
+/** Tries to write the currently selected dataset on disk. On success it
+ *  returns true, false on failure.
  */
 bool dataSetList::save_dataset() {
 
@@ -292,7 +339,7 @@ bool dataSetList::save_dataset() {
   int r = ds_mgr->WriteDataSet(group, user, name, fi_coll);
 
   af::log::info(af::log_level_low,
-    "WriteDataSet() on group=%s user=%s name=%s returned %d", group.Data(),
+    "WriteDataSet(group=%s, user=%s, name=%s)=%d", group.Data(),
     user.Data(), name.Data(), r);
 
   if (r != 0) return true;

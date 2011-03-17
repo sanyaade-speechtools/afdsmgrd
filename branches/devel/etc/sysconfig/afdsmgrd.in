@@ -20,13 +20,13 @@ export AFDSMGRD_LIBS=@Root_LIBDIR@:/path/to/xrootd/lib
 export AFDSMGRD_LIBEXEC=@CMAKE_INSTALL_PREFIX@/libexec
 
 # The log directory
-export AFDSMGRD_LOGDIR=/var/log/afdsmgrd
+export AFDSMGRD_LOGDIR=@CMAKE_INSTALL_PREFIX@/var/log/afdsmgrd
 
 # The log file
 export AFDSMGRD_LOGFILE=$AFDSMGRD_LOGDIR/afdsmgrd.log
 
 # The PID file
-export AFDSMGRD_PIDFILE=/var/run/afdsmgrd.pid
+export AFDSMGRD_PIDFILE=@CMAKE_INSTALL_PREFIX@/var/run/afdsmgrd.pid
 
 # Unprivileged user that launches the daemon
 export AFDSMGRD_USER=aaf

@@ -140,7 +140,7 @@ void regex::unset_regex_subst() {
 
 /** Builds a new string (returned) from the original string (passed) based on
  *  the previously entered substitution regex and pattern. If no substitution
- *  regex was given or the original string is null, returns NULL.
+ *  regex was given or the original string is NULL, returns NULL.
  *
  *  This function returns a pointer to an internal static buffer: copy it
  *  before reusing member functions of this class again.

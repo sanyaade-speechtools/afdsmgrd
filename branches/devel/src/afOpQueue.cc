@@ -237,7 +237,9 @@ void opQueue::dump() {
     const unsigned char *status          = sqlite3_column_text(comp_query,  1);
     const unsigned char *main_url        = sqlite3_column_text(comp_query,  2);
     unsigned int         n_failures      = sqlite3_column_int64(comp_query, 3);
-    printf("%04d | %c | %d | %s\n", rank, *status, n_failures, main_url);
+    //printf("%04d | %c | %d | %s\n", rank, *status, n_failures, main_url);
+    af::log::info(af::log_level_low, "%04d | %c | %d | %s",
+      rank, *status, n_failures, main_url);
   }
 
   // Free resources
@@ -342,7 +344,7 @@ opQueue::~opQueue() {
   //sqlite3_finalize(query_exists);
 }
 
-/** Enqueue URL. Returns true on success, false on failure.
+/** Enqueue URL. Returns true on success, false on failure. TODO: compile query
  */
 bool opQueue::insert(const char *url) {
 
