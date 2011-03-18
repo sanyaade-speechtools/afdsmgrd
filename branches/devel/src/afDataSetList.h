@@ -54,6 +54,7 @@ namespace af {
       void rewind_datasets();
       void free_datasets();
       bool save_dataset();
+      const char *get_default_tree();
       // TODO: void set_toggle_suid();
 
       // Browse entries of a dataset

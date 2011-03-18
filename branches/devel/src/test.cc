@@ -251,7 +251,8 @@ void test_queue() {
 
   unsigned int n_entries = 20;
 
-  af::opQueue opq(2);  // after 2 errors mark as failed
+  af::opQueue opq;
+  opq.set_max_failures(2);  // after 2 errors mark as failed
 
   printf("\n=== INSERT ===\n");
 
@@ -369,6 +370,25 @@ void test_dl() {
   dlclose(dlh2);
 }
 
+/** Tests the dollar substitution.
+ */
+void test_dollar_subst() {
+
+  const char *var_names[] = { "CIAO", "PIRLA", "_END_" };
+  const char *var_values[] = { "**ciao**", "**pirla**", "**begin**" };
+  unsigned int n_subst = 3;
+
+  std::string *s = af::regex::dollar_subst(
+    "Ciao $PIRLA $PIRLA $PIRLA$PIRLA", n_subst,
+    var_names, var_values);
+
+  if (s) {
+    printf("AFT: <%s>\n", s->c_str());
+    delete s;
+  }
+
+}
+
 /** Entry point.
  */
 int main(int argc, char *argv[]) {
@@ -377,8 +397,9 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_quit_callback);
 
   //test_regex();
+  test_dollar_subst();
   //test_dsmanip();
-  test_queue();
+  //test_queue();
   //test_extcmd(argv[0]);
   //test_config(999);
   //test_log();

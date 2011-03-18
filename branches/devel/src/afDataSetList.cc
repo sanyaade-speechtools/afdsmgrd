@@ -129,6 +129,14 @@ const char *dataSetList::next_dataset() {
   return ds_list[ds_cur_idx]->c_str();
 }
 
+/** Gets the default tree name in datasets list. Returns NULL if no active
+ *  dataset is found, or if no default tree name is set.
+ */
+const char *dataSetList::get_default_tree() {
+  if (fi_coll) return fi_coll->GetDefaultTreeName();
+  return NULL;
+}
+
 /** Asks for the list of files (TFileInfo objs) for a given dataset name in
  *  current dataset manager. If ds_name is NULL then the last dataset name
  *  obtained via next_dataset() is used, if one. If reading of dataset fails for

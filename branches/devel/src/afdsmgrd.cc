@@ -88,42 +88,6 @@ bool write_pidfile(pid_t pid, const char *pid_file) {
   return true;
 }
 
-/** Returns a pointer to std::string containing the base path (without trailing
- *  slashes) of the command executed as "cmd" from current working directory
- *  (i.e. the argv[0]). The returned pointer is dynamically allocated and must
- *  be freed by the caller.
- *
- * TODO TODO TODO TODO TODO TODO TODO TODO TODO !! ERRORS !! ERRORS !!
- */
-/*std::string *get_exec_path(const char *cmd) {
-
-  // HERE LIES THE ERROR: dirname() modifies the input string!!!!!
-  char *base = dirname((char *)cmd);  // dirname() returns a ptr to static buf
-  char *buf;
-  std::string *path;
-  size_t maxlen;
-
-  if (base[0] == '/') {
-    path = new std::string(base);
-  }
-  else {
-    buf = getcwd(NULL, 0);  // getcwd() uses malloc()
-
-    if (!buf) return NULL;
-    else {
-      path = new std::string(buf);
-      free(buf);
-    }
-
-    if (strcmp(base, ".") != 0) {
-      *path += "/";
-      *path += base;
-    }
-  }
-
-  return path;
-}*/
-
 /** Handles a typical quit signal (see signal()).
  */
 void signal_quit_callback(int signum) {
@@ -324,7 +288,7 @@ void print_daemon_status(pid_t pid = 0) {
 
   if ((size != 0) && (vsize != 0)) {
     af::log::info(af::log_level_normal,
-      "Daemom memory occupation: size: %u KiB, vsize: %u KiB", size, vsize);
+      "Daemon memory occupation: size: %u KiB, vsize: %u KiB", size, vsize);
   }
   else {
     af::log::error(af::log_level_normal,
@@ -351,6 +315,9 @@ void main_loop(af::config &config) {
 
   // The operations queue (the most important piece of the daemon)
   static af::opQueue opq;
+
+  // The staging queue
+  static std::vector<af::extCmd *> cmdq;
 
   // Directives in configuration files are bound to the following variables
   static long sleep_secs = 0;  // dsmgrd.sleepsecs
@@ -396,7 +363,7 @@ void main_loop(af::config &config) {
 
     opq.set_max_failures((unsigned int)max_stage_retries);
     af::log::info(af::log_level_normal, "/\\/\\/\\ Queue Dump /\\/\\/\\");
-    opq.dump();
+    opq.dump(true);
     af::log::info(af::log_level_normal, "\\/\\/\\/ Queue Dump \\/\\/\\/");
 
     //
@@ -492,13 +459,37 @@ void main_loop(af::config &config) {
         //
         // URL of redirector is added in queue
         //
-        
-        bool insstat = opq.insert(out_url);
-        if (insstat) {
-          af::log::ok(af::log_level_low, "In queue: %s", out_url);
+
+        unsigned int unique_id = opq.insert(out_url);
+        if (unique_id) {
+
+          // URL is not yet in queue: let's prepare the external command
+          af::log::ok(af::log_level_low, "In queue: %s (id=%u)", out_url,
+            unique_id);
+
+          const char *var_names[] = { "URLTOSTAGE", "TREENAME" };
+          const char *var_values[2];
+          const char *empty_tree = "";
+
+          var_values[0] = out_url;
+          var_values[1] = dsm.get_default_tree();
+          if (!var_values[1]) var_values[1] = empty_tree;
+
+          // NULL is never returned in this case
+          std::string *url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
+            2, var_names, var_values);
+
+          af::log::ok(af::log_level_low,
+            "Stage command: <<%s>>", url_cmd->c_str());
+
+          delete url_cmd;
+
         }
         else {
+
+          // URL already in queue
           af::log::error(af::log_level_low, "In queue: %s", out_url);
+
         }
 
       }  // end loop over dataset entries
@@ -531,8 +522,6 @@ void main_loop(af::config &config) {
 
     af::log::info(af::log_level_low, "Number of datasets processed: %u",
       count_ds);
-
-    /* */
 
     // Report resources
     print_daemon_status();
@@ -652,7 +641,6 @@ int main(int argc, char *argv[]) {
   else {
     af::log::ok(af::log_level_normal, "Path for auxiliary binaries: %s",
       libexec_path);
-    
   }
 
   // Report current PID on log facility
@@ -707,24 +695,23 @@ int main(int argc, char *argv[]) {
       pwd->pw_name);
   }
 
-  /* IMPORTANT -- Get Executable Path -- dirname() error!!!
-
-  std::auto_ptr<std::string> exec_path( get_exec_path(argv[0]) );
-  if (!exec_path.get()) {
-    af::log::fatal(af::log_level_urgent, "Memory error");
-    return AF_ERR_MEM;
-  }
-  else {
-    af::log::info(af::log_level_normal, "Executable path (unnormalized): %s",
-      exec_path->c_str());
-  }*/
-
   if (!config_file) {
     af::log::fatal(af::log_level_urgent, "No config file given (use -c)");
     return AF_ERR_CONFIG;
   }
 
   af::config config(config_file);
+
+  // Init external command facility paths
+  {
+    std::string exec_wrapper_path = libexec_path;
+    exec_wrapper_path += "/afdsmgrd-exec-wrapper";
+    af::extCmd::set_helper_path(exec_wrapper_path.c_str());
+
+    //std::string extcmd_temp_path = "/tmp/afdsmgrd-" + pid;
+    //af::extCmd::set_temp_path(extcmd_temp_path.c_str());
+    af::extCmd::set_temp_path("/tmp/afdsmgrd");
+  }
 
   // Trap some signals to terminate gently
   signal(SIGTERM, signal_quit_callback);

@@ -21,7 +21,7 @@ const char *extCmd::pidf_pref = "pid";
 /** Constructor. The instance_id is chosen automatically if not given or if
  *  equal to zero.
  */
-extCmd::extCmd(const char *exec_cmd, unsigned long instance_id) :
+extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1) {
 
   if ((helper_path.empty()) || (temp_path.empty()))
@@ -32,14 +32,14 @@ extCmd::extCmd(const char *exec_cmd, unsigned long instance_id) :
     struct stat file_info;
     while (true) {
       if ((id = rand()) == 0) continue;
-      snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu", temp_path.c_str(),
+      snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u", temp_path.c_str(),
         pidf_pref, id);
       if (stat(strbuf, &file_info) != 0) break;
     }
   }
 
   // Creates temporary empty pidfile
-  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu", temp_path.c_str(),
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u", temp_path.c_str(),
     pidf_pref, id);
   std::ofstream of(strbuf);
   of.close();
@@ -56,7 +56,7 @@ bool extCmd::run() {
 
   // Assembles the command line
   snprintf(strbuf, AF_EXTCMD_BUFSIZE,
-    "\"%s\" -p \"%s/%s-%lu\" -o \"%s/%s-%lu\" -e \"%s/%s-%lu\" %s",
+    "\"%s\" -p \"%s/%s-%u\" -o \"%s/%s-%u\" -e \"%s/%s-%u\" %s",
     helper_path.c_str(),
     temp_path.c_str(), pidf_pref, id,
     temp_path.c_str(), outf_pref, id,
@@ -68,7 +68,7 @@ bool extCmd::run() {
   if (r != 0) return false;
 
   // Gets the pid
-  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu",
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u",
     temp_path.c_str(), pidf_pref, id);
   struct stat pidfile_info;
   while (true) {
@@ -102,7 +102,7 @@ void extCmd::get_output() {
 
   if (!fields_map.empty()) fields_map.clear();
 
-  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%lu",
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u",
     temp_path.c_str(), outf_pref, id);
 
   std::ifstream outfile(strbuf);

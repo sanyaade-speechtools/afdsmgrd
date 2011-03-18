@@ -185,3 +185,95 @@ const char *regex::subst(const char *orig_str) {
 
   return strbuf;
 }
+
+/** Dollar substitution for variables in format $VARIABLE. Variable names may
+ *  contain only 0-9, A-Z, a-z, and underscore. This is a static function.
+ *
+ *  On success a std::string pointer is returned: allocation is performed by
+ *  this method and delete must be performed by the caller.
+ *
+ *  If either input string is NULL, or n_vars is greater than zero with invalid
+ *  var_names or var_values, NULL is returned.
+ */
+std::string *regex::dollar_subst(const char *ptn, unsigned int n_vars,
+  const char **var_names, const char **var_values) {
+
+  if ( (!ptn) || ((n_vars) && ((!var_names) || (!var_values))) ) return NULL;
+
+  bool in_variable = false;
+  const char *beg_var = NULL;
+  static char this_var_name[100];
+  std::string *output_string = new std::string(ptn);
+  int offset = 0;
+
+  // No substitution requested
+  if (n_vars == 0) return output_string;
+
+  for (const char *p=ptn; *p!='\0'; p++) {
+
+    if (in_variable) {
+
+      bool close_variable = false;
+
+      if (((*p < '0') || (*p > '9')) && ((*p < 'a') || (*p > 'z')) &&
+        ((*p < 'A') || (*p > 'Z')) && (*p != '_')) {
+
+        // Terminating character found
+        close_variable = true;
+      }
+      else if (*(p+1) == '\0') {
+
+        // This one is a valid character, but the last one of input string
+        p++;
+        close_variable = true;
+
+      }
+
+      // Do we need to close the variable?
+      if (close_variable) {
+        in_variable = false;
+        beg_var++;
+        unsigned int var_name_len = p - beg_var;
+
+        if (var_name_len == 0) continue;  // only '$'? Skip!
+        else if (var_name_len >= 100) var_name_len = 99;  // limited buffer
+
+        strncpy(this_var_name, beg_var, var_name_len);
+        this_var_name[var_name_len] = '\0';
+
+        // Search for variable value
+        const char *this_var_value = NULL;
+        for (unsigned int i=0; i<n_vars; i++) {
+          if (strcmp(this_var_name, var_names[i]) == 0) {
+            this_var_value = var_values[i];
+            break;
+          }
+        }
+
+        if (this_var_value) {
+
+          // Replace $VARIABLE with its value, if value was found
+          output_string->replace(
+            beg_var-ptn - 1 + offset,
+            var_name_len + 1,
+            this_var_value);
+
+          offset += (strlen(this_var_value) - var_name_len - 1);
+ 
+        }
+
+      }
+
+    }
+
+    // (Re)open the variable on dollar
+    if (*p == '$') {
+      // Begin of a variable name
+      in_variable = true;
+      beg_var = p;
+    }
+
+  }
+
+  return output_string;
+}

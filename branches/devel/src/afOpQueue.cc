@@ -118,8 +118,8 @@ void queueEntry::print() const {
  *  The argument max_failures sets the maximum number of failures before
  *  removing ("flushing") the element from the queue. Zero means never flush it.
  */
-opQueue::opQueue(unsigned int max_failures) :
-  fail_threshold(max_failures), qentry_buf(false) {
+opQueue::opQueue() :
+  fail_threshold(0), qentry_buf(false), unique_instance_id(0) {
 
   const char *db_filename = ":memory:";
 
@@ -135,6 +135,7 @@ opQueue::opQueue(unsigned int max_failures) :
     "CREATE TEMPORARY TABLE queue ("
     "  rank INTEGER PRIMARY KEY NOT NULL,"
     "  status CHAR( 1 ) NOT NULL DEFAULT 'Q',"
+    "  instance_id INTEGER UNSIGNED DEFAULT 0,"
     "  main_url VARCHAR( 200 ) NOT NULL,"
     "  endp_url VARCHAR( 200 ),"
     "  tree_name VARCHAR( 50 ),"
@@ -209,9 +210,10 @@ int opQueue::flush() {
   return sqlite3_changes(db);
 }
 
-/** Dumps the content of the database, ordered by insertion date.
+/** Dumps the content of the database, ordered by insertion date. This function
+ *  is intended for debug purposes.
  */
-void opQueue::dump() {
+void opQueue::dump(bool to_log) {
 
   // Simplified implementation
   //sqlite3_exec(db, 
@@ -222,7 +224,7 @@ void opQueue::dump() {
   sqlite3_stmt *comp_query;
 
   r = sqlite3_prepare_v2(db,
-    "SELECT rank,status,main_url,n_failures "
+    "SELECT rank,status,main_url,n_failures,instance_id "
     "  FROM queue "
     "  ORDER BY rank ASC",
     -1, &comp_query, NULL);
@@ -237,9 +239,16 @@ void opQueue::dump() {
     const unsigned char *status          = sqlite3_column_text(comp_query,  1);
     const unsigned char *main_url        = sqlite3_column_text(comp_query,  2);
     unsigned int         n_failures      = sqlite3_column_int64(comp_query, 3);
-    //printf("%04d | %c | %d | %s\n", rank, *status, n_failures, main_url);
-    af::log::info(af::log_level_low, "%04d | %c | %d | %s",
-      rank, *status, n_failures, main_url);
+    unsigned int         instance_id     = sqlite3_column_int64(comp_query, 4);
+
+    if (to_log) {
+      af::log::info(af::log_level_low, "%04d | %c | %d | %10u | %s",
+        rank, *status, n_failures, instance_id, main_url);
+    }
+    else {
+      printf("%04d | %c | %d | %10u | %s\n",
+        rank, *status, n_failures, instance_id, main_url);
+    }
   }
 
   // Free resources
@@ -344,20 +353,26 @@ opQueue::~opQueue() {
   //sqlite3_finalize(query_exists);
 }
 
-/** Enqueue URL. Returns true on success, false on failure. TODO: compile query
+/** Enqueue URL associating an unique "instance id" to it. Returns the assigned
+ *  instance id on success, 0 on failure. Zero is not a valid instance id.
+ *
+ *  TODO: compile query.
  */
-bool opQueue::insert(const char *url) {
+unsigned int opQueue::insert(const char *url) {
+
+  unique_instance_id++;
+  if (unique_instance_id == 0) unique_instance_id = 1;  // handles overflow
 
   snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
     "INSERT INTO queue "
-    "(main_url) "
-    "VALUES ('%s')", url);
+    "(main_url,instance_id) "
+    "VALUES ('%s',%u)", url, unique_instance_id);
 
   int r = sqlite3_exec(db, strbuf, NULL, NULL, &sql_err);
 
   if (r == SQLITE_CONSTRAINT) {
     sqlite3_free(sql_err);
-    return false;
+    return 0;
   }
   else if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error #%d in SQL INSERT query: %s",
@@ -368,7 +383,7 @@ bool opQueue::insert(const char *url) {
 
   last_queue_rowid = sqlite3_last_insert_rowid(db);
 
-  return true;
+  return unique_instance_id;
 }
 
 /** Returns true if a given URL is in the queue, elsewhere it returns false. The

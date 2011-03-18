@@ -12,6 +12,8 @@
 
 #define AF_REGEX_BUFSIZE 2000
 
+#include "afLog.h"
+
 #include <iostream>
 #include <vector>
 #include <stdexcept>
@@ -41,6 +43,8 @@ namespace af {
       void unset_regex_subst();
       bool match(const char *str);
       bool set_regex_subst(const char *ptn, const char *_sub_ptn);
+      static std::string *dollar_subst(const char *ptn, unsigned int n_vars,
+        const char **var_names, const char **var_values);
       const char *subst(const char *orig_str);
       void test();
 

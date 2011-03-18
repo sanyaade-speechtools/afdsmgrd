@@ -37,7 +37,7 @@ namespace af {
 
     public:
 
-      extCmd(const char *command, unsigned long id = 0);
+      extCmd(const char *command, unsigned int id = 0);
       //virtual ~extCmd();
       bool run();
       bool is_running();
@@ -45,6 +45,7 @@ namespace af {
       void get_output();
       void print_fields();
       bool is_ok() { return ok; };
+      unsigned long get_id() { return id; };
 
       unsigned long get_field_uint(const char *key);
       long get_field_int(const char *key);
@@ -58,7 +59,7 @@ namespace af {
 
       char strbuf[AF_EXTCMD_BUFSIZE];
       pid_t pid;
-      unsigned long id;
+      unsigned int id;
       std::string cmd;
       fields_t fields_map;
       bool ok;

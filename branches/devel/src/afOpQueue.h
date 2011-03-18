@@ -91,9 +91,9 @@ namespace af {
   class opQueue {
 
     public:
-      opQueue(unsigned int max_failures = 0);
+      opQueue();
       virtual ~opQueue();
-      bool insert(const char *url);
+      unsigned int insert(const char *url);
       int flush();
       bool set_status(const char *url, qstat_t qstat);
       void set_max_failures(unsigned int max_failures) {
@@ -101,7 +101,7 @@ namespace af {
       };
       bool failed(const char *url);
       void arbitrary_query(const char *query);
-      void dump();
+      void dump(bool to_log = false);
       //bool exists(const char *url);
       const queueEntry *get_full_entry(const char *url);
       const queueEntry *get_status(const char *url);
@@ -114,6 +114,7 @@ namespace af {
       static int query_callback(void *, int argc, char *argv[], char **colname);
       unsigned long last_queue_rowid;
       unsigned int fail_threshold;
+      unsigned int unique_instance_id;
 
       //sqlite3_stmt *query_exists;
       sqlite3_stmt *query_get_full_entry;

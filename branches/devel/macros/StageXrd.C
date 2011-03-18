@@ -19,8 +19,8 @@
  *   root.exe -b -q StageXrd.C'("root://server:port//dir/file.zip#esd.root", \
  *     "/tree")'
  *
- * Just remember to call root.exe and not just root to have afdsmgrd handling
- * process control correctly.
+ * Remember to call root.exe and not just root to have afdsmgrd handling process
+ * control correctly.
  *
  * In case of success, on stdout it returns a format like this:
  *
