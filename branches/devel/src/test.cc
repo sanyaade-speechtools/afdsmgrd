@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <map>
 
 #include <TDataSetManagerFile.h>
 #include <TFileCollection.h>
@@ -206,7 +207,7 @@ void test_log(unsigned long max_iters = 10) {
 void test_config(unsigned int iter_limits = 20) {
 
   // Configuration file management
-  af::config cfg("../../src/test.cf");
+  af::config cfg("/opt/afdsmgrd/devel/dest/etc/afdsmgrd.conf");
 
   // Directives (bound)
   long test_int = -1;
@@ -229,7 +230,7 @@ void test_config(unsigned int iter_limits = 20) {
 
   unsigned long iter = 0;
   while (true) {
-    printf("main loop: iteration #%lu\n", ++iter);
+    //printf("main loop: iteration #%lu\n", ++iter);
     if (cfg.update()) {
       printf("\n*** config file modified ***\n");
       printf("the value of test_int is \033[1;32m%ld\033[m\n", test_int);
@@ -374,18 +375,29 @@ void test_dl() {
  */
 void test_dollar_subst() {
 
-  const char *var_names[] = { "CIAO", "PIRLA", "_END_" };
-  const char *var_values[] = { "**ciao**", "**pirla**", "**begin**" };
-  unsigned int n_subst = 3;
+  //const char *var_names[] = { "CIAO", "PIRLA", "_END_" };
+  //const char *var_values[] = { "**ciao**", "**pirla**", "**begin**" };
+  //unsigned int n_subst = 3;
 
-  std::string *s = af::regex::dollar_subst(
-    "Ciao $PIRLA $PIRLA $PIRLA$PIRLA", n_subst,
-    var_names, var_values);
+  //std::string *s = af::regex::dollar_subst(
+  //  "Ciao $PIRLA $PIRLA $PIRLA$PIRLA", n_subst,
+  //  var_names, var_values);
 
-  if (s) {
-    printf("AFT: <%s>\n", s->c_str());
-    delete s;
-  }
+  //if (s) {
+  //  printf("AFT: <%s>\n", s->c_str());
+  //  delete s;
+  //}
+
+  af::varmap_t variables;
+  variables.insert( af::varpair_t( "CIAO", "**ciao**" ) );
+  variables.insert( af::varpair_t( "PIRLA", "**pirla**" ) );
+  variables.insert( af::varpair_t( "_END_", "**begin**" ) );
+
+  std::string subst = "Ciao $NOPIRLA $CIAO $PIRLA$_END_";
+
+  std::string s = af::regex::dollar_subst(subst.c_str(), variables);
+
+  printf("BEF: <%s>\nAFT: <%s>\n", subst.c_str(), s.c_str());
 
 }
 
@@ -397,11 +409,11 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_quit_callback);
 
   //test_regex();
-  test_dollar_subst();
+  //test_dollar_subst();
   //test_dsmanip();
   //test_queue();
   //test_extcmd(argv[0]);
-  //test_config(999);
+  test_config(999);
   //test_log();
   //test_dl();
 

@@ -189,25 +189,28 @@ const char *regex::subst(const char *orig_str) {
 /** Dollar substitution for variables in format $VARIABLE. Variable names may
  *  contain only 0-9, A-Z, a-z, and underscore. This is a static function.
  *
- *  On success a std::string pointer is returned: allocation is performed by
- *  this method and delete must be performed by the caller.
+ *  A std::string is returned containing the original string with variables
+ *  substituted; variables which weren't found are left intact. If the input
+ *  pattern is a NULL pointer, an empty string is returned.
  *
- *  If either input string is NULL, or n_vars is greater than zero with invalid
- *  var_names or var_values, NULL is returned.
+ *  Key/value pairs ought to be passed through a std::map object aliased to
+ *  type varmap_t (see header for more information on typedefs).
  */
-std::string *regex::dollar_subst(const char *ptn, unsigned int n_vars,
-  const char **var_names, const char **var_values) {
+std::string regex::dollar_subst(const char *ptn, varmap_t &variables) {
 
-  if ( (!ptn) || ((n_vars) && ((!var_names) || (!var_values))) ) return NULL;
+  std::string output_string;
+
+  if (!ptn) return output_string;
 
   bool in_variable = false;
   const char *beg_var = NULL;
   static char this_var_name[100];
-  std::string *output_string = new std::string(ptn);
   int offset = 0;
 
+  output_string = ptn;
+
   // No substitution requested
-  if (n_vars == 0) return output_string;
+  if (variables.size() == 0) return output_string;
 
   for (const char *p=ptn; *p!='\0'; p++) {
 
@@ -242,25 +245,23 @@ std::string *regex::dollar_subst(const char *ptn, unsigned int n_vars,
         this_var_name[var_name_len] = '\0';
 
         // Search for variable value
-        const char *this_var_value = NULL;
-        for (unsigned int i=0; i<n_vars; i++) {
-          if (strcmp(this_var_name, var_names[i]) == 0) {
-            this_var_value = var_values[i];
-            break;
-          }
-        }
+        varmap_const_iter_t it = variables.find(this_var_name);
 
-        if (this_var_value) {
+        if (it != variables.end()) {
+
+          const std::string &this_var_val = it->second;
 
           // Replace $VARIABLE with its value, if value was found
-          output_string->replace(
-            beg_var-ptn - 1 + offset,
-            var_name_len + 1,
-            this_var_value);
-
-          offset += (strlen(this_var_value) - var_name_len - 1);
+          unsigned int sub_pos = beg_var-ptn - 1 + offset;
+          unsigned int sub_len = var_name_len + 1;
+          output_string.replace(sub_pos, sub_len, this_var_val);
+          offset += (this_var_val.length() - var_name_len - 1);
  
         }
+
+        // Maybe we incremented p once more because of imminent end of string:
+        // let's break the loop here to avoid trespassing it!
+        if (*p == '\0') break;
 
       }
 

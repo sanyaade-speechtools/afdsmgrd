@@ -17,6 +17,7 @@
 #include <iostream>
 #include <vector>
 #include <stdexcept>
+#include <map>
 
 #include <stdio.h>
 #include <regex.h>
@@ -31,6 +32,10 @@ namespace af {
   } submatch_t;
 
   typedef std::vector<submatch_t> subparts_t;
+  typedef std::map<std::string,std::string> varmap_t;
+  typedef std::pair<std::string,std::string> varpair_t;
+  typedef varmap_t::iterator varmap_iter_t;
+  typedef varmap_t::const_iterator varmap_const_iter_t;
 
   class regex {
 
@@ -43,8 +48,7 @@ namespace af {
       void unset_regex_subst();
       bool match(const char *str);
       bool set_regex_subst(const char *ptn, const char *_sub_ptn);
-      static std::string *dollar_subst(const char *ptn, unsigned int n_vars,
-        const char **var_names, const char **var_values);
+      static std::string dollar_subst(const char *ptn, varmap_t &variables);
       const char *subst(const char *orig_str);
       void test();
 

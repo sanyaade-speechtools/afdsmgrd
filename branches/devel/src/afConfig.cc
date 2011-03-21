@@ -104,7 +104,9 @@ void cfg_binding::print() const {
 /** Assigns a value, parsing it to the appropriate directive type, and checking
  *  the limits. If the value does not fit limits, it is set to the default
  *  value. Default value is not checked agains limits: this is done on purpose
- *  to permit error detection through the assignment of a default directive.
+ *  to permit error detection through the assignment of a default directive. The
+ *  variable val_str can be transitional and the memory it takes can be freed
+ *  right after calling assign().
  */
 void cfg_binding::assign(const char *val_str) {
 
@@ -352,7 +354,8 @@ char *config::rtrim(char *str) const {
 }
 
 /** Reads configuration from file. Only directives bound to a value are parsed,
- *  the others are ignored.
+ *  the others are ignored. Instead, all the variables (the "set" directives)
+ *  are read and stored in an internal vector.
  */
 void config::read_file() {
 
@@ -369,8 +372,11 @@ void config::read_file() {
 
   never_read_before = false;
 
-  char *dir;
-  char *val;
+  varmap_t variables;
+
+  char *dir;  // the full directive, trimmed (part of strbuf)
+  char *val;  // the string value of the directive, trimmed (part of strbuf)
+  char *var;
 
   while ( file.getline(strbuf, AF_CONFIG_BUFSIZE) ) {
 
@@ -384,17 +390,90 @@ void config::read_file() {
       }
     }
 
-    for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
-     cfg_binding &binding = **it;
-      if (strcmp(binding.get_name(), dir) == 0) {
-        val = rtrim(ltrim(val));
-        binding.assign(val);
-        binding.touch();
-        break;
+    // Check if it is a variable in the form:
+    // set VARIABLE=value of variable
+    // Variable name and value are trimmed
+
+    if (strncmp("set", dir, 3) == 0) {
+
+      // Variable: check if valid, then store value in a vector
+
+      var = rtrim(ltrim(val));
+      bool search_for_equal = false;
+      bool equal_found = false;
+
+      for (val=var; *val!='\0'; val++) {
+
+        if (search_for_equal) {
+
+          if (*val == '=') {
+            *val++ = '\0';
+            equal_found = true;
+            break;
+          }
+          else if ((*val != ' ') && (*val != '\t')) break;  // invalid
+
+        }
+        else {
+
+          if ((*val == ' ') || (*val == '\t')) {
+            *val = '\0';
+            search_for_equal = true;
+          }
+          else if (*val == '=') {
+            *val++ = '\0';
+            equal_found = true;
+            break;
+          }
+          else if (((*val < '0') || (*val > '9')) &&
+            ((*val < 'a') || (*val > 'z')) &&
+            ((*val < 'A') || (*val > 'Z')) && (*val != '_')) break;  // invalid
+
+        }
+
       }
+
+      if (equal_found) {
+        val = ltrim(val);
+        variables.insert( varpair_t(var, val) );
+      }
+
+    }
+    else {
+
+      // Directive: check if it has a binding, and substitute variables
+
+      for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
+       cfg_binding &binding = **it;
+        if (strcmp(binding.get_name(), dir) == 0) {
+          val = rtrim(ltrim(val));
+
+          if (variables.size() > 0) {
+            std::string val_subst = regex::dollar_subst(val, variables);
+            binding.assign(val_subst.c_str());
+          }
+          else {
+            binding.assign(val);
+          }
+
+          binding.touch();
+          break;
+        }
+      }
+
     }
 
   }
+
+  // Print out all variables found, and their respective values
+  for ( varmap_const_iter_t it=variables.begin(); it!=variables.end(); it++) {
+
+    printf("*** {%s}={%s} ***\n",
+      it->first.c_str(),
+      it->second.c_str());
+
+  }
+
 
   file.close();
 

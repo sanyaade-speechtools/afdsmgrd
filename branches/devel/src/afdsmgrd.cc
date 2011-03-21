@@ -476,8 +476,9 @@ void main_loop(af::config &config) {
           if (!var_values[1]) var_values[1] = empty_tree;
 
           // NULL is never returned in this case
-          std::string *url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
-            2, var_names, var_values);
+          //std::string *url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
+          //  2, var_names, var_values);
+          std::string *url_cmd = new std::string("ciao");
 
           af::log::ok(af::log_level_low,
             "Stage command: <<%s>>", url_cmd->c_str());

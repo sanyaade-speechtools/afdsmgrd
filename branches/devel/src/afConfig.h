@@ -12,6 +12,8 @@
 
 #define AF_CONFIG_BUFSIZE 2000
 
+#include "afRegex.h"
+
 #include <iostream>
 #include <fstream>
 #include <string>
