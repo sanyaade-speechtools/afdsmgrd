@@ -18,6 +18,7 @@
 
 #include <fstream>
 #include <memory>
+#include <list>
 
 #include "afLog.h"
 #include "afConfig.h"
@@ -317,7 +318,7 @@ void main_loop(af::config &config) {
   static af::opQueue opq;
 
   // The staging queue
-  static std::vector<af::extCmd *> cmdq;
+  static std::list<af::extCmd *> cmdq;
 
   // Directives in configuration files are bound to the following variables
   static long sleep_secs = 0;  // dsmgrd.sleepsecs
@@ -356,6 +357,8 @@ void main_loop(af::config &config) {
   // The actual loop
   while (!quit_requested) {
 
+    const af::queueEntry *qent;
+
     af::log::info(af::log_level_low, "*** Inside main loop ***",
       count_loops, scan_ds_every_loops);
 
@@ -376,13 +379,138 @@ void main_loop(af::config &config) {
     // Transfer queue
     ////////////////////////////////////////////////////////////////////////////
 
+    af::log::info(af::log_level_normal, "Processing transfer queue...");
+
     opq.set_max_failures((unsigned int)max_stage_retries);
+
+    //
+    // Query on "running" to update their status if needed
+    //
+
+    opq.init_query_by_status(af::qstat_running);
+    while ( qent = opq.next_query_by_status() ) {
+
+      // Check status in transfer queue
+      for (std::list<af::extCmd *>::iterator it=cmdq.begin();
+        it!=cmdq.end(); it++) {
+
+        if ( (*it)->get_id() == qent->get_instance_id() ) {
+
+          if ((*it)->is_running()) {
+            af::log::info(af::log_level_debug, "Still downloading: %s "
+              "(uiid=%u)", qent->get_main_url(), qent->get_instance_id());
+            break;
+          }
+
+          // Download has finished
+
+          (*it)->get_output();
+
+          if ( (*it)->is_ok() ) {
+          
+            //
+            // Download OK
+            //
+
+            af::log::ok(af::log_level_high, "Success: %s",
+              qent->get_main_url());
+
+            // The strings are owned by (*it); note that these fields are not
+            // mandatory for the external command, thus they might be NULL or 0!
+            const char *treename = (*it)->get_field_text("Tree");
+            const char *endp_url = (*it)->get_field_text("EndpointUrl");
+            unsigned int size_bytes = (*it)->get_field_uint("Size");
+            unsigned int n_events = (*it)->get_field_uint("Events");
+
+
+
+          }
+          else {
+
+            //
+            // Download failed
+            //
+
+            // Stage command reported a failure
+            af::log::error(af::log_level_high, "Failed: %s",
+              qent->get_main_url());
+
+          }
+
+          //(*it)->print_fields(true);
+        
+          break;
+
+        }
+
+      }
+
+    }
+    opq.free_query_by_status();
+
+    //
+    // Query on "queued", limited to the number of free download slots
+    //
+
+    int free_cmd_slots = max_concurrent_xfrs - cmdq.size();
+    af::log::info(af::log_level_debug, "Staging slots free: %d",
+      free_cmd_slots);
+
+    if (free_cmd_slots > 0) {
+
+      opq.init_query_by_status(af::qstat_queue, free_cmd_slots);
+
+      while ( qent = opq.next_query_by_status() ) {
+
+        // Prepare command
+
+        af::varmap_iter_t it;
+
+        it = stagecmd_vars.find("URLTOSTAGE");
+        it->second = qent->get_main_url();  // it is the translated (redir) one
+
+        it = stagecmd_vars.find("TREENAME");
+        const char *def_tree = qent->get_tree_name();
+        it->second = def_tree ? def_tree : "";
+
+        std::string url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
+          stagecmd_vars);
+
+        af::log::info(af::log_level_debug, "Preparing staging command: %s",
+          url_cmd.c_str());
+
+        // Launch command
+
+        af::extCmd *ext_stage_cmd = new af::extCmd(url_cmd.c_str(),
+          qent->get_instance_id());
+        if (ext_stage_cmd->run()) {
+
+          // Command started successfully
+          af::log::ok(af::log_level_normal, "Staging started: %s "
+            "(uiid=%u, tree=%s)", qent->get_main_url(), qent->get_instance_id(),
+            qent->get_tree_name());
+
+          // Turn status to "running"
+          opq.set_status(qent->get_main_url(), af::qstat_running);
+
+          // Enqueue in command queue
+          cmdq.push_back(ext_stage_cmd);
+
+        }
+        else {
+          af::log::error(af::log_level_high, "Cannot run staging command, "
+            "check permissions on %s. Command issued: %s",
+            af::extCmd::get_temp_path(), stage_cmd.c_str());
+        }
+
+      }
+      opq.free_query_by_status();
+
+    }
 
     /*af::log::info(af::log_level_normal, "/\\/\\/\\ Queue Dump /\\/\\/\\");
     opq.dump(true);
     af::log::info(af::log_level_normal, "\\/\\/\\/ Queue Dump \\/\\/\\/");*/
-
-    af::log::info(af::log_level_normal, "Processing transfer queue...");
 
     //
     // Process datasets (every X loops)
@@ -479,33 +607,18 @@ void main_loop(af::config &config) {
           }
 
           //
-          // URL of redirector is added in queue
+          // URL of redirector is added in queue (if not existant)
           //
 
-          //unsigned int unique_id = opq.insert(out_url);
           unsigned int unique_id;
-          const af::queueEntry *qent = opq.cond_insert(out_url, &unique_id);
+          qent = opq.cond_insert(out_url, dsm.get_default_tree(), &unique_id);
+            // NULL value for get_default_tree() is accepted
 
           if (!qent) {
 
-            // URL is not yet in queue: let's prepare the external command
-            af::log::ok(af::log_level_low, "In queue: %s (id=%u)", out_url,
+            // URL is not yet in queue: cond_insert() has already appended it
+            af::log::ok(af::log_level_low, "Queued: %s (id=%u)", out_url,
               unique_id);
-
-            //af::varmap_iter_t it;
-
-            //it = stagecmd_vars.find("URLTOSTAGE");
-            //it->second = out_url;
-
-            //it = stagecmd_vars.find("TREENAME");
-            //const char *def_tree = dsm.get_default_tree();
-            //it->second = def_tree ? def_tree : "";
-
-            //std::string url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
-            //  stagecmd_vars);
-
-            //af::log::ok(af::log_level_low, "Stage command: << %s >>",
-            //  url_cmd.c_str());
 
           }
           else {
@@ -514,6 +627,8 @@ void main_loop(af::config &config) {
             af::log::info(af::log_level_debug, "Already queued "
               "(status=%c, failures=%u): %s", qent->get_status(),
               qent->get_n_failures(), out_url);
+            
+            // WE SHOULD CHECK THE STATUS NOW AND SYNC DS -- TODO
 
           }
 

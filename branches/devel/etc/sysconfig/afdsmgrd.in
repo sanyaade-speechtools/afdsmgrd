@@ -11,10 +11,11 @@ export AFDSMGRD_PROG=@CMAKE_INSTALL_PREFIX@/bin/afdsmgrd
 # proof without conflicts
 export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/afdsmgrd.conf
 
-# Library paths required by afdsmgrd: it should contain ROOT libraries, ApMon
-# libraries and eventually the xrootd libraries to run the custom staging
-# command
-export AFDSMGRD_LIBS=@Root_LIBDIR@:/path/to/xrootd/lib
+# Root of your ROOT installation directory
+export ROOTSYS=@ROOTSYS@
+
+# Extra libraries for external staging command
+export AFDSMGRD_EXTRALIBS=/opt/aaf/alien/api/lib
 
 # Path where to find helper executables for the stager daemon
 export AFDSMGRD_LIBEXEC=@CMAKE_INSTALL_PREFIX@/libexec

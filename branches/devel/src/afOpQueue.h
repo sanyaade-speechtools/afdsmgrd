@@ -56,6 +56,7 @@ namespace af {
       inline unsigned long get_n_events() const { return n_events; };
       inline unsigned int get_n_failures() const { return n_failures; };
       inline unsigned long get_size_bytes() const { return size_bytes; };
+      inline unsigned int get_instance_id() const { return uiid; };
       inline qstat_t get_status() const { return status; };
 
       // Setters
@@ -70,6 +71,7 @@ namespace af {
       inline void set_size_bytes(unsigned long _size_bytes) {
         size_bytes = _size_bytes;
       };
+      inline void set_instance_id(unsigned int _uiid) { uiid = _uiid; };
       inline void set_status(qstat_t _status) { status = _status; }
 
       void print() const;
@@ -86,6 +88,7 @@ namespace af {
       unsigned long n_events;
       unsigned int n_failures;
       unsigned long size_bytes;
+      unsigned int uiid;
       qstat_t status;
 
   };
@@ -100,14 +103,16 @@ namespace af {
       virtual ~opQueue();
 
       const queueEntry *cond_insert(const char *url,
-        unsigned int *iid_ptr = NULL);
+        const char *treename = NULL, unsigned int *iid_ptr = NULL);
 
       int flush();
       bool set_status(const char *url, qstat_t qstat);
       void set_max_failures(unsigned int max_failures) {
         fail_threshold = max_failures;
       };
+
       bool failed(const char *url);
+
       void arbitrary_query(const char *query);
       void dump(bool to_log = false);
 
@@ -134,6 +139,7 @@ namespace af {
       sqlite3_stmt *query_cond_insert;
       sqlite3_stmt *query_get_full_entry;
       sqlite3_stmt *query_get_status;
+      sqlite3_stmt *query_success;
 
       sqlite3_stmt *query_by_status_limited;  // for query by status triplet
       char qstat_str[2];

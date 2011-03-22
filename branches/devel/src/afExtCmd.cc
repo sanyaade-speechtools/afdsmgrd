@@ -19,7 +19,8 @@ const char *extCmd::outf_pref = "out";
 const char *extCmd::pidf_pref = "pid";
 
 /** Constructor. The instance_id is chosen automatically if not given or if
- *  equal to zero.
+ *  equal to zero. An exception is thrown if helper path or temporary path are
+ *  not set: the exception is fatal if not caught.
  */
 extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1) {
@@ -64,6 +65,7 @@ bool extCmd::run() {
     cmd.c_str());
 
   // Runs the program
+  af::log::info(af::log_level_debug, "Wrapped external comand: %s", strbuf);
   int r = system(strbuf);
   if (r != 0) return false;
 
@@ -94,6 +96,8 @@ bool extCmd::is_running() {
 /** Searches for a line on stdout that begins either with FAIL or with OK and
  *  parses all the fields, space-separated. If the program did not give any
  *  output, a FAIL status is triggered by default. Fields must be unique.
+ *
+ *  TODO: cleanup of files after get_output()
  */
 void extCmd::get_output() {
 
@@ -196,9 +200,16 @@ const char *extCmd::get_field_text(const char *key) {
 /** Prints out key/value pairs gathered during latest get_output() call; used
  *  mostly for debug.
  */
-void extCmd::print_fields() {
-  for (fields_iter_t it=fields_map.begin(); it!=fields_map.end(); it++)
-    printf("{%s}={%s}\n", (*it).first.c_str(), (*it).second.c_str());
+void extCmd::print_fields(bool log) {
+  for (fields_iter_t it=fields_map.begin(); it!=fields_map.end(); it++) {
+    if (log) {
+      af::log::info(af::log_level_debug, "{%s}={%s}", (*it).first.c_str(),
+        (*it).second.c_str());
+    }
+    else {
+      printf("{%s}={%s}\n", (*it).first.c_str(), (*it).second.c_str());
+    }
+  }
 }
 
 /** Sets the helper path. The given string is copied in an internal buffer.

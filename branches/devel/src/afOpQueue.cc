@@ -158,8 +158,9 @@ opQueue::opQueue() :
 
   // Query for get_full_entry()
   r = sqlite3_prepare_v2(db,
-    "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,status"
-    "  FROM queue WHERE main_url=? LIMIT 1", -1, &query_get_full_entry, NULL);
+    "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,"
+    "  status,instance_id FROM queue WHERE main_url=? LIMIT 1",
+    -1, &query_get_full_entry, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing query_get_full_entry: %s\n", r,
@@ -180,9 +181,9 @@ opQueue::opQueue() :
 
   // Query for *_query_by_status()
   r = sqlite3_prepare_v2(db,
-    "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,status"
-    "  FROM queue WHERE status=? ORDER BY rank ASC LIMIT ?", -1,
-    &query_by_status_limited, NULL);
+    "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,"
+    "  status,instance_id FROM queue WHERE status=? ORDER BY rank ASC LIMIT ?",
+    -1, &query_by_status_limited, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing query_by_status_limited: %s\n", r,
@@ -192,7 +193,7 @@ opQueue::opQueue() :
 
   // Query for cond_insert()
   r = sqlite3_prepare_v2(db,
-    "INSERT INTO queue (main_url,instance_id) VALUES (?,?)", -1,
+    "INSERT INTO queue (main_url,tree_name,instance_id) VALUES (?,?,?)", -1,
     &query_cond_insert, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -201,10 +202,24 @@ opQueue::opQueue() :
     throw std::runtime_error(strbuf);
   }
 
+  // Query for success()
+  r = sqlite3_prepare_v2(db,
+    "UPDATE queue SET status='D',"
+    "  endp_url=?,tree_name=?,n_events=?,size_bytes=? "
+    "  WHERE main_url=?", -1, &query_success, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_success: %s\n", r,
+      sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
 }
 
 /** Removes from queue elements that are in status Success (D) or Failed (F).
- *  Returns the number of elements flushed (TODO: prepare query).
+ *  Returns the number of elements flushed.
+ *
+ *  TODO: prepare query.
  */
 int opQueue::flush() {
 
@@ -299,6 +314,8 @@ int opQueue::query_callback(void *, int argc, char *argv[], char **colname) {
  *  properly deal with Failed (F) status, i.e. to increment error count for the
  *  entry and move the element to the end of the queue (highest rank), use
  *  member function failed().
+ *
+ *  TODO: prepare query.
  */
 bool opQueue::set_status(const char *url, qstat_t qstat) {
 
@@ -324,6 +341,8 @@ bool opQueue::set_status(const char *url, qstat_t qstat) {
  *  of failures is above threshold, sets the status to failed (F). Everything is
  *  done in a single UPDATE SQL query for efficiency reasons. It returns true on
  *  success, false on failure.
+ *
+ *  TODO: prepare query.
  */
 bool opQueue::failed(const char *url) {
 
@@ -366,12 +385,14 @@ opQueue::~opQueue() {
   sqlite3_finalize(query_get_status);
   sqlite3_finalize(query_by_status_limited);
   sqlite3_finalize(query_cond_insert);
+  sqlite3_finalize(query_success);
   sqlite3_close(db);
 }
 
 /** Enqueue URL associating an unique "instance id" to it.
  */
-const queueEntry *opQueue::cond_insert(const char *url, unsigned int *iid_ptr) {
+const queueEntry *opQueue::cond_insert(const char *url, const char *treename,
+  unsigned int *iid_ptr) {
 
   AF_OPQUEUE_NEXT_UIID();
 
@@ -379,7 +400,8 @@ const queueEntry *opQueue::cond_insert(const char *url, unsigned int *iid_ptr) {
   sqlite3_clear_bindings(query_cond_insert);
 
   sqlite3_bind_text(query_cond_insert, 1, url, -1, SQLITE_STATIC);
-  sqlite3_bind_int64(query_cond_insert, 2, unique_instance_id);
+  sqlite3_bind_text(query_cond_insert, 2, treename, -1, SQLITE_STATIC);
+  sqlite3_bind_int64(query_cond_insert, 3, unique_instance_id);
 
   int r = sqlite3_step(query_cond_insert);
 
@@ -394,9 +416,9 @@ const queueEntry *opQueue::cond_insert(const char *url, unsigned int *iid_ptr) {
   else if (r != SQLITE_DONE) { 
 
     // Watch out: sqlite3_exec returns SQLITE_OK on success, while
-    // sqlite3_step returns SQLITE_DONE or SQLITE_ROW.
+    // sqlite3_step returns SQLITE_DONE or SQLITE_ROW
 
-    // Generic error: exception is thrown (should not happen!)
+    // Generic error: exception is thrown (should never happen!)
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error #%d in SQL INSERT query: %s",
       r, sqlite3_errmsg(db));
     throw std::runtime_error(strbuf);
@@ -477,7 +499,7 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
   // See http://www.sqlite.org/c3ref/c_abort.html for SQLite3 constants
   if (r == SQLITE_ROW) {
     // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events
-    // 4:n_failures, 5:size_bytes, 6:status
+    // 4:n_failures, 5:size_bytes, 6:status, 7:instance_id
 
     qentry_buf.set_main_url(
       (char*)sqlite3_column_text(query_get_full_entry, 0) );
@@ -490,6 +512,8 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
     qentry_buf.set_size_bytes( sqlite3_column_int64(query_get_full_entry, 5) );
     qentry_buf.set_status(
       (qstat_t)*sqlite3_column_text(query_get_full_entry, 6) );
+    qentry_buf.set_instance_id(
+      sqlite3_column_int64(query_by_status_limited, 7) );
 
     return &qentry_buf;
   }
@@ -504,7 +528,11 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
  *  while (entry = next_query_by_status() { ... }
  *  free_query_by_status();
  *
- *  
+ *  Query output is ordered by rank (lowest rank items are returned before
+ *  highest rank items) and can be optionally limited. A value of limit of 0 or
+ *  a negative value means no limits (default).
+ *
+ *  This function never fails.
  */
 void opQueue::init_query_by_status(qstat_t qstat, long limit) {
 
@@ -531,7 +559,7 @@ const queueEntry *opQueue::next_query_by_status() {
   if (r != SQLITE_ROW) return NULL;
 
   // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events, 4:n_failures,
-  // 5:size_bytes, 6:status
+  // 5:size_bytes, 6:status, 7:instance_id
 
   qentry_buf.reset();
   qentry_buf.set_main_url(
@@ -545,6 +573,8 @@ const queueEntry *opQueue::next_query_by_status() {
   qentry_buf.set_size_bytes( sqlite3_column_int64(query_by_status_limited, 5) );
   qentry_buf.set_status(
     (qstat_t)*sqlite3_column_text(query_by_status_limited, 6) );
+  qentry_buf.set_instance_id(
+    sqlite3_column_int64(query_by_status_limited, 7) );
 
   return &qentry_buf;
 }

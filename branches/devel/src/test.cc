@@ -152,7 +152,8 @@ void test_extcmd(const char *argv0) {
   //af::extCmd my_cmd("../../src/donothing.sh 1");
   //af::extCmd my_cmd("xrdstagetool -d 2 root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root");
 
-  af::extCmd my_cmd("root.exe -b -q /opt/afdsmgrd/devel/dest/libexec/afdsmgrd-macros/StageXrd.C'(\"root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root\", \"/esdTree\")'");
+  //af::extCmd my_cmd("root.exe -b -q /opt/afdsmgrd/devel/dest/libexec/afdsmgrd-macros/StageXrd.C'(\"root://pmaster.to.infn.it//alice/data/2010/LHC10h/000137161/ESDs/pass1_5plus/10000137161031.990/root_archive.zip#AliESDs.root\", \"/esdTree\")'");
+  af::extCmd my_cmd("/tmp/do_nothing.sh");
 
   my_cmd.run();
   /*
@@ -416,8 +417,8 @@ int main(int argc, char *argv[]) {
   //test_regex();
   //test_dollar_subst();
   //test_dsmanip();
-  test_queue();
-  //test_extcmd(argv[0]);
+  //test_queue();
+  test_extcmd(argv[0]);
   //test_config(999);
   //test_log();
   //test_dl();

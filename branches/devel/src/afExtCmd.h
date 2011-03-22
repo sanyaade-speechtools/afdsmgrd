@@ -16,6 +16,8 @@
 
 #define AF_EXTCMD_BUFSIZE 1000
 
+#include "afLog.h"
+
 #include <map>
 #include <string>
 #include <fstream>
@@ -43,9 +45,9 @@ namespace af {
       bool is_running();
       pid_t get_pid() { return pid; };
       void get_output();
-      void print_fields();
+      void print_fields(bool log = false);
       bool is_ok() { return ok; };
-      unsigned long get_id() { return id; };
+      unsigned int get_id() { return id; };
 
       unsigned long get_field_uint(const char *key);
       long get_field_int(const char *key);
@@ -54,6 +56,8 @@ namespace af {
 
       static void set_helper_path(const char *path);
       static void set_temp_path(const char *path);
+      static const char *get_helper_path() { return helper_path.c_str(); };
+      static const char *get_temp_path() { return temp_path.c_str(); };
 
     private:
 

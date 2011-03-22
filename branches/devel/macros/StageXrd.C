@@ -29,6 +29,11 @@
  *
  * Please note that "Tree:" reports the tree name with a leading /.
  *
+ * If the file has been downloaded but no tree is present, the output is like:
+ *
+ * OK <orig_url_no_anchor> Size: <size_bytes> \
+ *   EndpointUrl: <endpoint_url_w_anchor>
+ *
  * In case of failure, on stdout it prints a format like this:
  *
  * FAIL <orig_url_no_anchor> <other_stuff...>
@@ -40,11 +45,13 @@
  *  - cant_open        : file can not be accessed
  *  - tree_disappeared : the tree exists in keys list but can't be read
  *  - no_such_tree     : the specified tree does not exist
- *  - no_trees         : no default tree has been specified, and no tree found
  *
  * So, if the status is FAIL but we have a "Reason:", we conclude that the file
  * is staged but corrupted.
  *
+ * In case of failure, if "Staged: 1" is reported, it means that the file has
+ * been successfully staged, but it is corrupted. If no Staged: field is
+ * reported, in case of failure the file is both unstaged and corrupted.
  */
 
 /** Auxiliary function that finds a tree name given the specified TFile. If no
@@ -164,9 +171,9 @@ void StageXrd(const char *url, TString def_tree = "") {
 
         // FAIL because the specified tree disappeared from key: do not report
         // tree name and events. This should not happen and it is a strong
-        // indicator of file corruption
-        Printf("FAIL %s Size: %lu EndpointUrl: %s Reason: tree_disappeared",
-          turl.GetUrl(), size, endp_url);
+        // indicator of file corruption. Since file has been staged, Staged=1
+        Printf("FAIL %s Size: %lu EndpointUrl: %s Staged: 1 "
+          "Reason: tree_disappeared", turl.GetUrl(), size, endp_url);
 
       }
 
@@ -174,8 +181,8 @@ void StageXrd(const char *url, TString def_tree = "") {
     else {
 
       // FAIL because the specified tree does not exist: this is a weak
-      // indicator of file corruption
-      Printf("FAIL %s Size: %lu EndpointUrl: %s Reason: no_such_tree",
+      // indicator of file corruption. Since file has been staged, Staged=1
+      Printf("FAIL %s Size: %lu EndpointUrl: %s Staged: 1 Reason: no_such_tree",
         turl.GetUrl(), size, endp_url);
 
     }
@@ -183,9 +190,9 @@ void StageXrd(const char *url, TString def_tree = "") {
   }
   else {
 
-    // FAIL because no tree found: do not report tree name and events
-    Printf("FAIL %s Size: %lu EndpointUrl: %s Reason: no_trees", turl.GetUrl(),
-      size, endp_url);
+    // OK but do not report number of events or tree name, because no tree has
+    // been found
+    Printf("OK %s Size: %lu EndpointUrl: %s", turl.GetUrl(), size, endp_url);
 
   }
 

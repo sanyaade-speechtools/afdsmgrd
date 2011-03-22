@@ -8,6 +8,10 @@
 # one.
 #
 
+# Configuration file for afdsmgrd supports environment variables: in this
+# example we set PMASTER to the PROOF master and xrootd redirector
+set PMASTER=pmaster.to.infn.it
+
 # This is the standard PROOF directive that tells PROOF where to find the
 # datasets repository. For now afdsmgrd only supports dataset sources of type
 # "file", which means on a local filesystem. The syntax is:
@@ -16,14 +20,14 @@
 #
 # where some opts are: Cq (check quota), Av (allow verify), Ar (allow register).
 # Options can be prefixed with a minus to exclude them.
-xpd.datasetsrc file url:/pool/datasets mss:root://$MASTER:1094 opt:Cq:Av:Ar: rw=1
+xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw=1
 
 # Regex and substitution pattern that will be used to translate the URLs. The
 # regex is interpreted as extended, and substitution pattern interprets
 # "dollar" substitutions from $1 to $9. If the n-th submatch (as in $n) is not
 # defined in regex, it will be substituted with "<?>"; instead, if the n-th
 # submatch did not match anything, it will be just an empty string
-dsmgrd.urlregex alien://(.*)$ root://$MASTER/$1
+dsmgrd.urlregex alien://(.*)$ root://$PMASTER/$1
 
 # At each loop the transfer queue is checked: sleep time between each loop, in
 # seconds
@@ -60,7 +64,7 @@ dsmgrd.parallelxfrs 30
 # Very important: it is common to use ROOT macros to verify the files; remember
 # to launch ROOT via the root.exe executable, and *not* via the sole root
 # command!
-dsmgrd.stagecmd root.exe -b -q @CMAKE_INSTALL_PREFIX@/libexec/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
+dsmgrd.stagecmd @CMAKE_INSTALL_PREFIX@/libexec/launch-root.sh -b -q @CMAKE_INSTALL_PREFIX@/libexec/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
 
 # Maximum number of files to place in the queue. If zero or if the directive is
 # omitted, defaults to "no limit". It is strongly advised to put a limit in
