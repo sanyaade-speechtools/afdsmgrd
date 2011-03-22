@@ -326,6 +326,11 @@ void main_loop(af::config &config) {
   static long max_stage_retries = 0;    // dsmgrd.corruptafterfails
   static std::string stage_cmd;
 
+  // Variables to substitute in stage command
+  af::varmap_t stagecmd_vars;
+  stagecmd_vars.insert( af::varpair_t("URLTOSTAGE", "") );
+  stagecmd_vars.insert( af::varpair_t("TREENAME", "") );
+
   if (!inited) {
 
     // Exotic directive (from PROOF): xpd.datasetsrc
@@ -346,30 +351,229 @@ void main_loop(af::config &config) {
 
   }
 
+  static long count_loops = -1;
+
   // The actual loop
   while (!quit_requested) {
 
-    af::log::info(af::log_level_low, "*** Inside main loop ***");
+    af::log::info(af::log_level_low, "*** Inside main loop ***",
+      count_loops, scan_ds_every_loops);
 
     // Check and load updates from the configuration file
     if (config.update()) {
-      af::log::info(af::log_level_urgent, "Config file modified");
+      af::log::info(af::log_level_high, "Config file modified");
     }
     else af::log::info(af::log_level_low, "Config file unmodified");
 
-    //
-    // The operations queue
-    //
+    // Loop counter: we do not use MOD operator to take into account config
+    // file modifications of directive dsmgrd.scandseveryloops
+    count_loops++;
+    if (count_loops >= scan_ds_every_loops) count_loops = 0;
+    af::log::info(af::log_level_debug, "Iteration: %ld/%ld",
+      count_loops, scan_ds_every_loops);
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Transfer queue
+    ////////////////////////////////////////////////////////////////////////////
 
     opq.set_max_failures((unsigned int)max_stage_retries);
-    af::log::info(af::log_level_normal, "/\\/\\/\\ Queue Dump /\\/\\/\\");
+
+    /*af::log::info(af::log_level_normal, "/\\/\\/\\ Queue Dump /\\/\\/\\");
     opq.dump(true);
-    af::log::info(af::log_level_normal, "\\/\\/\\/ Queue Dump \\/\\/\\/");
+    af::log::info(af::log_level_normal, "\\/\\/\\/ Queue Dump \\/\\/\\/");*/
+
+    af::log::info(af::log_level_normal, "Processing transfer queue...");
 
     //
+    // Process datasets (every X loops)
+    //
+
+    if (count_loops == 0) {
+
+      af::log::info(af::log_level_normal, "Processing datasets...");
+
+      const char *ds;
+      dsm.fetch_datasets();
+      unsigned int count_ds = 0;
+      while (ds = dsm.next_dataset()) {
+
+        af::log::info(af::log_level_low, "Processing dataset %s", ds);
+
+        TFileInfo *fi;
+        dsm.fetch_files(NULL, "sc");  // sc == not staged AND not corrupted
+        int count_changes = 0;
+        int count_files = 0;
+        while (fi = dsm.next_file()) {
+
+          // Debug: we just count the retrieved files
+          count_files++;
+
+          // Originating URL is the last one; redirector URL is the last but one
+          TUrl *orig_url = dsm.get_url(-1);
+          TUrl *redir_url = dsm.get_url(-2);
+
+          if (!orig_url) continue;  // no URLs in entry (should not happen)
+
+          const char *inp_url = orig_url->GetUrl();
+          const char *out_url = url_regex.subst(inp_url);
+
+          if (!out_url) continue;
+          // orig_url not matched regex (i.e., originating URL is unsupported)
+
+          if ((redir_url) && (strcmp(out_url, redir_url->GetUrl()) == 0)) {
+
+            //
+            // The translated redirector URL already exists in this entry: let
+            // us keep only the last two
+            //
+
+            switch (dsm.del_urls_but_last(2)) {
+              case af::ds_manip_err_ok_mod:
+                //af::log::info(af::log_level_low, "del_urls_but_last(2)");
+                count_changes++;
+              break;
+              case af::ds_manip_err_ok_noop:
+                // nothing to do
+              break;
+              case af::ds_manip_err_fail:  // should not happen
+                af::log::error(af::log_level_normal,
+                  "Error in dataset %s at entry %s (last URL) when pruning all "
+                    "URLs but last two", ds, inp_url);
+              break;
+            }
+
+          }
+          else {
+
+            //
+            // We have to add the translated redirector URL
+            //
+
+            // Conserve only last URL of the given entry
+            switch (dsm.del_urls_but_last()) {
+              case af::ds_manip_err_ok_mod:
+                //af::log::info(af::log_level_low, "del_urls_but_last(1)");
+                count_changes++;
+              break;
+              case af::ds_manip_err_ok_noop:
+                // nothing to do
+              break;
+              case af::ds_manip_err_fail: // should not happen
+                af::log::error(af::log_level_normal,
+                  "Error in dataset %s at entry %s (last URL) when pruning all "
+                    "URLs but last", ds, inp_url);
+              break;
+            }
+
+            // Add redirector URL
+            if ( fi->AddUrl(out_url, true) ) {
+              //af::log::info(af::log_level_low, "AddUrl()");
+              count_changes++;
+            }
+            else {  // should not happen
+              af::log::error(af::log_level_normal,
+                "Error in dataset %s at entry %s (last URL) when adding "
+                  "redirector URLs %s", ds, inp_url, out_url);
+            }
+
+          }
+
+          //
+          // URL of redirector is added in queue
+          //
+
+          //unsigned int unique_id = opq.insert(out_url);
+          unsigned int unique_id;
+          const af::queueEntry *qent = opq.cond_insert(out_url, &unique_id);
+
+          if (!qent) {
+
+            // URL is not yet in queue: let's prepare the external command
+            af::log::ok(af::log_level_low, "In queue: %s (id=%u)", out_url,
+              unique_id);
+
+            //af::varmap_iter_t it;
+
+            //it = stagecmd_vars.find("URLTOSTAGE");
+            //it->second = out_url;
+
+            //it = stagecmd_vars.find("TREENAME");
+            //const char *def_tree = dsm.get_default_tree();
+            //it->second = def_tree ? def_tree : "";
+
+            //std::string url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
+            //  stagecmd_vars);
+
+            //af::log::ok(af::log_level_low, "Stage command: << %s >>",
+            //  url_cmd.c_str());
+
+          }
+          else {
+
+            // URL already in queue
+            af::log::info(af::log_level_debug, "Already queued "
+              "(status=%c, failures=%u): %s", qent->get_status(),
+              qent->get_n_failures(), out_url);
+
+          }
+
+        }  // end loop over dataset entries
+
+        // Save only if necessary
+        if (count_changes > 0) {
+
+          toggle_suid();
+          bool save_ok = dsm.save_dataset();
+          toggle_suid();
+
+          if (save_ok) {
+            af::log::ok(af::log_level_normal,
+              "Dataset %s saved: %d entries", ds, count_files);
+          }
+          else {
+            af::log::error(af::log_level_normal,
+              "Dataset %s not saved: check permissions", ds);
+          }
+        }
+        else {
+          af::log::info(af::log_level_low, "Dataset %s not modified", ds);
+        }
+
+        dsm.free_files();
+
+        count_ds++;
+
+      }
+      dsm.free_datasets();
+
+      af::log::info(af::log_level_low, "Number of datasets processed: %u",
+        count_ds);
+
+      //
+      // Clean up transfer queue (TODO)
+      //
+
+      count_loops = 0;
+
+      // End of dataset processing
+    }
+    else {
+      int diff_loops = scan_ds_every_loops - count_loops;
+      if (diff_loops == 1) {
+        af::log::info(af::log_level_low, "Not processing datasets now: they "
+          "will be processed in the next loop");
+      }
+      else {
+        af::log::info(af::log_level_low, "Not processing datasets now: "
+          "%d loops remaining before processing", diff_loops);
+      }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     // Big Loop over datasets
-    //
+    ////////////////////////////////////////////////////////////////////////////
 
+    /*
     const char *ds;
     dsm.fetch_datasets();
     unsigned int count_ds = 0;
@@ -467,31 +671,28 @@ void main_loop(af::config &config) {
           af::log::ok(af::log_level_low, "In queue: %s (id=%u)", out_url,
             unique_id);
 
-          const char *var_names[] = { "URLTOSTAGE", "TREENAME" };
-          const char *var_values[2];
-          const char *empty_tree = "";
+          //af::varmap_iter_t it;
 
-          var_values[0] = out_url;
-          var_values[1] = dsm.get_default_tree();
-          if (!var_values[1]) var_values[1] = empty_tree;
+          //it = stagecmd_vars.find("URLTOSTAGE");
+          //it->second = out_url;
 
-          // NULL is never returned in this case
-          //std::string *url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
-          //  2, var_names, var_values);
-          std::string *url_cmd = new std::string("ciao");
+          //it = stagecmd_vars.find("TREENAME");
+          //const char *def_tree = dsm.get_default_tree();
+          //it->second = def_tree ? def_tree : "";
 
-          af::log::ok(af::log_level_low,
-            "Stage command: <<%s>>", url_cmd->c_str());
+          //std::string url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
+            stagecmd_vars);
 
-          delete url_cmd;
+          //af::log::ok(af::log_level_low, "Stage command: << %s >>",
+            url_cmd.c_str());
 
         }
-        else {
+        //else {
 
           // URL already in queue
-          af::log::error(af::log_level_low, "In queue: %s", out_url);
+          //af::log::error(af::log_level_low, "In queue: %s", out_url);
 
-        }
+        //}
 
       }  // end loop over dataset entries
 
@@ -523,31 +724,15 @@ void main_loop(af::config &config) {
 
     af::log::info(af::log_level_low, "Number of datasets processed: %u",
       count_ds);
+    */
 
     // Report resources
     print_daemon_status();
 
-    // Report resources -- apparently it works only on BSD-like systems
-    // http://stackoverflow.com/questions/5120861/how-to-measure-memory-usage-from-inside-a-c-program
-    /*struct rusage rusg;
-    if (getrusage(RUSAGE_SELF, &rusg) == 0) {
-      af::log::info(af::log_level_low, "Mem usage (KiB) >> "
-        "Resident: %ld | Shared: %ld | Unsh. data: %ld | Unsh. stack: %ld",
-        rusg.ru_maxrss, rusg.ru_ixrss, rusg.ru_idrss, rusg.ru_isrss);
-    }
-    else {
-      af::log::warning(af::log_level_normal,
-        "Cannot get resource usage of current process");
-    }*/
+    ////////////////////////////////////////////////////////////////////////////
+    // Sleep until next loop
+    ////////////////////////////////////////////////////////////////////////////
 
-    //long   ru_maxrss;        /* maximum resident set size */
-    //long   ru_ixrss;         /* integral shared memory size */
-    //long   ru_idrss;         /* integral unshared data size */
-    //long   ru_isrss;         /* integral unshared stack size */
-
-    /* */
-
-    // Sleep until the next loop
     af::log::info(af::log_level_low, "Sleeping %ld seconds", sleep_secs);
     sleep(sleep_secs);
 
@@ -574,7 +759,7 @@ int main(int argc, char *argv[]) {
   // l <logfile>
   // b --> TODO: fork to background
   // p <pidfile>
-  // d <low|normal|high|urgent> --> log level
+  // d <dbg|low|normal|high|urgent> --> log level
   while ((c = getopt(argc, argv, ":c:l:p:bu:d:e:")) != -1) {
 
     switch (c) {
@@ -611,7 +796,9 @@ int main(int argc, char *argv[]) {
 
   // Set the log level amongst low, normal, high and urgent
   if (log_level) {
-    if (strcmp(log_level, "low") == 0)
+    if (strcmp(log_level, "debug") == 0)
+      log->set_level(af::log_level_debug);
+    else if (strcmp(log_level, "low") == 0)
       log->set_level(af::log_level_low);
     else if (strcmp(log_level, "normal") == 0)
       log->set_level(af::log_level_normal);

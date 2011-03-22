@@ -203,7 +203,7 @@ bool dataSetList::fetch_files(const char *ds_name, const char *filter) {
     fi_filter.set(idx_e);
   }
 
-  af::log::info(af::log_level_low,
+  af::log::info(af::log_level_debug,
     "Filter on files: (S:%d || s:%d) && (C:%d || c:%d) && (E:%d || e:%d)",
     fi_filter.test(idx_S), fi_filter.test(idx_s),
     fi_filter.test(idx_C), fi_filter.test(idx_c),
@@ -346,7 +346,7 @@ bool dataSetList::save_dataset() {
 
   int r = ds_mgr->WriteDataSet(group, user, name, fi_coll);
 
-  af::log::info(af::log_level_low,
+  af::log::info(af::log_level_debug,
     "WriteDataSet(group=%s, user=%s, name=%s)=%d", group.Data(),
     user.Data(), name.Data(), r);
 

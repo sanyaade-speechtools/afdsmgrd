@@ -27,10 +27,11 @@ namespace af {
   /** Log message level: higher numbers mean higher importance.
    */
   typedef enum {
-    log_level_urgent = 3,
-    log_level_high   = 2,
-    log_level_normal = 1,
-    log_level_low    = 0
+    log_level_urgent = 4,
+    log_level_high   = 3,
+    log_level_normal = 2,
+    log_level_low    = 1,
+    log_level_debug  = 0
   } log_level_t;
 
   /** Log message type.

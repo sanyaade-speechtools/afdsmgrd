@@ -260,7 +260,7 @@ void test_queue() {
   char urlbuf[300];
   for (unsigned int i=1; i<=n_entries; i++) {
     snprintf(urlbuf, 300, "root://www.google.it/num%09d/root_archive.zip#AliESDs.root", i);
-    opq.insert(urlbuf);
+    opq.cond_insert(urlbuf);
   }
   opq.dump();
 
@@ -273,14 +273,19 @@ void test_queue() {
     opq.flush();
   }
 
-  // Select a random item to see its status; beware that get_entry returns a
-  // pointer to an internal static buffer!
-  const af::queueEntry *ent = opq.get_entry(
+  // Select a random item to see its status; beware that get_cond_entry returns
+  // a pointer to an internal static buffer!
+  const af::queueEntry *ent = opq.get_cond_entry(
     "root://www.google.it/num000000004/root_archive.zip#AliESDs.root");
 
-  printf("\n=== GET_ENTRY ===\n");
-  if (ent) ent->print();
-  else printf("Entry not found.\n");
+  //printf("\n=== GET_ENTRY ===\n");
+  //if (ent) ent->print();
+  //else printf("Entry not found.\n");
+
+  // Test three-step query
+  opq.init_query_by_status(af::qstat_queue, 4);
+  while ( ent = opq.next_query_by_status() ) ent->print();
+  opq.free_query_by_status();
 
   // Query a caso
   /*try {
@@ -411,9 +416,9 @@ int main(int argc, char *argv[]) {
   //test_regex();
   //test_dollar_subst();
   //test_dsmanip();
-  //test_queue();
+  test_queue();
   //test_extcmd(argv[0]);
-  test_config(999);
+  //test_config(999);
   //test_log();
   //test_dl();
 

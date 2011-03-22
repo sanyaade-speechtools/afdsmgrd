@@ -20,9 +20,13 @@
 #include "sqlite3.h"
 
 #include <stdexcept>
+#include <limits>
 
 #define AF_NULL_STR(STR) ((STR) ? (STR) : "#null#")
 #define AF_OPQUEUE_BUFSIZE 1000
+#define AF_OPQUEUE_MAXROWS ( std::numeric_limits<long>::max() )
+#define AF_OPQUEUE_NEXT_UIID() ( (++unique_instance_id == 0) ? ++unique_instance_id : unique_instance_id  )
+#define AF_OPQUEUE_PREV_UIID() ( (--unique_instance_id == 0) ? --unique_instance_id : unique_instance_id  )
 
 namespace af {
 
@@ -91,9 +95,13 @@ namespace af {
   class opQueue {
 
     public:
+
       opQueue();
       virtual ~opQueue();
-      unsigned int insert(const char *url);
+
+      const queueEntry *cond_insert(const char *url,
+        unsigned int *iid_ptr = NULL);
+
       int flush();
       bool set_status(const char *url, qstat_t qstat);
       void set_max_failures(unsigned int max_failures) {
@@ -102,12 +110,19 @@ namespace af {
       bool failed(const char *url);
       void arbitrary_query(const char *query);
       void dump(bool to_log = false);
-      //bool exists(const char *url);
+
       const queueEntry *get_full_entry(const char *url);
       const queueEntry *get_status(const char *url);
-      const queueEntry *get_entry(const char *url);
+      const queueEntry *get_cond_entry(const char *url);
+
+      // Query by status triplet
+      void init_query_by_status(qstat_t qstat, long limit = 0);
+      const queueEntry *next_query_by_status();
+      void free_query_by_status();
+
 
     private:
+
       sqlite3 *db;
       char strbuf[AF_OPQUEUE_BUFSIZE];
       char *sql_err;
@@ -116,9 +131,12 @@ namespace af {
       unsigned int fail_threshold;
       unsigned int unique_instance_id;
 
-      //sqlite3_stmt *query_exists;
+      sqlite3_stmt *query_cond_insert;
       sqlite3_stmt *query_get_full_entry;
       sqlite3_stmt *query_get_status;
+
+      sqlite3_stmt *query_by_status_limited;  // for query by status triplet
+      char qstat_str[2];
 
       queueEntry qentry_buf;
   };

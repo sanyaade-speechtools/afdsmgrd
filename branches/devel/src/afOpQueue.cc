@@ -121,6 +121,8 @@ void queueEntry::print() const {
 opQueue::opQueue() :
   fail_threshold(0), qentry_buf(false), unique_instance_id(0) {
 
+  qstat_str[1] = '\0';
+
   const char *db_filename = ":memory:";
 
   if (sqlite3_open(db_filename, &db)) {
@@ -154,16 +156,6 @@ opQueue::opQueue() :
     throw std::runtime_error(strbuf);
   }
 
-  // Query for exists()
-  /*r = sqlite3_prepare_v2(db,
-    "SELECT COUNT(rank) FROM queue WHERE main_url=?", -1, &query_exists, NULL);
-  if (r != SQLITE_OK) {
-    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
-      "Error #%d while preparing SQL query for exists(): %s\n", r, sql_err);
-    sqlite3_free(sql_err);
-    throw std::runtime_error(strbuf);
-  }*/
-
   // Query for get_full_entry()
   r = sqlite3_prepare_v2(db,
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,status"
@@ -171,8 +163,7 @@ opQueue::opQueue() :
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing query_get_full_entry: %s\n", r,
-      sql_err);
-    sqlite3_free(sql_err);
+      sqlite3_errmsg(db));
     throw std::runtime_error(strbuf);
   }
 
@@ -183,8 +174,30 @@ opQueue::opQueue() :
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing query_get_status: %s\n", r,
-      sql_err);
-    sqlite3_free(sql_err);
+      sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
+  // Query for *_query_by_status()
+  r = sqlite3_prepare_v2(db,
+    "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,status"
+    "  FROM queue WHERE status=? ORDER BY rank ASC LIMIT ?", -1,
+    &query_by_status_limited, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_by_status_limited: %s\n", r,
+      sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
+  // Query for cond_insert()
+  r = sqlite3_prepare_v2(db,
+    "INSERT INTO queue (main_url,instance_id) VALUES (?,?)", -1,
+    &query_cond_insert, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_cond_insert: %s\n", r,
+      sqlite3_errmsg(db));
     throw std::runtime_error(strbuf);
   }
 
@@ -349,66 +362,59 @@ bool opQueue::failed(const char *url) {
 /** Queue destructor: it closes the connection to the opened SQLite db.
  */
 opQueue::~opQueue() {
+  sqlite3_finalize(query_get_full_entry);
+  sqlite3_finalize(query_get_status);
+  sqlite3_finalize(query_by_status_limited);
+  sqlite3_finalize(query_cond_insert);
   sqlite3_close(db);
-  //sqlite3_finalize(query_exists);
 }
 
-/** Enqueue URL associating an unique "instance id" to it. Returns the assigned
- *  instance id on success, 0 on failure. Zero is not a valid instance id.
- *
- *  TODO: compile query.
+/** Enqueue URL associating an unique "instance id" to it.
  */
-unsigned int opQueue::insert(const char *url) {
+const queueEntry *opQueue::cond_insert(const char *url, unsigned int *iid_ptr) {
 
-  unique_instance_id++;
-  if (unique_instance_id == 0) unique_instance_id = 1;  // handles overflow
+  AF_OPQUEUE_NEXT_UIID();
 
-  snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
-    "INSERT INTO queue "
-    "(main_url,instance_id) "
-    "VALUES ('%s',%u)", url, unique_instance_id);
+  sqlite3_reset(query_cond_insert);
+  sqlite3_clear_bindings(query_cond_insert);
 
-  int r = sqlite3_exec(db, strbuf, NULL, NULL, &sql_err);
+  sqlite3_bind_text(query_cond_insert, 1, url, -1, SQLITE_STATIC);
+  sqlite3_bind_int64(query_cond_insert, 2, unique_instance_id);
+
+  int r = sqlite3_step(query_cond_insert);
 
   if (r == SQLITE_CONSTRAINT) {
-    sqlite3_free(sql_err);
-    return 0;
+
+    // Already in queue: returns the partial/full entry (see get_cond_entry())
+    AF_OPQUEUE_PREV_UIID();  // let's not waste free numbers!
+    if (iid_ptr) *iid_ptr = 0;
+    return get_cond_entry(url);
+
   }
-  else if (r != SQLITE_OK) {
+  else if (r != SQLITE_DONE) { 
+
+    // Watch out: sqlite3_exec returns SQLITE_OK on success, while
+    // sqlite3_step returns SQLITE_DONE or SQLITE_ROW.
+
+    // Generic error: exception is thrown (should not happen!)
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error #%d in SQL INSERT query: %s",
-      r, sql_err);
-    sqlite3_free(sql_err);
+      r, sqlite3_errmsg(db));
     throw std::runtime_error(strbuf);
+
   }
 
   last_queue_rowid = sqlite3_last_insert_rowid(db);
 
-  return unique_instance_id;
+  // All OK: NULL is returned, iid_ptr is set
+  if (iid_ptr) *iid_ptr = unique_instance_id;
+  return NULL;
 }
 
-/** Returns true if a given URL is in the queue, elsewhere it returns false. The
- *  query is prepared in the constructor, and finalized in the destructor.
- */
-/*bool opQueue::exists(const char *url) {
-
-  if (!url) return false;
-
-  // See http://www.sqlite.org/capi3ref.html#sqlite3_bind_blob
-  sqlite3_bind_text(query_exists, 1, url, -1, SQLITE_STATIC);
-
-  sqlite3_step(query_exists);
-  unsigned long count = sqlite3_column_int64(query_exists, 0);
-
-  sqlite3_reset(query_exists);
-  sqlite3_clear_bindings(query_exists);
-
-  if (count) return true;
-  return false;
-}*/
-
 /** Searches for an entry and returns its status inside a queueEntry class.
- *  The other members of the class are left intacts. This method can be used
- *  to check if an element exists.
+ *  The other members of the class are left intacts. If the provided URL is
+ *  NULL, or it can't be found in the queue, NULL is returned.
+ *
+ *  This method can be used to check if an element exists.
  */
 const queueEntry *opQueue::get_status(const char *url) {
 
@@ -434,12 +440,12 @@ const queueEntry *opQueue::get_status(const char *url) {
 }
 
 /** Returns the full entry if it has finished processing (success or failed
- *  status), and a partial entry containing only the main_url and status if
- *  it hasn't. If entry does not exist or the given URL is NULL, it returns
- *  NULL. This function avoids unnecessarily allocating memory for elements that
+ *  status), and a partial entry containing only the main_url and status if it
+ *  hasn't. If entry does not exist or the given URL is NULL, it returns NULL.
+ *  This function avoids unnecessarily allocating memory for elements that
  *  haven't finished processing yet.
  */
-const queueEntry *opQueue::get_entry(const char *url) {
+const queueEntry *opQueue::get_cond_entry(const char *url) {
 
   if (!url) return NULL;
 
@@ -489,4 +495,65 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
   }
 
   return NULL;
+}
+
+/** Initializes a query by status. This is the first function to call in a
+ *  three-steps mechanism illustrated in the following example:
+ *
+ *  init_query_by_status(<qstat>, [limit]);
+ *  while (entry = next_query_by_status() { ... }
+ *  free_query_by_status();
+ *
+ *  
+ */
+void opQueue::init_query_by_status(qstat_t qstat, long limit) {
+
+  free_query_by_status();  // We can never tell... it's harmless in the WCS
+
+  // Sqlite3 implements this value as int64 (long), so we have to check for
+  // negative values
+  if (limit <= 0) limit = AF_OPQUEUE_MAXROWS;
+
+  qstat_str[0] = (char)qstat;  // qstat_str[1] inited in ctor
+
+  // See http://www.sqlite.org/c3ref/bind_blob.html: indexes start from 1
+  sqlite3_bind_text(query_by_status_limited, 1, qstat_str, -1, SQLITE_STATIC);
+  sqlite3_bind_int64(query_by_status_limited, 2, limit);
+
+}
+
+/** Returns next entry for the current query by status, or NULL when no more
+ *  rows are available. See init_query_by_status() for more information.
+ */
+const queueEntry *opQueue::next_query_by_status() {
+
+  int r = sqlite3_step(query_by_status_limited);
+  if (r != SQLITE_ROW) return NULL;
+
+  // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events, 4:n_failures,
+  // 5:size_bytes, 6:status
+
+  qentry_buf.reset();
+  qentry_buf.set_main_url(
+    (const char *)sqlite3_column_text(query_by_status_limited, 0) );
+  qentry_buf.set_endp_url(
+    (const char*)sqlite3_column_text(query_by_status_limited, 1) );
+  qentry_buf.set_tree_name(
+    (const char *)sqlite3_column_text(query_by_status_limited, 2) );
+  qentry_buf.set_n_events( sqlite3_column_int64(query_by_status_limited, 3) );
+  qentry_buf.set_n_failures( sqlite3_column_int64(query_by_status_limited, 4) );
+  qentry_buf.set_size_bytes( sqlite3_column_int64(query_by_status_limited, 5) );
+  qentry_buf.set_status(
+    (qstat_t)*sqlite3_column_text(query_by_status_limited, 6) );
+
+  return &qentry_buf;
+}
+
+/** Frees the resources used by the current query by status. This function never
+ *  fails, and it is harmless if called twice. See init_query_by_status() for
+ *  more information.
+ */
+void opQueue::free_query_by_status() {
+  sqlite3_reset(query_by_status_limited);
+  sqlite3_clear_bindings(query_by_status_limited);
 }
