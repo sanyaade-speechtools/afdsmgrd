@@ -15,6 +15,22 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+/** Sets the specified environment variable.
+ */
+bool set_env_var(char *keyval) {
+  char *val = strchr(keyval, '=');
+
+  if (val) {
+    *val = '\0';
+    val++;
+  }
+  else val = "";
+
+  if ( setenv(keyval, val, 1) == 0 ) return true;
+  return false;
+}
 
 /** Entry point.
  */
@@ -27,8 +43,8 @@ int main(int argc, char *argv[]) {
   const char *pid_fn = NULL;
   const char *out_fn = NULL;
   const char *err_fn = NULL;
-	
-  while ((c = getopt(argc, argv, "+:p:o:e:")) != -1) {
+
+  while ((c = getopt(argc, argv, "+:p:o:e:E:")) != -1) {
     switch (c) {
       case 'p':
         pid_fn = optarg;
@@ -40,6 +56,13 @@ int main(int argc, char *argv[]) {
 
       case 'e':
         err_fn = optarg;
+      break;
+
+      case 'E':
+        if (!set_env_var(optarg)) {
+          printf("Setting environment failed for: %s\n", optarg);
+          return 9;
+        }
       break;
 
       case ':':
