@@ -137,6 +137,22 @@ const char *dataSetList::get_default_tree() {
   return NULL;
 }
 
+/** Sets the default tree name in datasets list. Returns false if no file
+ *  collection is currently selected or if tree name did not change, true if
+ *  default name has been changed.
+ */
+bool dataSetList::set_default_tree(const char *treename) {
+  if ((fi_coll) && (treename)) {
+    const char *old_treename = fi_coll->GetDefaultTreeName();
+    if ((old_treename) && (strcmp(old_treename, treename) != 0)) {
+      fi_coll->SetDefaultTreeName(treename);
+      return true;
+    }
+  }
+  return false;
+}
+
+
 /** Asks for the list of files (TFileInfo objs) for a given dataset name in
  *  current dataset manager. If ds_name is NULL then the last dataset name
  *  obtained via next_dataset() is used, if one. If reading of dataset fails for
@@ -322,7 +338,15 @@ ds_manip_err_t dataSetList::del_urls_but_last(unsigned int howmany) {
   unsigned int sz = urls_to_remove.size();
   for (unsigned int i=0; i<sz; i++) {
     if (all_ok) {
-      if ( !(fi_curr->RemoveUrl(urls_to_remove[i]->c_str())) ) all_ok = false;
+      if ( !(fi_curr->RemoveUrl(urls_to_remove[i]->c_str())) ) {
+        //af::log::error(af::log_level_debug, "Can't remove URL: %s",
+        //  urls_to_remove[i]->c_str());
+        all_ok = false;
+      }
+      //else {
+      //  af::log::ok(af::log_level_debug, "Removed URL: %s",
+      //    urls_to_remove[i]->c_str());
+      //}
     }
     delete urls_to_remove[i];
   }
@@ -344,6 +368,7 @@ bool dataSetList::save_dataset() {
   TString name;
   ds_mgr->ParseUri( ds_cur_name.c_str(), &group, &user, &name);
 
+  fi_coll->Update();
   int r = ds_mgr->WriteDataSet(group, user, name, fi_coll);
 
   af::log::info(af::log_level_debug,

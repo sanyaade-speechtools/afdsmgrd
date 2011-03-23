@@ -417,8 +417,8 @@ int main(int argc, char *argv[]) {
   //test_regex();
   //test_dollar_subst();
   //test_dsmanip();
-  //test_queue();
-  test_extcmd(argv[0]);
+  test_queue();
+  //test_extcmd(argv[0]);
   //test_config(999);
   //test_log();
   //test_dl();

@@ -55,7 +55,7 @@ namespace af {
       void free_datasets();
       bool save_dataset();
       const char *get_default_tree();
-      // TODO: void set_toggle_suid();
+      bool set_default_tree(const char *treename);
 
       // Browse entries of a dataset
       bool fetch_files(const char *ds_name = NULL, const char *filter = "");

@@ -46,7 +46,8 @@ namespace af {
       queueEntry(bool _own);
       queueEntry(const char *_main_url, const char *_endp_url,
         const char *_tree_name, unsigned long _n_events,
-        unsigned int _n_failures, unsigned long _size_bytes, bool _own);
+        unsigned int _n_failures, unsigned long _size_bytes, bool _own,
+        bool _staged);
       virtual ~queueEntry();
     
       // Getters
@@ -58,6 +59,7 @@ namespace af {
       inline unsigned long get_size_bytes() const { return size_bytes; };
       inline unsigned int get_instance_id() const { return uiid; };
       inline qstat_t get_status() const { return status; };
+      inline bool is_staged() const { return staged; }
 
       // Setters
       inline void set_main_url(const char *_main_url);
@@ -73,6 +75,7 @@ namespace af {
       };
       inline void set_instance_id(unsigned int _uiid) { uiid = _uiid; };
       inline void set_status(qstat_t _status) { status = _status; }
+      inline void set_staged(bool _staged = true) { staged = _staged; };
 
       void print() const;
       void reset();
@@ -90,6 +93,7 @@ namespace af {
       unsigned long size_bytes;
       unsigned int uiid;
       qstat_t status;
+      bool staged;
 
   };
 
@@ -112,6 +116,9 @@ namespace af {
       };
 
       bool failed(const char *url);
+      bool success(const char *main_url, const char *endp_url,
+        const char *tree_name, unsigned long n_events,
+        unsigned long size_bytes);
 
       void arbitrary_query(const char *query);
       void dump(bool to_log = false);
@@ -140,6 +147,8 @@ namespace af {
       sqlite3_stmt *query_get_full_entry;
       sqlite3_stmt *query_get_status;
       sqlite3_stmt *query_success;
+      sqlite3_stmt *query_failed_thr;
+      sqlite3_stmt *query_failed_nothr;
 
       sqlite3_stmt *query_by_status_limited;  // for query by status triplet
       char qstat_str[2];

@@ -390,11 +390,17 @@ void main_loop(af::config &config) {
     opq.init_query_by_status(af::qstat_running);
     while ( qent = opq.next_query_by_status() ) {
 
+      af::log::info(af::log_level_debug, "Searching in command queue for "
+        "uiid=%u", qent->get_instance_id());
+
       // Check status in transfer queue
       for (std::list<af::extCmd *>::iterator it=cmdq.begin();
         it!=cmdq.end(); it++) {
 
         if ( (*it)->get_id() == qent->get_instance_id() ) {
+
+          af::log::ok(af::log_level_debug, "Found uuid=%u in command queue",
+            qent->get_instance_id());
 
           if ((*it)->is_running()) {
             af::log::info(af::log_level_debug, "Still downloading: %s "
@@ -417,12 +423,13 @@ void main_loop(af::config &config) {
 
             // The strings are owned by (*it); note that these fields are not
             // mandatory for the external command, thus they might be NULL or 0!
-            const char *treename = (*it)->get_field_text("Tree");
+            const char *tree_name = (*it)->get_field_text("Tree");
             const char *endp_url = (*it)->get_field_text("EndpointUrl");
             unsigned int size_bytes = (*it)->get_field_uint("Size");
             unsigned int n_events = (*it)->get_field_uint("Events");
 
-
+            opq.success(qent->get_main_url(), endp_url, tree_name,
+              n_events, size_bytes);
 
           }
           else {
@@ -435,15 +442,21 @@ void main_loop(af::config &config) {
             af::log::error(af::log_level_high, "Failed: %s",
               qent->get_main_url());
 
+            opq.failed(qent->get_main_url());
+
           }
 
           //(*it)->print_fields(true);
+
+          // Success or failure: remove it from command queue in either case
+          delete *it;
+          cmdq.erase(it);
         
           break;
 
         }
 
-      }
+      } // end loop over command queue
 
     }
     opq.free_query_by_status();
@@ -508,13 +521,17 @@ void main_loop(af::config &config) {
 
     }
 
-    /*af::log::info(af::log_level_normal, "/\\/\\/\\ Queue Dump /\\/\\/\\");
-    opq.dump(true);
-    af::log::info(af::log_level_normal, "\\/\\/\\/ Queue Dump \\/\\/\\/");*/
+    //
+    // Dump database
+    //
 
-    //
+    //af::log::info(af::log_level_normal, "========== Begin Of Queue ==========");
+    //opq.dump(true);
+    //af::log::info(af::log_level_normal, "========== End Of Queue ==========");
+
+    ////////////////////////////////////////////////////////////////////////////
     // Process datasets (every X loops)
-    //
+    ////////////////////////////////////////////////////////////////////////////
 
     if (count_loops == 0) {
 
@@ -565,8 +582,8 @@ void main_loop(af::config &config) {
               break;
               case af::ds_manip_err_fail:  // should not happen
                 af::log::error(af::log_level_normal,
-                  "Error in dataset %s at entry %s (last URL) when pruning all "
-                    "URLs but last two", ds, inp_url);
+                  "In dataset %s at entry %s (last URL): problems when pruning "
+                    "all URLs but last two", ds, inp_url);
               break;
             }
 
@@ -580,28 +597,30 @@ void main_loop(af::config &config) {
             // Conserve only last URL of the given entry
             switch (dsm.del_urls_but_last()) {
               case af::ds_manip_err_ok_mod:
-                //af::log::info(af::log_level_low, "del_urls_but_last(1)");
+                // OK and modified
                 count_changes++;
               break;
               case af::ds_manip_err_ok_noop:
-                // nothing to do
+                // OK but nothing changed
+                af::log::ok(af::log_level_debug, "In dataset %s at entry %s: "
+                  "last URL not removed", ds, inp_url);
               break;
-              case af::ds_manip_err_fail: // should not happen
+              case af::ds_manip_err_fail:
+                // Should not happen, except for bugs (maybe there is one)
                 af::log::error(af::log_level_normal,
-                  "Error in dataset %s at entry %s (last URL) when pruning all "
-                    "URLs but last", ds, inp_url);
+                  "In dataset %s at entry %s (last URL): problems when pruning "
+                    "all URLs but last", ds, inp_url);
               break;
             }
 
-            // Add redirector URL
-            if ( fi->AddUrl(out_url, true) ) {
-              //af::log::info(af::log_level_low, "AddUrl()");
-              count_changes++;
-            }
-            else {  // should not happen
-              af::log::error(af::log_level_normal,
-                "Error in dataset %s at entry %s (last URL) when adding "
-                  "redirector URLs %s", ds, inp_url, out_url);
+            // Add redirector URL: AddUrl() fails (returns false) if the same
+            // URL is already in the list
+            if ( fi->AddUrl(out_url, true) ) count_changes++;
+            else {
+              // URL already in the list: duplicates are not allowed
+              af::log::warning(af::log_level_debug,
+                "In dataset %s: at entry %s, AddUrl() failed while adding "
+                  "redirector URL %s", ds, inp_url, out_url);
             }
 
           }
@@ -627,14 +646,103 @@ void main_loop(af::config &config) {
             af::log::info(af::log_level_debug, "Already queued "
               "(status=%c, failures=%u): %s", qent->get_status(),
               qent->get_n_failures(), out_url);
-            
-            // WE SHOULD CHECK THE STATUS NOW AND SYNC DS -- TODO
 
-          }
+            //
+            // Check the status of this URL in opq and eventually update,
+            // if needed
+            //
+
+            af::qstat_t stat = qent->get_status();
+
+            if ((stat == af::qstat_success) || (stat == af::qstat_failed)) {
+
+              // Removes all metadata (if present)
+              TList *mdl = fi->GetMetaDataList();
+              if ((mdl) && (mdl->GetEntries() > 0)) {
+                fi->RemoveMetaData();
+                count_changes++;
+              }
+
+              // Add endpoint URL
+              if (qent->get_endp_url()) {
+                if (!fi->AddUrl(qent->get_endp_url(), true)) {
+                  af::log::warning(af::log_level_debug, "In dataset %s, "
+                    "endpoint URL %s is a duplicate", ds,
+                    qent->get_endp_url());
+                }
+                else count_changes++;
+              }
+
+              // Tree name: set for all TFileCollection and metadata for this
+              // TFileInfo, but only on success
+              if ((stat == af::qstat_success) && (qent->get_tree_name())) {
+
+                // Default tree for TFileColleciton
+                dsm.set_default_tree(qent->get_tree_name());
+
+                // Metadata for current TFileInfo
+                TFileInfoMeta *meta = new TFileInfoMeta(qent->get_tree_name());
+                meta->SetEntries(qent->get_n_events());
+                fi->AddMetaData(meta);
+                  // meta owned by TFileInfo: do not delete
+
+                // Sets size
+                fi->SetSize(qent->get_size_bytes());
+
+                af::log::ok(af::log_level_debug, "URL in opq %s claimed by %s",
+                  out_url, ds);
+
+                count_changes++;
+
+              }
+
+              // Current staged/corrupted status;
+              bool cur_s = fi->TestBit( TFileInfo::kStaged );
+              bool cur_c = fi->TestBit( TFileInfo::kCorrupted );
+
+              // Set the staged bit only if changes are needed (even if
+              // corrupted, if command returned a "Staged: 1" field in the FAIL
+              // stdout line)
+              if ((stat == af::qstat_success) || (qent->is_staged())) {
+                if (!cur_s) {
+                  fi->SetBit( TFileInfo::kStaged );
+                  count_changes++;
+                }
+              }
+              else {
+                if (cur_s) {
+                  fi->ResetBit( TFileInfo::kStaged );
+                    // it seems not to be needed, but in the future filter on
+                    // dataset files may be also on files other than "sc"..
+                  count_changes++;
+                }
+              }
+
+              // Set the corrupted bit (only if changes are needed)
+              if (stat == af::qstat_failed) {
+                if (!cur_c) {
+                  fi->SetBit( TFileInfo::kCorrupted );
+                  count_changes++;
+                }
+              }
+              else {
+                if (cur_c) {
+                  fi->ResetBit( TFileInfo::kCorrupted );
+                    // it seems not to be needed... see above
+                  count_changes++;
+                }
+              }
+
+            }  // end if success or failed
+
+          }  // end if entry already in queue
 
         }  // end loop over dataset entries
 
-        // Save only if necessary
+        //
+        // Save only if needed
+        //
+
         if (count_changes > 0) {
 
           toggle_suid();
@@ -642,11 +750,11 @@ void main_loop(af::config &config) {
           toggle_suid();
 
           if (save_ok) {
-            af::log::ok(af::log_level_normal,
+            af::log::ok(af::log_level_high,
               "Dataset %s saved: %d entries", ds, count_files);
           }
           else {
-            af::log::error(af::log_level_normal,
+            af::log::error(af::log_level_high,
               "Dataset %s not saved: check permissions", ds);
           }
         }
@@ -667,6 +775,9 @@ void main_loop(af::config &config) {
       //
       // Clean up transfer queue (TODO)
       //
+      int n_flushed = opq.flush();
+      af::log::ok(af::log_level_normal,
+        "%d elements removed from transfer queue", n_flushed);
 
       count_loops = 0;
 
@@ -685,168 +796,10 @@ void main_loop(af::config &config) {
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // Big Loop over datasets
+    // Report resources and sleep until next loop
     ////////////////////////////////////////////////////////////////////////////
 
-    /*
-    const char *ds;
-    dsm.fetch_datasets();
-    unsigned int count_ds = 0;
-    while (ds = dsm.next_dataset()) {
-
-      af::log::info(af::log_level_low, "Processing dataset <%s>", ds);
-
-      TFileInfo *fi;
-      dsm.fetch_files(NULL, "sc");  // sc == not staged and not corrupted
-      int count_changes = 0;
-      int count_files = 0;
-      while (fi = dsm.next_file()) {
-
-        // Debug: we just count the retrieved files
-        count_files++;
-
-        // Originating URL is the last one; redirector URL is the last but one
-        TUrl *orig_url = dsm.get_url(-1);
-        TUrl *redir_url = dsm.get_url(-2);
-
-        if (!orig_url) continue;  // no URLs in entry (should not happen)
-
-        const char *inp_url = orig_url->GetUrl();
-        const char *out_url = url_regex.subst(inp_url);
-
-        if (!out_url) continue;
-          // orig_url not matched regex (i.e., originating URL is unsupported)
-
-        if ((redir_url) && (strcmp(out_url, redir_url->GetUrl()) == 0)) {
-
-          //
-          // The translated redirector URL already exists in this entry: let us
-          // keep only the last two
-          //
-
-          switch (dsm.del_urls_but_last(2)) {
-            case af::ds_manip_err_ok_mod:
-              //af::log::info(af::log_level_low, "del_urls_but_last(2)");
-              count_changes++;
-            break;
-            case af::ds_manip_err_ok_noop:
-              // nothing to do
-            break;
-            case af::ds_manip_err_fail:  // should not happen
-              af::log::error(af::log_level_normal,
-                "Error in dataset %s at entry %s (last URL) when pruning all "
-                  "URLs but last two", ds, inp_url);
-            break;
-          }
-
-        }
-        else {
-
-          //
-          // We have to add the translated redirector URL
-          //
-
-          // Conserve only last URL of the given entry
-          switch (dsm.del_urls_but_last()) {
-            case af::ds_manip_err_ok_mod:
-              //af::log::info(af::log_level_low, "del_urls_but_last(1)");
-              count_changes++;
-            break;
-            case af::ds_manip_err_ok_noop:
-              // nothing to do
-            break;
-            case af::ds_manip_err_fail: // should not happen
-              af::log::error(af::log_level_normal,
-                "Error in dataset %s at entry %s (last URL) when pruning all "
-                  "URLs but last", ds, inp_url);
-            break;
-          }
-
-          // Add redirector URL
-          if ( fi->AddUrl(out_url, true) ) {
-            //af::log::info(af::log_level_low, "AddUrl()");
-            count_changes++;
-          }
-          else {  // should not happen
-            af::log::error(af::log_level_normal,
-              "Error in dataset %s at entry %s (last URL) when adding "
-                "redirector URLs %s", ds, inp_url, out_url);
-          }
-
-        }
-
-        //
-        // URL of redirector is added in queue
-        //
-
-        unsigned int unique_id = opq.insert(out_url);
-        if (unique_id) {
-
-          // URL is not yet in queue: let's prepare the external command
-          af::log::ok(af::log_level_low, "In queue: %s (id=%u)", out_url,
-            unique_id);
-
-          //af::varmap_iter_t it;
-
-          //it = stagecmd_vars.find("URLTOSTAGE");
-          //it->second = out_url;
-
-          //it = stagecmd_vars.find("TREENAME");
-          //const char *def_tree = dsm.get_default_tree();
-          //it->second = def_tree ? def_tree : "";
-
-          //std::string url_cmd = af::regex::dollar_subst(stage_cmd.c_str(),
-            stagecmd_vars);
-
-          //af::log::ok(af::log_level_low, "Stage command: << %s >>",
-            url_cmd.c_str());
-
-        }
-        //else {
-
-          // URL already in queue
-          //af::log::error(af::log_level_low, "In queue: %s", out_url);
-
-        //}
-
-      }  // end loop over dataset entries
-
-      // Save only if necessary
-      if (count_changes > 0) {
-
-        toggle_suid();
-        bool save_ok = dsm.save_dataset();
-        toggle_suid();
-
-        if (save_ok) {
-          af::log::ok(af::log_level_normal, "Dataset <%s> saved: %d entries, %d modifications", ds, count_files, count_changes);
-        }
-        else {
-          af::log::error(af::log_level_normal,
-            "Dataset <%s> not saved (check permissions)", ds);
-        }
-      }
-      else {
-        af::log::info(af::log_level_low, "Dataset <%s> not modified", ds);
-      }
-
-      dsm.free_files();
-
-      count_ds++;
-
-    }
-    dsm.free_datasets();
-
-    af::log::info(af::log_level_low, "Number of datasets processed: %u",
-      count_ds);
-    */
-
-    // Report resources
     print_daemon_status();
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Sleep until next loop
-    ////////////////////////////////////////////////////////////////////////////
 
     af::log::info(af::log_level_low, "Sleeping %ld seconds", sleep_secs);
     sleep(sleep_secs);

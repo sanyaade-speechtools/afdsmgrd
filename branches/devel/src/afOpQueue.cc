@@ -18,7 +18,7 @@ using namespace af;
  *  defined ownership.
  */
 queueEntry::queueEntry(bool _own) : main_url(NULL), endp_url(NULL),
-  tree_name(NULL), n_events(0L), n_failures(0), size_bytes(0L),
+  tree_name(NULL), n_events(0L), n_failures(0), size_bytes(0L), staged(false),
   status(qstat_queue), own(_own) {};
 
 /** Constructor that assigns passed values to the members. The _own parameter
@@ -27,10 +27,10 @@ queueEntry::queueEntry(bool _own) : main_url(NULL), endp_url(NULL),
  */
 queueEntry::queueEntry(const char *_main_url, const char *_endp_url,
   const char *_tree_name, unsigned long _n_events, unsigned int _n_failures,
-  unsigned long _size_bytes, bool _own) :
+  unsigned long _size_bytes, bool _own, bool _staged) :
   main_url(NULL), endp_url(NULL), tree_name(NULL), n_events(_n_events),
   n_failures(_n_failures), size_bytes(_size_bytes), status(qstat_queue),
-  own(_own) {
+  own(_own), staged(_staged) {
   set_str(&main_url, _main_url);
   set_str(&endp_url, _endp_url);
   set_str(&tree_name, _tree_name);
@@ -56,6 +56,7 @@ void queueEntry::reset() {
   set_main_url(NULL);
   set_endp_url(NULL);
   set_tree_name(NULL);
+  staged = false;
 }
 
 /** Private auxiliary function to assign a value to a string depending on the
@@ -105,6 +106,7 @@ void queueEntry::print() const {
   printf("n_failures: %u\n", n_failures);
   printf("size_bytes: %lu\n", size_bytes);
   printf("status:     %c\n", status);
+  printf("staged:     %s\n", (staged ? "yes" : "no"));
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,7 +172,7 @@ opQueue::opQueue() :
 
   // Query for get_status()
   r = sqlite3_prepare_v2(db,
-    "SELECT status FROM queue WHERE main_url=? LIMIT 1", -1,
+    "SELECT status,n_failures FROM queue WHERE main_url=? LIMIT 1", -1,
     &query_get_status, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -210,6 +212,33 @@ opQueue::opQueue() :
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
       "Error #%d while preparing query_success: %s\n", r,
+      sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
+  // Query for failed() -- with threshold
+  r = sqlite3_prepare_v2(db,
+    "UPDATE queue SET"
+    "  n_failures=n_failures+1,rank=?,status=CASE"
+    "    WHEN n_failures>=? THEN 'F'"
+    "    ELSE 'Q'"
+    "  END"
+    "  WHERE main_url=?", -1, &query_failed_thr, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_failed_thr: %s\n", r,
+      sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
+  // Query for failed() -- without threshold
+  r = sqlite3_prepare_v2(db,
+    "UPDATE queue SET"
+    "  n_failures=n_failures+1,rank=?,status='Q'"
+    "  WHERE main_url=?", -1, &query_failed_nothr, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_failed_nothr: %s\n", r,
       sqlite3_errmsg(db));
     throw std::runtime_error(strbuf);
   }
@@ -342,40 +371,77 @@ bool opQueue::set_status(const char *url, qstat_t qstat) {
  *  done in a single UPDATE SQL query for efficiency reasons. It returns true on
  *  success, false on failure.
  *
- *  TODO: prepare query.
+ *  TODO: add support for staged bit in query and table
  */
 bool opQueue::failed(const char *url) {
 
   if (!url) return false;
 
+  int r;
+
   if (fail_threshold != 0) {
-    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
-      "UPDATE queue SET"
-      "  n_failures=n_failures+1,rank=%lu,status=CASE"
-      "    WHEN n_failures>=%u THEN 'F'"
-      "    ELSE 'Q'"
-      "  END"
-      "  WHERE main_url='%s'",
-      ++last_queue_rowid, fail_threshold-1, url);
+
+    sqlite3_reset(query_failed_thr);
+    sqlite3_clear_bindings(query_failed_thr);
+
+    sqlite3_bind_int64(query_failed_thr, 1, ++last_queue_rowid);
+    sqlite3_bind_int64(query_failed_thr, 2, fail_threshold-1);
+    sqlite3_bind_text(query_failed_thr, 3, url, -1, SQLITE_STATIC);
+
+    r = sqlite3_step(query_failed_thr);
+
   }
   else {
-    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
-      "UPDATE queue SET"
-      "  n_failures=n_failures+1,rank=%lu,status='Q'"
-      "  WHERE main_url='%s'",
-      ++last_queue_rowid, url);
+
+    sqlite3_reset(query_failed_nothr);
+    sqlite3_clear_bindings(query_failed_nothr);
+
+    sqlite3_bind_int64(query_failed_nothr, 1, ++last_queue_rowid);
+    sqlite3_bind_text(query_failed_nothr, 2, url, -1, SQLITE_STATIC);
+
+    r = sqlite3_step(query_failed_nothr);
+
   }
 
-  int r = sqlite3_exec(db, strbuf, NULL, NULL, &sql_err);
-
-  if (r != SQLITE_OK) {
+  if (r != SQLITE_DONE) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error in SQL UPDATE query: %s\n",
       sql_err);
     sqlite3_free(sql_err);
     throw std::runtime_error(strbuf);
   }
 
-  return true;
+  if (sqlite3_changes(db) == 1) return true;
+  return false;
+}
+
+/** TODO
+ */
+bool opQueue::success(const char *main_url, const char *endp_url,
+  const char *tree_name, unsigned long n_events, unsigned long size_bytes) {
+
+  if (!main_url) return false;
+
+  sqlite3_reset(query_success);
+  sqlite3_clear_bindings(query_success);
+
+  // It's OK if some of these values are NULL or 0
+  sqlite3_bind_text(query_success, 1, endp_url, -1, SQLITE_STATIC);
+  sqlite3_bind_text(query_success, 2, tree_name, -1, SQLITE_STATIC);
+  sqlite3_bind_int64(query_success, 3, n_events);
+  sqlite3_bind_int64(query_success, 4, size_bytes);
+  sqlite3_bind_text(query_success, 5, main_url, -1, SQLITE_STATIC);
+
+  int r = sqlite3_step(query_success);
+
+  if (r != SQLITE_DONE) {
+    // Generic error: exception is thrown (should never happen!)
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE, "Error #%d in SQL UPDATE query: %s",
+      r, sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
+  if (sqlite3_changes(db) == 1) return true;
+  return false;
 }
 
 /** Queue destructor: it closes the connection to the opened SQLite db.
@@ -386,6 +452,8 @@ opQueue::~opQueue() {
   sqlite3_finalize(query_by_status_limited);
   sqlite3_finalize(query_cond_insert);
   sqlite3_finalize(query_success);
+  sqlite3_finalize(query_failed_thr);
+  sqlite3_finalize(query_failed_nothr);
   sqlite3_close(db);
 }
 
@@ -455,6 +523,8 @@ const queueEntry *opQueue::get_status(const char *url) {
     qentry_buf.set_main_url(url);
     qentry_buf.set_status(
       (qstat_t)*sqlite3_column_text(query_get_status, 0) );
+    qentry_buf.set_n_failures(
+      (unsigned int)sqlite3_column_int64(query_get_status, 1) );
     return &qentry_buf;
   }
 
@@ -462,8 +532,11 @@ const queueEntry *opQueue::get_status(const char *url) {
 }
 
 /** Returns the full entry if it has finished processing (success or failed
- *  status), and a partial entry containing only the main_url and status if it
- *  hasn't. If entry does not exist or the given URL is NULL, it returns NULL.
+ *  status), and a partial entry containing only the main_url, status and number
+ *  if failures if it hasn't.
+ *
+ *  If entry does not exist or the given URL is NULL, it returns NULL.
+ *
  *  This function avoids unnecessarily allocating memory for elements that
  *  haven't finished processing yet.
  */
