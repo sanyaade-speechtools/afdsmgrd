@@ -690,6 +690,47 @@ vector<Int_t> *_afExpandRunList(TString runList) {
   return runNumsPtr;
 }
 
+/** Replaces a <RUN> specifier in the given string with the a run number
+ *  properly padded with zeroes. If plain "<RUN>" is present, default padding
+ *  is performed (specify with defaultPad, defaults to 0 = no pad). To manually
+ *  specify padding, use, e.g., "<RUN123>" for 123 digits.
+ */
+TString _afReplaceRunPadded(TString &fmt, UInt_t runNum,
+  UInt_t defaultPad = 0) {
+
+  TPMERegexp runRe("<RUN([1-9][0-9]*)?>");  // no leading zero allowed
+  TString out = fmt;
+
+  Int_t n_match = runRe.Match(out);
+
+  switch (n_match) {
+
+    case 0: // no pattern
+      return out;
+    break;
+
+    case 1: // <RUN>, without pad number: use default pad
+
+      if (defaultPad) {
+        TString pad = Form("%%0%dd", defaultPad);
+        runRe.Substitute(out, pad.Data(), kFALSE);
+      }
+      else {
+        runRe.Substitute(out, "%d", kFALSE);
+      }
+
+    break;
+
+    case 2: // <RUN12345>
+      runRe.Substitute(out, "%0$1d", kTRUE);
+    break;
+
+  }
+
+  return Form(out.Data(), runNum);
+
+}
+
 /* ========================================================================== *
  *                             "PUBLIC" FUNCTIONS                             *
  * ========================================================================== */
@@ -883,15 +924,21 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
       TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
       Int_t entries = (meta ? meta->GetEntries() : -1);
-      Printf("%4u. %c%c%c | % 7d | %s", ++countMatching,
+
+      TString um;
+      Double_t sz;
+      _afNiceSize(inf->GetSize(), um, sz);
+
+      Printf("%4u. %c%c%c | % 7d | %6.1lf %s | %s", ++countMatching,
         (s ? 'S' : 's'), (c ? 'C' : 'c'), r,
         entries,
+        sz, um.Data(),
         inf->GetCurrentUrl()->GetUrl());
       inf->NextUrl();
 
       // Every URL is shown, not only first
       while ((url = inf->NextUrl())) {
-        Printf("          |         | %s", url->GetUrl());
+        Printf("          |         |            | %s", url->GetUrl());
       }
       inf->ResetUrl();
     }
@@ -1487,10 +1534,22 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
     }
     else {
       _afNiceSize(fc->GetTotalSize(), um, sz);
-      Printf("%4d | %-50s | %5lld | %6.1lf %s | %5.1f%% "
-        "| %5.1f%%",
+
+      Float_t stg = fc->GetStagedPercentage();
+      Float_t cor = fc->GetCorruptedPercentage();
+
+      TString stg_str;
+      TString cor_str;
+
+      if (stg == 0.) stg_str = "  --  ";
+      else stg_str = Form("%5.1f%%", stg);
+
+      if (cor == 0.) cor_str = "  --  ";
+      else cor_str = Form("%5.1f%%", cor);
+
+      Printf("%4d | %-50s | %5lld | %6.1lf %s | %s | %s",
         ++count, nameObj->String().Data(), fc->GetNFiles(), sz, um.Data(),
-        fc->GetStagedPercentage(), fc->GetCorruptedPercentage());
+        stg_str.Data(), cor_str.Data());
       delete fc;
     }
   }
@@ -1724,8 +1783,8 @@ void afFillMetaData(TString dsMask, TString options = "") {
  *  instructions.
  */
 void afDataSetFromAliEn(TString basePath, TString fileName,
-  TString searchFilter, TString anchor, TString treeName, TString runList,
-  TString dsPtn, TString options = "") {
+  TString postFindFilter, TString anchor, TString treeName,
+  TString runList, TString dsPattern, TString options = "") {
 
   // Parse options
   Bool_t dryRun    = kFALSE;
@@ -1777,65 +1836,56 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   if (_afProofMode()) {
   
     // In PROOF mode, complete dataset name with group and user, if not given
-    idx = dsPtn.Index("/");
+    idx = dsPattern.Index("/");
     if (idx == -1) {
-      dsPtn.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
-        dsPtn.Data());
+      dsPattern.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
+        dsPattern.Data());
     }
 
   }
-
-  // Find <RUN> tag and substitute it with $1 in dataset name (zero-padded)
-  idx = dsPtn.Index("<RUN>");
-  if (idx > -1) {
-    TString p1 = dsPtn(0, idx);
-    TString p2 = dsPtn(idx+5, dsPtn.Length());
-    dsPtn.Form("%s%%1$09d%s", p1.Data(), p2.Data());
-  }
-
-  // Find <RUN> tag and substitute it with $1 in search filter (not zero-padded)
-  idx = searchFilter.Index("<RUN>");
-  if (idx > -1) {
-    TString p1 = searchFilter(0, idx);
-    TString p2 = searchFilter(idx+5, searchFilter.Length());
-    searchFilter.Form("%s%%1$d%s", p1.Data(), p2.Data());
-  }
-
-  // Now dsPtn and searchFilter are format strings which contain <RUN> as first
-  // parameter
 
   // Parse run list
   vector<Int_t> *runNumsPtr = _afExpandRunList(runList);
   vector<Int_t> &runNums = *runNumsPtr;
+  UInt_t nRuns = runNums.size();
 
   // For each run
-  for (UInt_t i=0; i<runNums.size(); i++) {
-    TString dsName, searchFilterWithRun;
-    dsName.Form(dsPtn.Data(), runNums[i], 1);
-    searchFilterWithRun.Form(searchFilter.Data(), runNums[i], 1);
+  for (UInt_t i=0; (i < nRuns) || (nRuns == 0) ; i++) {
 
-    TString searchPtn;
-    //searchPtn.Form("*%d/*%s*/%s", runNums[i], searchFilterWithRun.Data(),
-    //  fileName.Data());
-    searchPtn.Form("*%d/*/%s", runNums[i], fileName.Data());
+    TString dsName, basePathRun, postFindFilterRun;
 
-    // Echo the AliEn find command
+    if (nRuns == 0) {
+      dsName = dsPattern;
+      basePathRun = basePath;
+      postFindFilterRun = postFindFilter;
+    }
+    else {
+      dsName = _afReplaceRunPadded(dsPattern, runNums[i], 9);
+      basePathRun = _afReplaceRunPadded(basePath, runNums[i]);
+      postFindFilterRun = _afReplaceRunPadded(postFindFilter, runNums[i]);
+    }
+
+    // Echoes the corresponding AliEn find command. Please note that in our
+    // TGrid::Query() we use '*' as wildcards, while in aliensh we should
+    // replace them with '%'
     if (aliEnCmd) {
-      TString searchPtnPct = searchPtn;
-      searchPtnPct.ReplaceAll("*", "%");
-      if (!searchFilter.IsNull()) {
-              Printf("\033[33maliensh>\033[m find %s %s | grep -E '%s'",
-          basePath.Data(), searchPtnPct.Data(), searchFilterWithRun.Data());
+
+      TString cmdFind;
+      cmdFind.Form("find %s %s", basePathRun.Data(), fileName.Data());
+      cmdFind.ReplaceAll("*", "%");
+
+      if (!postFindFilter.IsNull()) {
+        Printf("\033[33maliensh>\033[m %s | grep -E '%s'",
+          cmdFind.Data(), postFindFilterRun.Data());
       }
       else {
-        Printf("\033[33maliensh>\033[m find %s %s", basePath.Data(),
-          searchPtnPct.Data());
+        Printf("\033[33maliensh>\033[m %s", cmdFind.Data());
       }
     }
 
-    // Run AliEn find
-    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, anchor, treeName,
-      searchFilterWithRun);
+    // Run AliEn find: output on a collection
+    TFileCollection *fc = _afAliEnFind(basePathRun, fileName, anchor, treeName,
+      postFindFilterRun);
     if (fc == NULL) {
       delete runNumsPtr;
       Printf("Creation of datasets from AliEn aborted.");
@@ -1872,7 +1922,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     TString um;
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
-    Printf("%-50s : %6llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
+    Printf("%-50s : %6llu files, size: %6.1lf %s [%s]", dsName.Data(),
       (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
     // If requested, "verify" the dataset (fast mode) and "cache"
@@ -1880,6 +1930,8 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
       if (verify) afFillMetaData(dsName, "fast");
       if (addRedir) afPrependRedirUrl(dsName);
     }
+
+    if (nRuns == 0) break;
 
   }
 
