@@ -1,0 +1,107 @@
+#!/bin/bash
+
+#
+# afrenewauth -- by Dario Berzano <dario.berzano@gmail.com>
+#
+# Part of afdsmgrd -- http://afdsmgrd.googlecode.com/
+#
+# Continuously renews the AliEn authentication token and Grid proxy.
+#
+# Usage:
+#
+#   afrenewauth \
+#     [-p <pidfile>] \
+#     [-l <logfile>] \
+#     [-s <check_renew_every_sec>] \
+#     [-u <alien_user>]
+#
+# If pidfile is not provided, it defaults to /tmp/afrenewauth.pid. If logfile
+# is not provided, output is on stdout.
+#
+
+#
+# External libraries and global variables
+#
+
+# Load library functions
+source `dirname $0`/aflib
+
+# Don't be quiet!
+export QUIET=0
+
+# True if program caught a termination event
+export TERM=0
+
+# Timeout (in seconds) between two consecutive renewals
+export RENEW_SLEEP_SEC=1800
+
+# Pid file
+export PIDFILE="/tmp/afrenewauth.pid"
+
+# Log file
+export LOGFILE=""
+
+# Terminating function
+function TermHandler() {
+  prn -i "Termination signal caught"
+  TERM=1
+}
+
+# The main function
+function Main() {
+
+  trap TermHandler SIGINT
+  trap TermHandler SIGTERM
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -p)
+        PIDFILE="$2"
+        shift
+      ;;
+      -l)
+        LOGFILE="$2" # overrides aflib
+        shift
+      ;;
+      -s)
+        RENEW_SLEEP_SEC="$2"
+        shift
+      ;;
+      -u)
+        ALIEN_UNAME="$2" #overrides aflib
+        shift
+      ;;
+    esac    
+    shift
+  done
+
+  echo $$ > "$PIDFILE"
+
+  prn -i "AliEn authentication daemon launched"
+  prn -i "My pid is $$ (saved on $PIDFILE)"
+  prn -i "Checking authentication renewal every $RENEW_SLEEP_SEC seconds"
+  prn -i "AliEn user to authenticate: $ALIEN_UNAME"
+
+  # Check if all utilities are in PATH
+  Init
+  if [ $? != 0 ]; then
+    prn -f "Initialization failed"
+    exit 2
+  fi
+
+  # Automatic authentication loop
+  while [ $TERM != 1 ]; do
+    AutoAuth
+    if [ $? == 0 ]; then
+      sleep $RENEW_SLEEP_SEC
+    else
+      prn -e "Authentication failed, retrying immediately"
+    fi
+  done
+
+  rm -f "$PIDFILE"
+
+}
+
+# Entry point
+Main $@

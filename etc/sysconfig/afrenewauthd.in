@@ -1,0 +1,29 @@
+#
+# Configuration options to launch the afrenewauthd daemon
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+
+# Full path to the afdsmgrd executable
+export AFRENEWAUTHD_PROG=@CMAKE_INSTALL_PREFIX@/bin/afrenewauth
+
+# AliEn utilities path
+export AFRENEWAUTHD_PATH=/path/to/alien/api/bin
+
+# AliEn libraries path
+export AFRENEWAUTHD_LIBS=/path/to/alien/api/lib
+
+# The log file (purged at every restart)
+export AFRENEWAUTHD_LOGFILE=/var/log/afrenewauthd.log
+
+# The PID file
+export AFRENEWAUTHD_PIDFILE=/var/run/afrenewauthd.pid
+
+# Unprivileged user that launches the authentication daemon
+export AFRENEWAUTHD_USER=xrd
+
+# AliEn username
+export AFRENEWAUTHD_ALIEN_UNAME=proof
+
+# Check and eventually renew every ... secs
+export AFRENEWAUTHD_RENEW_SLEEP_SEC=1500
