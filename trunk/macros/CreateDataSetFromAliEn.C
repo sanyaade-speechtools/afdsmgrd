@@ -31,6 +31,19 @@ void CreateDataSetFromAliEn(
   TString runList   = "136837,137045",
   TString dsPattern = "LHC10h_<RUN>_ESDs_lowflux",
 
+  // Example for ESDs from official Monte Carlo. In this example, filter is used
+  // to prune AOD and QA directories (just try AliEn find with and without
+  // that), and run number is zero-padded to 6 digits
+  /*
+  TString basePath  = "/alice/sim/LHC10c9/<RUN6>",
+  TString fileName  = "root_archive.zip",
+  TString filter    = "<RUN>/[0-9]{3,4}",  // beware: extended regexp!
+  TString anchor    = "AliESDs.root",
+  TString treeName  = "/esdTree",
+  TString runList   = "115315,119846",
+  TString dsPattern = "MC_LHC10c9_<RUN>_ESDs",
+  */
+
   // Example for all AODs from official real data: see above for an explanation
   // on format strings. This example makes use of a more complex regular
   // expression to filter all the entries under basePath which contain in their
@@ -45,19 +58,6 @@ void CreateDataSetFromAliEn(
   TString treeName  = "/aodTree",
   TString runList   = "139104-139107,139306",
   TString dsPattern = "LHC10h_<RUN>_AllAODs",
-  */
-
-  // Example for ESDs from official Monte Carlo. In this example, filter is used
-  // to prune AOD and QA directories (just try AliEn find with and without
-  // that), and run number is zero-padded to 6 digits
-  /*
-  TString basePath  = "/alice/sim/LHC10c9/<RUN6>",
-  TString fileName  = "root_archive.zip",
-  TString filter    = "<RUN>/[0-9]{3,4}",  // beware: extended regexp!
-  TString anchor    = "AliESDs.root",
-  TString treeName  = "/esdTree",
-  TString runList   = "115315,119846",
-  TString dsPattern = "MC_LHC10c9_<RUN>_ESDs",
   */
 
   // Host name (and, optional, port) of redirector -- leave empty "" if it is
