@@ -1,0 +1,40 @@
+#
+# Configuration options to launch the afdsmgrd daemon.
+#
+# by Dario Berzano <dario.berzano@gmail.com>
+#
+
+# Full path to the afdsmgrd executable
+export AFDSMGRD_PROG=@CMAKE_INSTALL_PREFIX@/bin/afdsmgrd
+
+# The configuration file - configuration may be shared with xrootd, cmsd and
+# proof without conflicts
+export AFDSMGRD_CONF=@CMAKE_INSTALL_PREFIX@/etc/afdsmgrd.conf
+
+# Root of your ROOT installation directory
+export ROOTSYS=@ROOTSYS@
+
+# Extra libraries for external staging command
+export AFDSMGRD_EXTRALIBS=/opt/aaf/alien/api/lib
+
+# Path where to find helper executables for the stager daemon
+export AFDSMGRD_LIBEXEC=@CMAKE_INSTALL_PREFIX@/libexec
+
+# The log directory
+export AFDSMGRD_LOGDIR=@CMAKE_INSTALL_PREFIX@/var/log/afdsmgrd
+
+# The log file
+export AFDSMGRD_LOGFILE=$AFDSMGRD_LOGDIR/afdsmgrd.log
+
+# The PID file
+export AFDSMGRD_PIDFILE=@CMAKE_INSTALL_PREFIX@/var/run/afdsmgrd.pid
+
+# Unprivileged user that launches the daemon
+export AFDSMGRD_USER=aaf
+
+# Files created by the init.d script will belong to AFDSMGRD_USER and this group
+export AFDSMGRD_GROUP=aaf
+
+# Choose the log level amongst: low, normal, high, urgent. All messages below
+# the chosen log level won't be shown
+export AFDSMGRD_LOGLEVEL=low
