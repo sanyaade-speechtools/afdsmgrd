@@ -47,12 +47,22 @@ extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
 
 }
 
-/** Spawns the program in background using the helper. Returns false if program
- *  was not spawned successfully.
+/** Destructor. Its sole purpose is to remove leftovers through cleanup().
  */
-bool extCmd::run() {
+extCmd::~extCmd() {
+  bool c = cleanup();
+  bool s = stop();
+  af::log::info(af::log_level_debug, "For uiid=%u: stop()=%d, cleanup()=%d",
+    id, s, c);
+}
 
-  if (already_started) return false;
+/** Spawns the program in background using the helper. Returns zero on success,
+ *  or the error code of the executable wrapper in case of failure. If command
+ *  was already started it returns -1.
+ */
+int extCmd::run() {
+
+  if (already_started) return -1;
   already_started = true;
 
   // Assembles the command line
@@ -67,7 +77,7 @@ bool extCmd::run() {
   // Runs the program
   af::log::info(af::log_level_debug, "Wrapped external comand: %s", strbuf);
   int r = system(strbuf);
-  if (r != 0) return false;
+  if (r != 0) return r;
 
   // Gets the pid
   snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u",
@@ -82,7 +92,7 @@ bool extCmd::run() {
   pidfile >> pid;
   pidfile.close();
 
-  return true;
+  return 0;
 }
 
 /** Checks if the spawned program is still running using the trick of sending
@@ -93,11 +103,68 @@ bool extCmd::is_running() {
   else return true;
 }
 
+/** Removes temporary files (pidfile, stderr, stdout) used by the external
+ *  command. If some removal fails it returns false.
+ */
+bool extCmd::cleanup() {
+
+  if (is_running()) return false;
+
+  const char *fmt = "%s/%s-%u";
+  unsigned int nerr = 0;
+
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, fmt, temp_path.c_str(), pidf_pref, id);
+  if ((unlink(strbuf) != 0) && (errno != ENOENT)) nerr++;
+
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, fmt, temp_path.c_str(), outf_pref, id);
+  if ((unlink(strbuf) != 0) && (errno != ENOENT)) nerr++;
+
+  snprintf(strbuf, AF_EXTCMD_BUFSIZE, fmt, temp_path.c_str(), errf_pref, id);
+  if ((unlink(strbuf) != 0) && (errno != ENOENT)) nerr++;
+
+  if (nerr) return false;
+  return true;
+}
+
+/** Stops the currently executing job. If either stop succeeds, or program has
+ *  already been stopped, it returns true. If job hasn't been started yet or
+ *  sending signals fails for some reason it returns false. Job is terminated
+ *  using the SIGTERM signal, and a SIGKILL is sent after a grace time (defaults
+ *  to zero seconds) if it is unresponsive to SIGTERM.
+ */
+bool extCmd::stop(unsigned int grace_secs) {
+
+  if (!already_started) return false;
+
+  int r;
+
+  r = kill(pid, 15);  // SIGSTOP
+  if (r == -1) {
+    if (errno == ESRCH) return true;
+    else return false;
+  }
+
+  for (unsigned int s=0; s<grace_secs; s++) {
+    r = kill(pid, 0);  // is it running?
+    if (r == -1) {
+      if (errno == ESRCH) return true;
+      else return false;
+    }
+  }
+
+  r = kill(pid, 9);  // SIGKILL
+  if ((r == -1) && (errno == ESRCH)) return true;
+
+  return false;
+}
+
 /** Searches for a line on stdout that begins either with FAIL or with OK and
  *  parses all the fields, space-separated. If the program did not give any
- *  output, a FAIL status is triggered by default. Fields must be unique.
- *
- *  TODO: cleanup of files after get_output()
+ *  output, a FAIL status is triggered by default. Fields must be unique. Note
+ *  that you can get the output while the program is still running, since no
+ *  check is done in this sense. Use with caution and know what you are doing.
+ *  Multiple calls to get_output() cause previous output to be cleared and
+ *  output to be re-parsed.
  */
 void extCmd::get_output() {
 
