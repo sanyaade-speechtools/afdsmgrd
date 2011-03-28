@@ -496,7 +496,8 @@ void main_loop(af::config &config) {
 
         af::extCmd *ext_stage_cmd = new af::extCmd(url_cmd.c_str(),
           qent->get_instance_id());
-        if (ext_stage_cmd->run()) {
+        int r = ext_stage_cmd->run();
+        if (r == 0) {
 
           // Command started successfully
           af::log::ok(af::log_level_normal, "Staging started: %s "
@@ -511,8 +512,8 @@ void main_loop(af::config &config) {
 
         }
         else {
-          af::log::error(af::log_level_high, "Cannot run staging command, "
-            "check permissions on %s. Command issued: %s",
+          af::log::error(af::log_level_high, "Error running staging command, "
+            "wrapper returned %d: check permissions on %s. Command issued: %s",
             af::extCmd::get_temp_path(), stage_cmd.c_str());
         }
 

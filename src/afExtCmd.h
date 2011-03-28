@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <signal.h>
 #include <sys/stat.h>
 
@@ -40,14 +41,15 @@ namespace af {
     public:
 
       extCmd(const char *command, unsigned int id = 0);
-      //virtual ~extCmd();
-      bool run();
+      virtual ~extCmd();
+      int run();
       bool is_running();
       pid_t get_pid() { return pid; };
       void get_output();
       void print_fields(bool log = false);
       bool is_ok() { return ok; };
       unsigned int get_id() { return id; };
+      bool stop(unsigned int grace_secs = 2);
 
       unsigned long get_field_uint(const char *key);
       long get_field_int(const char *key);
@@ -60,6 +62,8 @@ namespace af {
       static const char *get_temp_path() { return temp_path.c_str(); };
 
     private:
+
+      bool cleanup();
 
       char strbuf[AF_EXTCMD_BUFSIZE];
       pid_t pid;
