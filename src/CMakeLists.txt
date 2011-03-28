@@ -25,8 +25,9 @@ add_library (afRegex afRegex.cc)
 add_library (afLog afLog.cc)
 add_library (sqlite3 sqlite3.c)
 
-add_library (shared_1 SHARED shared_1.cc)
-add_library (shared_2 SHARED shared_2.cc)
+# Test shared libraries (for plugins)
+#add_library (shared_1 SHARED shared_1.cc)
+#add_library (shared_2 SHARED shared_2.cc)
 
 target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 

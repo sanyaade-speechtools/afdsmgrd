@@ -1,10 +1,21 @@
-/* ========================================================================== *
- * afdsutil.C -- by Dario Berzano <dario.berzano@gmail.com>                     *
- *                                                                            *
- * This macro is part of the AAF package VO_ALICE@AFDSUtils::0.4.3            *
- *                                                                            *
- * Source code available on http://code.google.com/p/afdsmgrd                 *
- * ========================================================================== */
+/**
+ * afdsutils.C -- by Dario Berzano <dario.berzano@gmail.com>
+ *
+ * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+ *
+ * This macro (better if run compiled) can be found mainly on AAFs as a PROOF
+ * package named VO_ALICE@AFDSUtils::<version>. It contains a series of
+ * functions that help in creating and managing datasets either "remotely" from
+ * within a PROOF connection, or locally, if the directory containing the
+ * datasets is mounted on your local filesystem and you have proper privileges.
+ *
+ * Each "public" function begins with "af": once you have loaded the macro, you
+ * can easily obtain a list of available functions by using ROOT's
+ * autocompletion feature. Instead, functions that are meant to be kept private
+ * begin with "_af".
+ *
+ * Detailed descriptions are found in comments right before the function header.
+ */
 
 #if !defined(__CINT__) || defined (__MAKECINT__)
 
@@ -58,7 +69,7 @@ void _afRootQuietOff() {
  */
 Bool_t _afProofMode() {
   Bool_t proofMode = gEnv->GetValue("af.proofmode", 1);
-  if ((proofMode) && (!gProof)) {
+  if ((proofMode) && ((!gProof) || (!gProof->IsValid()))) {
     TProof::Open(gEnv->GetValue("af.userhost", "alice-caf.cern.ch"),
       "masteronly");
   }
@@ -153,7 +164,7 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
     groups = mgr->GetDataSets(dsMask, TDataSetManager::kReadShort);
   }
   else {
-    groups = gProof->GetDataSets(dsMask);
+    groups = gProof->GetDataSets(dsMask, ":lite:");
   }
 
   if (!groups) {
@@ -188,8 +199,8 @@ TList *_afGetListOfDs(const char *dsMask = "/*/*") {
         while ((dn = dynamic_cast<TObjString *>(di.Next()))) {
 
           // No COMMON user/group mapping is done here...
-          TString dsUri = TDataSetManager::CreateUri( gn->String(), un->String(),
-            dn->String() );
+          TString dsUri = TDataSetManager::CreateUri( gn->String(),
+            un->String(), dn->String() );
 
           listOfDs->Add( new TObjString(dsUri.Data()) );
 
@@ -293,11 +304,17 @@ Bool_t _afPrependRedirUrlFile(TFileInfo *fi) {
 }
 
 /** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
- *  output is not suppressed.
+ *  output is not suppressed. If launchRemotely is kTRUE (default) the command
+ *  is launched on the remote PROOF master rather than invoking xrd locally.
+ *  This feature is useful to allow AAF administrators to block remote access
+ *  to xrootd port 1094, but still give rights to the users to delete files.
+ *  Enabling users to delete files on the remote cluster implies that the AAF
+ *  users are conscious of "fair use" policies.
  *
  *  Returns kTRUE on success, kFALSE otherwise.
  */
-Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
+Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE,
+  Bool_t launchRemotely = kTRUE) {
 
   TString cmd = Form("xrd %s:%d rm %s", url->GetHost(), url->GetPort(),
     url->GetFile());
@@ -306,18 +323,27 @@ Bool_t _afUnstage(TUrl *url, Bool_t suppressOutput = kFALSE) {
     cmd.Append(" > /dev/null 2>&1");
   }
 
-  Printf(">> Unstaging: %s", cmd.Data());
+  Printf(">> Unstaging %s: %s", (launchRemotely ? "remotely" : "locally"),
+    cmd.Data());
 
-  gSystem->Exec( cmd );
+  if (launchRemotely) {
+    gProof->Exec( Form("if (gProofServ->IsMaster()) "
+      "gSystem->Exec(\"/pool/PROOF-AAF/xrootd*/bin/%s\");",
+      cmd.Data()), kTRUE);
+  }
+  else {
+    gSystem->Exec( cmd );
+  }
 
   return kTRUE;
 }
 
-/** Formats a file size returning the new size and the unit of measurement.
+/** Formats a file size returning the new size and the unit of measurement. Unit
+ *  of measurement is always three characters long.
  */
 void _afNiceSize(Long64_t bytes, TString &um, Double_t &size) {
 
-  const char *ums[] = { "bytes", "KiB", "MiB", "GiB", "TiB" };
+  const char *ums[] = { "byt", "KiB", "MiB", "GiB", "TiB" };
   Int_t maxDiv = sizeof(ums)/sizeof(const char *);
   Int_t nDiv = 0;
   Double_t b = bytes;
@@ -675,6 +701,47 @@ vector<Int_t> *_afExpandRunList(TString runList) {
   return runNumsPtr;
 }
 
+/** Replaces a <RUN> specifier in the given string with the a run number
+ *  properly padded with zeroes. If plain "<RUN>" is present, default padding
+ *  is performed (specify with defaultPad, defaults to 0 = no pad). To manually
+ *  specify padding, use, e.g., "<RUN123>" for 123 digits.
+ */
+TString _afReplaceRunPadded(TString &fmt, UInt_t runNum,
+  UInt_t defaultPad = 0) {
+
+  TPMERegexp runRe("<RUN([1-9][0-9]*)?>");  // no leading zero allowed
+  TString out = fmt;
+
+  Int_t n_match = runRe.Match(out);
+
+  switch (n_match) {
+
+    case 0: // no pattern
+      return out;
+    break;
+
+    case 1: // <RUN>, without pad number: use default pad
+
+      if (defaultPad) {
+        TString pad = Form("%%0%dd", defaultPad);
+        runRe.Substitute(out, pad.Data(), kFALSE);
+      }
+      else {
+        runRe.Substitute(out, "%d", kFALSE);
+      }
+
+    break;
+
+    case 2: // <RUN12345>
+      runRe.Substitute(out, "%0$1d", kTRUE);
+    break;
+
+  }
+
+  return Form(out.Data(), runNum);
+
+}
+
 /* ========================================================================== *
  *                             "PUBLIC" FUNCTIONS                             *
  * ========================================================================== */
@@ -818,6 +885,10 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
         "status");
       checkStaged = kFALSE;
     }
+    else {
+      Printf("Warning: real staging information may have been cached by xrootd "
+      "and may not reflect the actual file status");
+    }
   }
 
   TIter i(fc->GetList());
@@ -864,15 +935,21 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
 
       TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
       Int_t entries = (meta ? meta->GetEntries() : -1);
-      Printf("%4u. %c%c%c | % 7d | %s", ++countMatching,
+
+      TString um;
+      Double_t sz;
+      _afNiceSize(inf->GetSize(), um, sz);
+
+      Printf("%4u. %c%c%c | % 7d | %6.1lf %s | %s", ++countMatching,
         (s ? 'S' : 's'), (c ? 'C' : 'c'), r,
         entries,
+        sz, um.Data(),
         inf->GetCurrentUrl()->GetUrl());
       inf->NextUrl();
 
       // Every URL is shown, not only first
       while ((url = inf->NextUrl())) {
-        Printf("          |         | %s", url->GetUrl());
+        Printf("          |         |            | %s", url->GetUrl());
       }
       inf->ResetUrl();
     }
@@ -1249,9 +1326,11 @@ void afFindUrl(const char *fileUrl, const char *dsMask = "/*/*") {
 /** Repair datasets: this function gives the possibility to take actions on
  *  corrupted files. Possible actions are:
  *
- *   - unlist:    files are removed from dataset
- *   - unstage:   files are deleted from storage and marked as unstaged
- *   - uncorrupt: files are marked as unstaged/uncorrupted
+ *   - unlist:      files are removed from dataset
+ *   - unstage:     files are deleted from storage and marked as unstaged
+ *   - condunstage: same as unstage, but storage deletion is triggered only if
+ *                  file is marked as staged
+ *   - uncorrupt:   files are marked as unstaged/uncorrupted
  *
  *  Actions can be combined, separe them with colon ':'. Actions "unlist" and
  *  "uncorrupt" can not be combined.
@@ -1272,6 +1351,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
   Bool_t aUncorrupt = kFALSE;
   Bool_t aUnstage = kFALSE;
+  Bool_t aCondUnstage = kFALSE;
   Bool_t aUnlist = kFALSE;
 
   TObjArray *tokens = action.Tokenize(":");
@@ -1286,6 +1366,9 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     else if (tok->String() == "unstage") {
       aUnstage = kTRUE;
     }
+    else if (tok->String() == "condunstage") {
+      aCondUnstage = kTRUE;
+    }
     else if (tok->String() == "unlist") {
       aUnlist = kTRUE;
     }
@@ -1299,6 +1382,10 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     Printf("Can't mark as uncorrupted and unlist at the same time.");
     return;
   }
+  if (aUnstage && aCondUnstage) {
+    Printf("Please specify only one amongst \"unstage\" and \"condunstage\".");
+    return;
+  }
 
   // Output a text file with the list of "bad" files
   ofstream outList;
@@ -1310,9 +1397,15 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     }
   }
 
+  Bool_t unstageRemotely;
+
   TDataSetManagerFile *mgr = NULL;
   if (!_afProofMode()) {
     mgr = _afCreateDsMgr();
+    unstageRemotely = kFALSE;
+  }
+  else {
+    unstageRemotely = kTRUE;
   }
 
   TList *listOfDs = _afGetListOfDs(dsMask);
@@ -1333,7 +1426,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
       fc = gProof->GetDataSet(dsUri.Data());
     }
 
-    if (aUncorrupt || aUnstage || aUnlist) {
+    if (aUncorrupt || aUnstage || aCondUnstage || aUnlist) {
       newFc = new TFileCollection();
       newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
     }
@@ -1364,8 +1457,15 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
             fi->ResetBit(TFileInfo::kStaged);
           }
 
-          if ((aUnstage) && (_afUnstage(url, kTRUE))) {
+          if ((aUnstage) && (_afUnstage(url, kTRUE, unstageRemotely))) {
             fi->ResetBit(TFileInfo::kStaged);
+          }
+
+          if (aCondUnstage) {
+            if ((fi->TestBit(TFileInfo::kStaged)) &&
+              (_afUnstage(url, kTRUE, unstageRemotely))) {
+              fi->ResetBit(TFileInfo::kStaged);
+            }
           }
 
           if (!aUnlist) {
@@ -1423,13 +1523,52 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   TIter i(dsList);
   Int_t count = 0;
 
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
+
+  TString um;
+  Double_t sz;
+
+  Printf("   # |                    dataset name                    | files |"
+    "    size    | staged |  cor  ");
+  Printf("-----+----------------------------------------------------+-------+"
+    "------------+--------+-------");
+
   while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
-    Printf("% 4d. %s", ++count, nameObj->String().Data());
+    TFileCollection *fc;
+    if (mgr) fc = mgr->GetDataSet(nameObj->String().Data());
+    else fc = gProof->GetDataSet(nameObj->String().Data());
+
+    if (!fc) {
+      Printf("%4d | %-50s | problems fetching dataset information!", ++count,
+        nameObj->String().Data());
+    }
+    else {
+      _afNiceSize(fc->GetTotalSize(), um, sz);
+
+      Float_t stg = fc->GetStagedPercentage();
+      Float_t cor = fc->GetCorruptedPercentage();
+
+      TString stg_str;
+      TString cor_str;
+
+      if (stg == 0.) stg_str = "  --  ";
+      else stg_str = Form("%5.1f%%", stg);
+
+      if (cor == 0.) cor_str = "  --  ";
+      else cor_str = Form("%5.1f%%", cor);
+
+      Printf("%4d | %-50s | %5lld | %6.1lf %s | %s | %s",
+        ++count, nameObj->String().Data(), fc->GetNFiles(), sz, um.Data(),
+        stg_str.Data(), cor_str.Data());
+      delete fc;
+    }
   }
 
   Printf(">> There are %d dataset(s) matching your criteria",
     dsList->GetSize());
 
+  if (mgr) delete mgr;
   delete dsList;
 }
 
@@ -1655,8 +1794,8 @@ void afFillMetaData(TString dsMask, TString options = "") {
  *  instructions.
  */
 void afDataSetFromAliEn(TString basePath, TString fileName,
-  TString searchFilter, TString anchor, TString treeName, TString runList,
-  TString dsPtn, TString options = "") {
+  TString postFindFilter, TString anchor, TString treeName,
+  TString runList, TString dsPattern, TString options = "") {
 
   // Parse options
   Bool_t dryRun    = kFALSE;
@@ -1708,65 +1847,56 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   if (_afProofMode()) {
   
     // In PROOF mode, complete dataset name with group and user, if not given
-    idx = dsPtn.Index("/");
+    idx = dsPattern.Index("/");
     if (idx == -1) {
-      dsPtn.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
-        dsPtn.Data());
+      dsPattern.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
+        dsPattern.Data());
     }
 
   }
-
-  // Find <RUN> tag and substitute it with $1 in dataset name (zero-padded)
-  idx = dsPtn.Index("<RUN>");
-  if (idx > -1) {
-    TString p1 = dsPtn(0, idx);
-    TString p2 = dsPtn(idx+5, dsPtn.Length());
-    dsPtn.Form("%s%%1$09d%s", p1.Data(), p2.Data());
-  }
-
-  // Find <RUN> tag and substitute it with $1 in search filter (not zero-padded)
-  idx = searchFilter.Index("<RUN>");
-  if (idx > -1) {
-    TString p1 = searchFilter(0, idx);
-    TString p2 = searchFilter(idx+5, searchFilter.Length());
-    searchFilter.Form("%s%%1$d%s", p1.Data(), p2.Data());
-  }
-
-  // Now dsPtn and searchFilter are format strings which contain <RUN> as first
-  // parameter
 
   // Parse run list
   vector<Int_t> *runNumsPtr = _afExpandRunList(runList);
   vector<Int_t> &runNums = *runNumsPtr;
+  UInt_t nRuns = runNums.size();
 
   // For each run
-  for (UInt_t i=0; i<runNums.size(); i++) {
-    TString dsName, searchFilterWithRun;
-    dsName.Form(dsPtn.Data(), runNums[i], 1);
-    searchFilterWithRun.Form(searchFilter.Data(), runNums[i], 1);
+  for (UInt_t i=0; (i < nRuns) || (nRuns == 0) ; i++) {
 
-    TString searchPtn;
-    //searchPtn.Form("*%d/*%s*/%s", runNums[i], searchFilterWithRun.Data(),
-    //  fileName.Data());
-    searchPtn.Form("*%d/*/%s", runNums[i], fileName.Data());
+    TString dsName, basePathRun, postFindFilterRun;
 
-    // Echo the AliEn find command
+    if (nRuns == 0) {
+      dsName = dsPattern;
+      basePathRun = basePath;
+      postFindFilterRun = postFindFilter;
+    }
+    else {
+      dsName = _afReplaceRunPadded(dsPattern, runNums[i], 9);
+      basePathRun = _afReplaceRunPadded(basePath, runNums[i]);
+      postFindFilterRun = _afReplaceRunPadded(postFindFilter, runNums[i]);
+    }
+
+    // Echoes the corresponding AliEn find command. Please note that in our
+    // TGrid::Query() we use '*' as wildcards, while in aliensh we should
+    // replace them with '%'
     if (aliEnCmd) {
-      TString searchPtnPct = searchPtn;
-      searchPtnPct.ReplaceAll("*", "%");
-      if (!searchFilter.IsNull()) {
-              Printf("\033[33maliensh>\033[m find %s %s | grep -E '%s'",
-          basePath.Data(), searchPtnPct.Data(), searchFilterWithRun.Data());
+
+      TString cmdFind;
+      cmdFind.Form("find %s %s", basePathRun.Data(), fileName.Data());
+      cmdFind.ReplaceAll("*", "%");
+
+      if (!postFindFilter.IsNull()) {
+        Printf("\033[33maliensh>\033[m %s | grep -E '%s'",
+          cmdFind.Data(), postFindFilterRun.Data());
       }
       else {
-        Printf("\033[33maliensh>\033[m find %s %s", basePath.Data(),
-          searchPtnPct.Data());
+        Printf("\033[33maliensh>\033[m %s", cmdFind.Data());
       }
     }
 
-    // Run AliEn find
-    TFileCollection *fc = _afAliEnFind(basePath, searchPtn, anchor, treeName,
-      searchFilterWithRun);
+    // Run AliEn find: output on a collection
+    TFileCollection *fc = _afAliEnFind(basePathRun, fileName, anchor, treeName,
+      postFindFilterRun);
     if (fc == NULL) {
       delete runNumsPtr;
       Printf("Creation of datasets from AliEn aborted.");
@@ -1803,7 +1933,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     TString um;
     Double_t fmtSize;
     _afNiceSize(fc->GetTotalSize(), um, fmtSize);
-    Printf("%-45s : %4llu files, size: %6.1lf %-5s [%s]", dsName.Data(),
+    Printf("%-50s : %6llu files, size: %6.1lf %s [%s]", dsName.Data(),
       (ULong64_t)fc->GetNFiles(), fmtSize, um.Data(), opStatus.Data());
 
     // If requested, "verify" the dataset (fast mode) and "cache"
@@ -1812,23 +1942,113 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
       if (addRedir) afPrependRedirUrl(dsName);
     }
 
+    if (nRuns == 0) break;
+
   }
 
   // Delete list of runs
   delete runNumsPtr;
 }
 
+/** Writes the contents of the specified dataset (or pattern of datasets) on
+ *  text files placed in the specified outDir. outDir is created if nonexistent,
+ *  and only the nUrl'th URL of each entry is written to the text file. If nUrl
+ *  is a "big" number, it represents the last URL, while 1 represents the first
+ *  one. If aliEnToRedirector is kTRUE and the selected URL is of alien:// type,
+ *  it is converted to the corresponding redirector URL before being written on
+ *  the list. If onlyGood is kTRUE, only staged and noncorrupted files are
+ *  considered.
+ */
+void afDsToPlainText(TString dsMask, TString outDir = "/tmp", UInt_t nUrl = 999,
+  Bool_t aliEnToRedirector = kTRUE, Bool_t onlyGood = kTRUE) {
+
+  if (nUrl == 0) {
+    Printf("Valid values for nUrl start from 1 for the first URL.");
+    return;
+  }
+
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
+
+  TList *listOfDs = _afGetListOfDs(dsMask);
+
+  TString redirPtn = gEnv->GetValue("af.redirurl", "root://localhost:1234/$1");
+  TPMERegexp alienRe("^alien:\\/\\/(.*)$");
+
+  // Objects to eliminate unwanted characters in dataset name
+  TString substPtn = "$2$3_";
+  TPMERegexp re("(^/|(.))([^/]*)/");
+
+  // Create output directory
+  gSystem->mkdir(outDir.Data(), kTRUE);  // kTRUE means "recursive" (i.e. "-p")
+
+  TIter i(listOfDs);
+  TObjString *dsUriObj;
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+
+    TString ofName = dsUriObj->String();
+    while (re.Substitute(ofName, substPtn)) {}
+    ofName = Form("%s/%s.txt", outDir.Data(), ofName.Data());
+
+    ofstream of( ofName.Data() );
+    if (!of) {
+      Printf("Can't write dataset %s on %s, skipping",
+        dsUriObj->String().Data(), ofName.Data());
+      continue;
+    }
+    else Printf("Writing dataset %s on %s...", dsUriObj->String().Data(),
+      ofName.Data());
+
+    TFileCollection *fc;
+    if (mgr) fc = mgr->GetDataSet(dsUriObj->String().Data());
+    else fc = gProof->GetDataSet(dsUriObj->String().Data());
+
+    TIter j(fc->GetList());
+    TFileInfo *fi;
+    UInt_t thisNUrl;
+    while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
+
+      if (onlyGood) {
+        if ((fi->TestBit(TFileInfo::kCorrupted)) ||
+          (!fi->TestBit(TFileInfo::kStaged))) continue;
+      }
+
+      TUrl *url = NULL;
+
+      thisNUrl = fi->GetNUrls();
+      if (nUrl <= thisNUrl) thisNUrl = nUrl;
+
+      fi->ResetUrl();
+      for (UInt_t k=1; k<=thisNUrl; k++) url = fi->NextUrl();
+
+      if (!url) continue;
+
+      TString buf = url->GetUrl();
+      if (aliEnToRedirector && (strcmp(url->GetProtocol(), "alien") == 0)) {
+        alienRe.Substitute(buf, redirPtn);
+      }
+
+      of << buf.Data() << endl;
+    }
+
+    of.close();
+
+  }
+
+  if (mgr) delete mgr;
+  delete listOfDs;
+}
 
 /* ========================================================================== *
  *                                ENTRY POINT                                 *
  * ========================================================================== */
 
-/** Init function, it only prints a welcome message with the default parameters.
+/** Init function: it just prints a welcome message with the default parameters.
  */
 void afdsutil() {
   cout << endl;
   Printf("Dataset management utilities -- "
-    "by Dario Berzano <dario.berzano@gmail.com>");
+    "by Dario Berzano <dario.berzano@to.infn.it>");
   Printf("Bugs: https://savannah.cern.ch/projects/aaf/");
   Printf("Available functions start with \"af\", use autocompletion to list.");
   cout << endl;
