@@ -438,11 +438,14 @@ void main_loop(af::config &config) {
             // Download failed
             //
 
-            // Stage command reported a failure
-            af::log::error(af::log_level_high, "Failed: %s",
-              qent->get_main_url());
+            // Check if it was staged nevertheless
+            bool was_staged = (*it)->get_field_uint("Staged");
 
-            opq.failed(qent->get_main_url());
+            // Stage command reported a failure
+            af::log::error(af::log_level_high, "Failed: %s (staged: %s)",
+              qent->get_main_url(), (was_staged ? "yes" : "no"));
+
+            opq.failed(qent->get_main_url(), was_staged);
 
           }
 

@@ -25,8 +25,10 @@
 #define AF_NULL_STR(STR) ((STR) ? (STR) : "#null#")
 #define AF_OPQUEUE_BUFSIZE 1000
 #define AF_OPQUEUE_MAXROWS ( std::numeric_limits<long>::max() )
-#define AF_OPQUEUE_NEXT_UIID() ( (++unique_instance_id == 0) ? ++unique_instance_id : unique_instance_id  )
-#define AF_OPQUEUE_PREV_UIID() ( (--unique_instance_id == 0) ? --unique_instance_id : unique_instance_id  )
+#define AF_OPQUEUE_NEXT_UIID() \
+  ( (++unique_instance_id == 0) ? ++unique_instance_id : unique_instance_id  )
+#define AF_OPQUEUE_PREV_UIID() \
+  ( (--unique_instance_id == 0) ? --unique_instance_id : unique_instance_id  )
 
 namespace af {
 
@@ -115,10 +117,10 @@ namespace af {
         fail_threshold = max_failures;
       };
 
-      bool failed(const char *url);
-      bool success(const char *main_url, const char *endp_url,
-        const char *tree_name, unsigned long n_events,
-        unsigned long size_bytes);
+      bool failed(const char *url, bool is_staged = false);
+      bool success(const char *main_url, const char *endp_url = NULL,
+        const char *tree_name = NULL, unsigned long n_events = 0,
+        unsigned long size_bytes = 0);
 
       void arbitrary_query(const char *query);
       void dump(bool to_log = false);

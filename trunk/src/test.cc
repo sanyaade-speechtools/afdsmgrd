@@ -274,19 +274,21 @@ void test_queue() {
     opq.flush();
   }
 
-  // Select a random item to see its status; beware that get_cond_entry returns
-  // a pointer to an internal static buffer!
-  const af::queueEntry *ent = opq.get_cond_entry(
-    "root://www.google.it/num000000004/root_archive.zip#AliESDs.root");
-
-  //printf("\n=== GET_ENTRY ===\n");
-  //if (ent) ent->print();
-  //else printf("Entry not found.\n");
+  const af::queueEntry *ent;
 
   // Test three-step query
+  std::cout << std::endl;
   opq.init_query_by_status(af::qstat_queue, 4);
-  while ( ent = opq.next_query_by_status() ) ent->print();
+  while ( ent = opq.next_query_by_status() ) {
+    ent->print();
+    std::cout << std::endl;
+  }
   opq.free_query_by_status();
+
+  printf("Marking a file as success\n");
+  opq.success("root://www.google.it/num000000002/root_archive.zip#AliESDs.root");
+  ent = opq.get_cond_entry("root://www.google.it/num000000002/root_archive.zip#AliESDs.root");
+  ent->print();
 
   // Query a caso
   /*try {

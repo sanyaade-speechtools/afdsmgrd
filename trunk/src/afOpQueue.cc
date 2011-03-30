@@ -67,7 +67,8 @@ void queueEntry::set_str(char **dest, const char *src) {
   if (!own) *dest = (char *)src;
   else {
     if (src) {
-      *dest = (char *)realloc(*dest, strlen(src)+1);  // TODO: bad alloc!
+      *dest = (char *)realloc(*dest, strlen(src)+1);
+      if (!dest) throw std::runtime_error("realloc() failed: out of memory");
       strcpy(*dest, src);
     }
     else {
@@ -146,6 +147,7 @@ opQueue::opQueue() :
     "  n_events BIGINT UNSIGNED,"
     "  n_failures INTEGER UNSIGNED NOT NULL DEFAULT 0,"
     "  size_bytes BIGINT UNSIGNED,"
+    "  is_staged INTEGER NOT NULL DEFAULT 0,"  // no BOOL in SQLite
     "  UNIQUE (main_url)"
     ")",
   NULL, NULL, &sql_err);
@@ -161,7 +163,7 @@ opQueue::opQueue() :
   // Query for get_full_entry()
   r = sqlite3_prepare_v2(db,
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,"
-    "  status,instance_id FROM queue WHERE main_url=? LIMIT 1",
+    "  status,instance_id,is_staged FROM queue WHERE main_url=? LIMIT 1",
     -1, &query_get_full_entry, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -184,7 +186,8 @@ opQueue::opQueue() :
   // Query for *_query_by_status()
   r = sqlite3_prepare_v2(db,
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,"
-    "  status,instance_id FROM queue WHERE status=? ORDER BY rank ASC LIMIT ?",
+    "  status,instance_id,is_staged FROM queue WHERE status=? "
+    "  ORDER BY rank ASC LIMIT ?",
     -1, &query_by_status_limited, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -207,7 +210,7 @@ opQueue::opQueue() :
   // Query for success()
   r = sqlite3_prepare_v2(db,
     "UPDATE queue SET status='D',"
-    "  endp_url=?,tree_name=?,n_events=?,size_bytes=? "
+    "  endp_url=?,tree_name=?,n_events=?,size_bytes=?,is_staged=1 "
     "  WHERE main_url=?", -1, &query_success, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -219,7 +222,7 @@ opQueue::opQueue() :
   // Query for failed() -- with threshold
   r = sqlite3_prepare_v2(db,
     "UPDATE queue SET"
-    "  n_failures=n_failures+1,rank=?,status=CASE"
+    "  n_failures=n_failures+1,rank=?,is_staged=?,status=CASE"
     "    WHEN n_failures>=? THEN 'F'"
     "    ELSE 'Q'"
     "  END"
@@ -234,7 +237,7 @@ opQueue::opQueue() :
   // Query for failed() -- without threshold
   r = sqlite3_prepare_v2(db,
     "UPDATE queue SET"
-    "  n_failures=n_failures+1,rank=?,status='Q'"
+    "  n_failures=n_failures+1,rank=?,is_staged=?,status='Q'"
     "  WHERE main_url=?", -1, &query_failed_nothr, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -369,11 +372,10 @@ bool opQueue::set_status(const char *url, qstat_t qstat) {
  *  and places the URL at the end of the queue (biggest rank), and if the number
  *  of failures is above threshold, sets the status to failed (F). Everything is
  *  done in a single UPDATE SQL query for efficiency reasons. It returns true on
- *  success, false on failure.
- *
- *  TODO: add support for staged bit in query and table
+ *  success, false on failure. Since a file may be corrupted but still staged,
+ *  you can flag it as such by setting to true the optional parameter is_staged.
  */
-bool opQueue::failed(const char *url) {
+bool opQueue::failed(const char *url, bool is_staged) {
 
   if (!url) return false;
 
@@ -385,8 +387,9 @@ bool opQueue::failed(const char *url) {
     sqlite3_clear_bindings(query_failed_thr);
 
     sqlite3_bind_int64(query_failed_thr, 1, ++last_queue_rowid);
-    sqlite3_bind_int64(query_failed_thr, 2, fail_threshold-1);
-    sqlite3_bind_text(query_failed_thr, 3, url, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(query_failed_thr, 2, is_staged);
+    sqlite3_bind_int64(query_failed_thr, 3, fail_threshold-1);
+    sqlite3_bind_text(query_failed_thr, 4, url, -1, SQLITE_STATIC);
 
     r = sqlite3_step(query_failed_thr);
 
@@ -397,7 +400,8 @@ bool opQueue::failed(const char *url) {
     sqlite3_clear_bindings(query_failed_nothr);
 
     sqlite3_bind_int64(query_failed_nothr, 1, ++last_queue_rowid);
-    sqlite3_bind_text(query_failed_nothr, 2, url, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(query_failed_thr, 2, is_staged);
+    sqlite3_bind_text(query_failed_nothr, 3, url, -1, SQLITE_STATIC);
 
     r = sqlite3_step(query_failed_nothr);
 
@@ -414,7 +418,11 @@ bool opQueue::failed(const char *url) {
   return false;
 }
 
-/** TODO
+/** Manages successfully completed operations on the given URL: the only
+ *  required argument is the original enqueued URL of the file; optional
+ *  parameters, which may also be NULL (or zero for numbers), are the endpoint
+ *  URL of that file, the default tree name, the number of events and the file
+ *  size in bytes.
  */
 bool opQueue::success(const char *main_url, const char *endp_url,
   const char *tree_name, unsigned long n_events, unsigned long size_bytes) {
@@ -586,7 +594,9 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
     qentry_buf.set_status(
       (qstat_t)*sqlite3_column_text(query_get_full_entry, 6) );
     qentry_buf.set_instance_id(
-      sqlite3_column_int64(query_by_status_limited, 7) );
+      sqlite3_column_int64(query_get_full_entry, 7) );
+    qentry_buf.set_staged(
+      (bool)sqlite3_column_int(query_get_full_entry, 8) );
 
     return &qentry_buf;
   }
@@ -648,6 +658,8 @@ const queueEntry *opQueue::next_query_by_status() {
     (qstat_t)*sqlite3_column_text(query_by_status_limited, 6) );
   qentry_buf.set_instance_id(
     sqlite3_column_int64(query_by_status_limited, 7) );
+  qentry_buf.set_staged(
+    (bool)sqlite3_column_int(query_by_status_limited, 8) );
 
   return &qentry_buf;
 }
