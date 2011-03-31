@@ -1262,6 +1262,137 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
   }
 }
 
+/** URLs that match urlRe extended regexp are *removed* from the given
+ *  dataset(s). Possible options, colon-separated, are:
+ *
+ *   - showkept : show kept entries
+ *   - showdel  : show removed entries
+ *   - commit   : actually save changes on dataset
+ *
+ *  No possible "harm" is done on datasets unless the "commit" option is given.
+ *  Double-check the results of your operation before using this option and
+ *  saving changes to the datasets, because there is no turning back to that.
+ */
+void afRemoveUrlsFromDs(const char *dsMask, const char *urlRe,
+  TString options = "showkept:showdel") {
+
+  // Parse options
+  Bool_t commit = kFALSE;
+  Bool_t showKept = kFALSE;
+  Bool_t showDel = kFALSE;
+
+  options.ToLower();
+
+  TObjArray *tokOpts = options.Tokenize(":");
+  TIter opt(tokOpts);
+  TObjString *oopt;
+
+  while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
+    TString &sopt = oopt->String(); 
+    if (sopt == "commit") commit = kTRUE;
+    else if (sopt == "showkept") showKept = kTRUE;
+    else if (sopt == "showdel") showDel = kTRUE;
+    else {
+      Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
+    }
+  }
+
+  if ((!showKept) && (!showDel)) {
+    showKept = kTRUE;
+    showDel = kTRUE;
+  }
+
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
+
+  TPMERegexp re(urlRe);
+
+  TList *listOfDs = _afGetListOfDs(dsMask);
+  Int_t saveErrs = 0;
+  TIter i(listOfDs);
+  TObjString *dsUriObj;
+
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+
+    //
+    // Inside a dataset
+    //
+
+    TString dsUri = dsUriObj->String();
+    Int_t nChanged = 0;
+
+    Printf("*** Processing dataset %s ***", dsUri.Data());
+
+    TFileCollection *fc;
+    if (mgr) fc = mgr->GetDataSet(dsUri.Data());
+    else fc = gProof->GetDataSet(dsUri.Data());
+
+    TFileCollection *newFc = NULL;
+    if (commit) {
+      newFc = new TFileCollection();
+      newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
+    }
+
+    TIter j(fc->GetList());
+    TFileInfo *fi;
+
+    while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
+
+      //
+      // For each file
+      //
+
+      TUrl *curl;
+      Bool_t includeUrl = kTRUE;
+
+      fi->ResetUrl();
+      while (( curl = fi->NextUrl() )) {
+        if (re.Match(curl->GetUrl()) > 0) {
+          includeUrl = kFALSE;
+          break;
+        }
+      }
+      fi->ResetUrl();
+
+      if ((includeUrl && showKept) || (!includeUrl && showDel)) {
+        Printf("[%s] %s",
+          (includeUrl ? "\033[1;32mKEEP\033[m" : "\033[1;31mDELE\033[m"),
+          fi->GetFirstUrl()->GetUrl());
+      }
+
+      if ((includeUrl) && (commit)) {
+        TFileInfo *newFi = new TFileInfo(*fi);
+        newFc->Add( newFi );  // newFc becomes owner of newFi
+        nChanged++;
+      }
+
+    }
+
+    if (nChanged > 0) {
+      if (commit) {
+        fc->Update();
+        _afSaveDs(dsUri, newFc, kTRUE);
+        delete newFc;
+      }
+      else {
+        Printf("Warning: not saving dataset %s because no \"commit\" option "
+          "was specified", dsUri.Data());
+      }
+    }
+
+    delete fc;
+  }
+
+  if (mgr) delete mgr;
+  delete listOfDs;
+
+  if (saveErrs > 0) {
+    Printf("%d error(s) writing back datasets encountered, check permissions",
+      saveErrs);
+  }
+
+}
+
 /** Finds the exact match of a given URL within the mask of datasets given (by
  *  default in all datasets).
  */
