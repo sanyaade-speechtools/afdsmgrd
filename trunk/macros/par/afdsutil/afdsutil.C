@@ -934,22 +934,30 @@ void afShowDsContent(const char *dsUri, TString showOnly = "SsCc") {
       }
 
       TFileInfoMeta *meta = inf->GetMetaData();  // gets the first one
-      Int_t entries = (meta ? meta->GetEntries() : -1);
+      Int_t entries = -1;
+      const char *treeName = "";
+      if (meta) {
+        entries = meta->GetEntries();
+        treeName = meta->GetName();
+      }
 
       TString um;
       Double_t sz;
       _afNiceSize(inf->GetSize(), um, sz);
 
-      Printf("%4u. %c%c%c | % 7d | %6.1lf %s | %s", ++countMatching,
+      Printf("%4u. %c%c%c | % 7d | %-10s | %6.1lf %s | %s",
+        ++countMatching,
         (s ? 'S' : 's'), (c ? 'C' : 'c'), r,
         entries,
+        treeName,
         sz, um.Data(),
         inf->GetCurrentUrl()->GetUrl());
       inf->NextUrl();
 
       // Every URL is shown, not only first
       while ((url = inf->NextUrl())) {
-        Printf("          |         |            | %s", url->GetUrl());
+        Printf("          |         |            |            | %s",
+          url->GetUrl());
       }
       inf->ResetUrl();
     }
@@ -1262,24 +1270,27 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
   }
 }
 
-/** URLs that match urlRe extended regexp are *removed* from the given
- *  dataset(s). Possible options, colon-separated, are:
+/** Entries whose URL or tree name (toggle with "tree" option) matches the given
+ *  regex are *removed* from the given dataset(s). Possible options, separated
+ *  by colons, are:
  *
  *   - showkept : show kept entries
  *   - showdel  : show removed entries
+ *   - tree     : match entry's default tree name instead of URL
  *   - commit   : actually save changes on dataset
  *
  *  No possible "harm" is done on datasets unless the "commit" option is given.
  *  Double-check the results of your operation before using this option and
  *  saving changes to the datasets, because there is no turning back to that.
  */
-void afRemoveUrlsFromDs(const char *dsMask, const char *urlRe,
+void afRemoveUrlsFromDs(const char *dsMask, const char *regex,
   TString options = "showkept:showdel") {
 
   // Parse options
   Bool_t commit = kFALSE;
   Bool_t showKept = kFALSE;
   Bool_t showDel = kFALSE;
+  Bool_t matchTree = kFALSE;
 
   options.ToLower();
 
@@ -1292,6 +1303,7 @@ void afRemoveUrlsFromDs(const char *dsMask, const char *urlRe,
     if (sopt == "commit") commit = kTRUE;
     else if (sopt == "showkept") showKept = kTRUE;
     else if (sopt == "showdel") showDel = kTRUE;
+    else if (sopt == "tree") matchTree = kTRUE;
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
     }
@@ -1305,7 +1317,7 @@ void afRemoveUrlsFromDs(const char *dsMask, const char *urlRe,
   TDataSetManagerFile *mgr = NULL;
   if (!_afProofMode()) mgr = _afCreateDsMgr();
 
-  TPMERegexp re(urlRe);
+  TPMERegexp re(regex);
 
   TList *listOfDs = _afGetListOfDs(dsMask);
   Int_t saveErrs = 0;
@@ -1342,22 +1354,45 @@ void afRemoveUrlsFromDs(const char *dsMask, const char *urlRe,
       // For each file
       //
 
-      TUrl *curl;
       Bool_t includeUrl = kTRUE;
+      const char *treeName = NULL;
 
-      fi->ResetUrl();
-      while (( curl = fi->NextUrl() )) {
-        if (re.Match(curl->GetUrl()) > 0) {
-          includeUrl = kFALSE;
-          break;
+      if (matchTree) {
+
+        // Match tree name (toggle with "tree" option, default is to match URLs)
+        TFileInfoMeta *meta = fi->GetMetaData();
+        if (meta) {
+          treeName = meta->GetName();
+          if (re.Match(meta->GetName()) > 0) includeUrl = kFALSE;
         }
+
       }
-      fi->ResetUrl();
+      else {
+
+        // Match at least one URL
+        TUrl *curl;
+        fi->ResetUrl();
+        while (( curl = fi->NextUrl() )) {
+          if (re.Match(curl->GetUrl()) > 0) {
+            includeUrl = kFALSE;
+            break;
+          }
+        }
+        fi->ResetUrl();
+
+      }
 
       if ((includeUrl && showKept) || (!includeUrl && showDel)) {
-        Printf("[%s] %s",
-          (includeUrl ? "\033[1;32mKEEP\033[m" : "\033[1;31mDELE\033[m"),
-          fi->GetFirstUrl()->GetUrl());
+        const char *status =
+          (includeUrl ? "\033[1;32mKEEP\033[m" : "\033[1;31mDELE\033[m");
+
+        if (treeName) {
+          Printf("[%s] %s (tree: %s)", status, fi->GetFirstUrl()->GetUrl(),
+            treeName);
+        }
+        else {
+          Printf("[%s] %s", status, fi->GetFirstUrl()->GetUrl());
+        }
       }
 
       if ((includeUrl) && (commit)) {
@@ -1661,9 +1696,9 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   Double_t sz;
 
   Printf("   # |                    dataset name                    | files |"
-    "    size    | staged |  cor  ");
+    "    tree    |    size    | staged |  cor  ");
   Printf("-----+----------------------------------------------------+-------+"
-    "------------+--------+-------");
+    "------------+------------+--------+-------");
 
   while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
     TFileCollection *fc;
@@ -1689,9 +1724,12 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
       if (cor == 0.) cor_str = "  --  ";
       else cor_str = Form("%5.1f%%", cor);
 
-      Printf("%4d | %-50s | %5lld | %6.1lf %s | %s | %s",
-        ++count, nameObj->String().Data(), fc->GetNFiles(), sz, um.Data(),
-        stg_str.Data(), cor_str.Data());
+      const char *treeName = fc->GetDefaultTreeName();
+      if (!treeName) treeName = "";
+
+      Printf("%4d | %-50s | %5lld | %-10s | %6.1lf %s | %s | %s",
+        ++count, nameObj->String().Data(), fc->GetNFiles(), treeName, sz,
+        um.Data(), stg_str.Data(), cor_str.Data());
       delete fc;
     }
   }
