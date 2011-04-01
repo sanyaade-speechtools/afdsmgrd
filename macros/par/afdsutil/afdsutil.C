@@ -1270,6 +1270,38 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
   }
 }
 
+/** Does TFileCollection::Update() on each dataset.
+ */
+void afUpdateDs(const char *dsMask) {
+
+  TDataSetManagerFile *mgr = NULL;
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
+
+  TList *listOfDs = _afGetListOfDs(dsMask);
+  TIter i(listOfDs);
+  TObjString *dsUriObj;
+
+  while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
+
+    TString dsUri = dsUriObj->String();
+
+    TFileCollection *fc;
+    if (mgr) fc = mgr->GetDataSet(dsUri.Data());
+    else fc = gProof->GetDataSet(dsUri.Data());
+
+    Printf("Updating %s...", dsUri.Data());
+
+    fc->Update();
+    _afSaveDs(dsUri, fc, kTRUE);
+    delete fc;
+
+  }
+
+  if (mgr) delete mgr;
+  delete listOfDs;
+
+}
+
 /** Entries whose URL or tree name (toggle with "tree" option) matches the given
  *  regex are *removed* from the given dataset(s). Possible options, separated
  *  by colons, are:
@@ -1331,7 +1363,7 @@ void afRemoveUrlsFromDs(const char *dsMask, const char *regex,
     //
 
     TString dsUri = dsUriObj->String();
-    Int_t nChanged = 0;
+    Int_t nExcluded = 0;
 
     Printf("*** Processing dataset %s ***", dsUri.Data());
 
@@ -1395,24 +1427,30 @@ void afRemoveUrlsFromDs(const char *dsMask, const char *regex,
         }
       }
 
-      if ((includeUrl) && (commit)) {
-        TFileInfo *newFi = new TFileInfo(*fi);
-        newFc->Add( newFi );  // newFc becomes owner of newFi
-        nChanged++;
+      if (includeUrl) {
+        if (commit) {
+          TFileInfo *newFi = new TFileInfo(*fi);
+          newFc->Add( newFi );  // newFc becomes owner of newFi
+        }
       }
+      else nExcluded++;
 
     }
 
-    if (nChanged > 0) {
+    if (nExcluded > 0) {
       if (commit) {
-        fc->Update();
+        Printf("%d entries removed: saving...", nExcluded);
+        newFc->Update();
         _afSaveDs(dsUri, newFc, kTRUE);
         delete newFc;
       }
       else {
-        Printf("Warning: not saving dataset %s because no \"commit\" option "
-          "was specified", dsUri.Data());
+        Printf("Warning: not saving dataset %s (%d entries removed) because "
+          "no \"commit\" option was specified", dsUri.Data(), nExcluded);
       }
+    }
+    else {
+      Printf("No modification made in dataset %s", dsUri.Data());
     }
 
     delete fc;
