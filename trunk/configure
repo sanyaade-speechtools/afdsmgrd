@@ -18,6 +18,7 @@ export PREFIX="/usr/local"
 export ROOTSYS
 export APMON_PREFIX
 export APMON_DISABLED=0
+export ROOT_MODE="FALSE"
 export BUILD_TYPE="Release"
 
 export BUILD_PREFIX="build"
@@ -66,7 +67,8 @@ function Main() {
     -DCMAKE_INSTALL_PREFIX=$PREFIX \
     -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
     -DApMon_PREFIX=$APMON_PREFIX \
-    -DApMon_DISABLED=$APMON_DISABLED
+    -DApMon_DISABLED=$APMON_DISABLED \
+    -DROOT_MODE=$ROOT_MODE
   local R=$?
   cd "$WD"
   if [ $R != 0 ]; then
@@ -89,6 +91,7 @@ function PrintHelp() {
   echo "  --disable-apmon       disable support for ApMon"
   echo "  --debug               debug symbols and test executables (disabled " \
     "by default)"
+  echo "  --root-mode           used by ROOT if compiling as a part of it"
 }
 
 # Prints the configuration
@@ -99,6 +102,7 @@ function PrintConfig() {
   if [ $APMON_DISABLED == 0 ] && [ "$APMON_PREFIX" != "" ] ; then
     echo "APMON_PREFIX=$APMON_PREFIX"
   fi
+  echo "ROOT_MODE=$ROOT_MODE"
 }
 
 # Checks for the presence of cmake in PATH; returns 1 on success, 0 on failure
@@ -160,6 +164,10 @@ function ConfigCustom() {
 
       --debug)
         BUILD_TYPE="Debug"
+      ;;
+
+      --root-mode)
+        ROOT_MODE="TRUE"
       ;;
 
       *)

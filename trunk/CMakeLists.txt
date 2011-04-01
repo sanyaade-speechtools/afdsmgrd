@@ -25,7 +25,7 @@ set (CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 message (STATUS "Installation prefix: ${CMAKE_INSTALL_PREFIX}")
 
 #
-# asdfghjkl
+# Supported build types
 #
 
 if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
@@ -45,14 +45,22 @@ else ()
 endif ()
 
 #
-# A handy macro to copy a file in install phase without overwriting it
+# A handy macro to copy a file in install phase without overwriting it. As
+# destination directory, both absolute and relative paths are supported.
+# Absolute paths are left intact, while relative paths get the CMAKE install
+# prefix prepended
 #
 
 macro (install_dont_overwrite SRCFILE DESTDIR)
 
   get_filename_component (_FILENAME ${SRCFILE} NAME)
   get_filename_component (_FULLSRC ${SRCFILE} ABSOLUTE)
-  get_filename_component (_FULLDEST ${CMAKE_INSTALL_PREFIX}/${DESTDIR}/${_FILENAME} ABSOLUTE)
+
+  if (IS_ABSOLUTE ${DESTDIR})
+    get_filename_component (_FULLDEST ${DESTDIR}/${_FILENAME} ABSOLUTE)
+  else ()
+    get_filename_component (_FULLDEST ${CMAKE_INSTALL_PREFIX}/${DESTDIR}/${_FILENAME} ABSOLUTE)
+  endif ()
 
   install (CODE "
     if (NOT EXISTS ${_FULLDEST})
@@ -62,6 +70,7 @@ macro (install_dont_overwrite SRCFILE DESTDIR)
       message (STATUS \"Keeping:    ${_FULLDEST}\")
     endif ()
   ")
+
 
 endmacro ()
 
@@ -84,6 +93,29 @@ if (NOT ApMon_DISABLED)
   endif ()
 
 endif ()
+
+#
+# Variables for the main destinations of "install" target, and for substitutions
+# in configuration files. Typical directories are: etc, bin, libexec and var.
+#
+
+if (ROOT_MODE)
+  message (STATUS "Compiling from within ROOT")
+  set (DIR_ETC     "${ROOTSYS}/etc/proof")
+  set (DIR_BIN     "${ROOTSYS}/bin")
+  set (DIR_LIBEXEC "${ROOTSYS}/etc/proof")
+  set (DIR_VAR     "${ROOTSYS}/etc/proof/var")
+else ()
+  set (DIR_ETC     "${CMAKE_INSTALL_PREFIX}/etc")
+  set (DIR_BIN     "${CMAKE_INSTALL_PREFIX}/bin")
+  set (DIR_LIBEXEC "${CMAKE_INSTALL_PREFIX}/libexec")
+  set (DIR_VAR     "${CMAKE_INSTALL_PREFIX}/var")
+endif ()
+
+message (STATUS "Directory \"etc\" is ${DIR_ETC}")
+message (STATUS "Directory \"bin\" is ${DIR_BIN}")
+message (STATUS "Directory \"libexec\" is ${DIR_LIBEXEC}")
+message (STATUS "Directory \"var\" is ${DIR_VAR}")
 
 #
 # Imports subdirectories
@@ -129,8 +161,8 @@ configure_file (
 # Install directives for non-src files
 #
 
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afdsmgrd.conf.example DESTINATION etc)
-install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd etc/sysconfig)
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION etc/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-install (FILES macros/StageXrd.C DESTINATION libexec/afdsmgrd-macros)
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/scripts/launch-root.sh DESTINATION libexec PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afdsmgrd.conf.example DESTINATION ${DIR_ETC})
+install_dont_overwrite (${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd ${DIR_ETC}/sysconfig)
+install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION ${DIR_ETC}/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (FILES macros/StageXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
+install (FILES ${CMAKE_CURRENT_BINARY_DIR}/scripts/launch-root.sh DESTINATION ${DIR_LIBEXEC} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
