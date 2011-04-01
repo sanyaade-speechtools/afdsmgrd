@@ -18,8 +18,8 @@
 # Get the configuration variables from the first configuration file found
 declare -a CONF_FILES
 CONF_FILES=(
-  "@CMAKE_INSTALL_PREFIX@/etc/sysconfig/afdsmgrd" \
-  "@CMAKE_INSTALL_PREFIX@/etc/default/afdsmgrd" \
+  "@DIR_ETC@/sysconfig/afdsmgrd" \
+  "@DIR_ETC@/default/afdsmgrd" \
   "/etc/sysconfig/afdsmgrd" \
   "/etc/default/afdsmgrd" \
   "$HOME/.afdsmgrd.cf"

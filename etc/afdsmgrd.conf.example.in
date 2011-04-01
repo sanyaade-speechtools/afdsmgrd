@@ -37,11 +37,6 @@ dsmgrd.sleepsecs 30
 # synchronized with the information inside the datasets
 dsmgrd.scandseveryloops 10
 
-# Every certain number of loops the remote AliEn directory specified on each
-# dataset is checked for new datasets. If this value is not set, no sync is
-# ever performed
-dsmgrd.syncdseveryloops 100
-
 # Maximum number of parallel staging commands to launch. For consistency, set it
 # to the number of servers * the number of parallel transfers for each server
 # (see oss.xfr). To accommodate some delay betwen a transfer's end and the
@@ -64,12 +59,7 @@ dsmgrd.parallelxfrs 30
 # Very important: it is common to use ROOT macros to verify the files; remember
 # to launch ROOT via the root.exe executable, and *not* via the sole root
 # command!
-dsmgrd.stagecmd @CMAKE_INSTALL_PREFIX@/libexec/launch-root.sh -b -q @CMAKE_INSTALL_PREFIX@/libexec/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
-
-# Maximum number of files to place in the queue. If zero or if the directive is
-# omitted, defaults to "no limit". It is strongly advised to put a limit in
-# order to control the memory consumption.
-#dsmgrd.maxfilesinqueue 500
+dsmgrd.stagecmd @DIR_LIBEXEC@/launch-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
 
 # Set this to a number above zero to tell the daemon to mark files as corrupted
 # after a certain number of either download or verification failures. A value of
@@ -91,8 +81,3 @@ dsmgrd.stagecmd @CMAKE_INSTALL_PREFIX@/libexec/launch-root.sh -b -q @CMAKE_INSTA
 # specify what to use as cluster prefix for monitoring datasets information. A
 # default value is used if not given (see source code).
 #dsmgrd.apmondsprefix PROOF::CAF::STORAGE_datasets
-
-# Which datasets to process? Supports the wildcards syntax as implemented in the
-# TDataSetManager class. This setting applies to all the dataset sources. Rarely
-# used, you probably don't have to use it! 
-#dsmgrd.processds /ALICE/*

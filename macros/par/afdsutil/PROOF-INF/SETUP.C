@@ -1,8 +1,11 @@
 /**
- *  This PARfile contains the afdsutil.C macro which is loaded and built when
- *  needed only on the client.
+ * SETUP.C -- by Dario Berzano <dario.berzano@gmail.com>
  *
- *  by Dario Berzano <dario.berzano@gmail.com>
+ * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+ *
+ * Setup macro for PARfile of AFDSUtil. This PARfile contains the afdsutil.C
+ * macro only, which is loaded and built by this setup macro when needed only
+ * on the client.
  */
 
 void SETUP() {

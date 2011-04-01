@@ -46,8 +46,8 @@ target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afOpQueue $
 # Where to install the stuff
 #
 
-install (TARGETS afdsmgrd RUNTIME DESTINATION bin)
-install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION libexec)
+install (TARGETS afdsmgrd RUNTIME DESTINATION ${DIR_BIN})
+install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION ${DIR_LIBEXEC})
 
 #
 # Test executable build and install directives (only in Debug build type)
@@ -55,8 +55,8 @@ install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION libexec)
 
 if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 
-  add_executable (test test.cc)
-  target_link_libraries (test afLog afOpQueue afConfig afDataSetList afRegex ${Root_LIBS})
-  install (TARGETS test RUNTIME DESTINATION bin)
+  add_executable (afdsmgrd-test-libs test.cc)
+  target_link_libraries (afdsmgrd-test-libs afLog afOpQueue afConfig afDataSetList afRegex ${Root_LIBS})
+  install (TARGETS afdsmgrd-test-libs RUNTIME DESTINATION ${DIR_BIN})
 
 endif ()
