@@ -8,7 +8,6 @@
  * of the current process, and before yielding the execution to the external
  * command it writes the current PID to an external file, and redirects stdout
  * and stderr.
- *
  */
 #include <iostream>
 #include <fstream>

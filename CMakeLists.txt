@@ -156,8 +156,8 @@ configure_file (
 
 # Sets the environment for ROOT defined in sysconfig script and launches it
 configure_file (
-  "${PROJECT_SOURCE_DIR}/scripts/launch-root.sh.in"
-  "${PROJECT_BINARY_DIR}/scripts/launch-root.sh"
+  "${PROJECT_SOURCE_DIR}/scripts/afdsmgrd-root.sh.in"
+  "${PROJECT_BINARY_DIR}/scripts/afdsmgrd-root.sh"
   @ONLY
 )
 
@@ -167,6 +167,6 @@ configure_file (
 
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afdsmgrd.conf.example DESTINATION ${DIR_ETC})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd.example DESTINATION ${DIR_ETC}/sysconfig)
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION ${DIR_ETC}/init.d PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION ${DIR_ETC}/init.d)
 install (FILES macros/StageXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/scripts/launch-root.sh DESTINATION ${DIR_LIBEXEC} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-root.sh DESTINATION ${DIR_LIBEXEC})

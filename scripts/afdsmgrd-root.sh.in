@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# launch_root.sh -- by Dario Berzano <dario.berzano@gmail.com>
+# afdsmgrd-root.sh -- by Dario Berzano <dario.berzano@gmail.com>
 #
 # This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
 #
