@@ -43,18 +43,37 @@ endif ()
 # Search for rootcint
 #
 
-find_program(Root_ROOTCINT
-  NAMES rootcint
-  PATHS ${ROOTSYS}/bin
+#find_program(Root_ROOTCINT
+#  NAMES rootcint
+#  PATHS ${ROOTSYS}/bin
+#)
+#
+#if (NOT Root_ROOTCINT)
+#  set (Root_FOUND FALSE)
+#  if (Root_FIND_REQUIRED)
+#    message (FATAL_ERROR "rootcint not found, is ROOT installation corrupted?")
+#  endif ()
+#else ()
+#  message (STATUS "[ROOT] rootcint path: ${Root_ROOTCINT}")
+#endif ()
+
+#
+# Search for ROOT's libCore
+#
+
+find_library (Root_ROOTCORE
+  Core
+  PATHS ${ROOTSYS}/lib
+  NO_DEFAULT_PATH
 )
 
-if (NOT Root_ROOTCINT)
+if (NOT Root_ROOTCORE)
   set (Root_FOUND FALSE)
   if (Root_FIND_REQUIRED)
-    message (FATAL_ERROR "rootcint not found, is ROOT installation corrupted?")
+    message (FATAL_ERROR "ROOT's libCore not found, is ROOT installation OK?")
   endif ()
 else ()
-  message (STATUS "[ROOT] rootcint path: ${Root_ROOTCINT}")
+  message (STATUS "[ROOT] libCore path: ${Root_ROOTCORE}")
 endif ()
 
 #
@@ -93,31 +112,31 @@ endif ()
 # other arguments are the header files of the classes that need a dictionary.
 #
 
-macro (root_generate_dictionaries)
-
-  set (_INHEADERS ${ARGV})
-  list (GET _INHEADERS 0 _FINALDICT)
-  list (REMOVE_AT _INHEADERS 0)
-
-  foreach (_INHEADER ${_INHEADERS})
-
-    get_filename_component (_CLASS_BASE_NAME ${_INHEADER} NAME_WE)
-    set (_OUTDICT ${_CLASS_BASE_NAME}_dict.cc)
-    set (_OUTDICT_HEADER ${_CLASS_BASE_NAME}_dict.h)
-
-    add_custom_command (
-      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_OUTDICT} ${CMAKE_CURRENT_BINARY_DIR}/${_OUTDICT_HEADER}
-      COMMAND LD_LIBRARY_PATH=${Root_LIBDIR}:$ENV{LD_LIBRARY_PATH} ${ROOTSYS}/bin/rootcint -f ${CMAKE_CURRENT_BINARY_DIR}/${_OUTDICT} -c -I${Root_INCDIR} -p ${CMAKE_CURRENT_SOURCE_DIR}/${_INHEADER}
-      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${_INHEADER}
-      IMPLICIT_DEPENDS CXX ${CMAKE_CURRENT_SOURCE_DIR}/${_INHEADER}
-      COMMENT "Generating dictionary for class ${_CLASS_BASE_NAME}"
-    )
-
-    list (APPEND _ROOT_DICTS ${_OUTDICT})
-
-  endforeach ()
-
-  # This command adds at once the dictionaries to a single static library
-  add_library(${_FINALDICT} ${_ROOT_DICTS})
-
-endmacro ()
+#macro (root_generate_dictionaries)
+#
+#  set (_INHEADERS ${ARGV})
+#  list (GET _INHEADERS 0 _FINALDICT)
+#  list (REMOVE_AT _INHEADERS 0)
+#
+#  foreach (_INHEADER ${_INHEADERS})
+#
+#    get_filename_component (_CLASS_BASE_NAME ${_INHEADER} NAME_WE)
+#    set (_OUTDICT ${_CLASS_BASE_NAME}_dict.cc)
+#    set (_OUTDICT_HEADER ${_CLASS_BASE_NAME}_dict.h)
+#
+#    add_custom_command (
+#      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_OUTDICT} ${CMAKE_CURRENT_BINARY_DIR}/${_OUTDICT_HEADER}
+#      COMMAND LD_LIBRARY_PATH=${Root_LIBDIR}:$ENV{LD_LIBRARY_PATH} ${ROOTSYS}/bin/rootcint -f ${CMAKE_CURRENT_BINARY_DIR}/${_OUTDICT} -c -I${Root_INCDIR} -p ${CMAKE_CURRENT_SOURCE_DIR}/${_INHEADER}
+#      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${_INHEADER}
+#      IMPLICIT_DEPENDS CXX ${CMAKE_CURRENT_SOURCE_DIR}/${_INHEADER}
+#      COMMENT "Generating dictionary for class ${_CLASS_BASE_NAME}"
+#    )
+#
+#    list (APPEND _ROOT_DICTS ${_OUTDICT})
+#
+#  endforeach ()
+#
+#  # This command adds at once the dictionaries to a single static library
+#  add_library(${_FINALDICT} ${_ROOT_DICTS})
+#
+#endmacro ()
