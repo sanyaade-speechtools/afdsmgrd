@@ -1,7 +1,10 @@
 #
+# sysconfig/afdsmgrd.example -- by Dario Berzano <dario.berzano@gmail.com>
+#
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
 # Configuration options to launch the afdsmgrd daemon.
 #
-# by Dario Berzano <dario.berzano@gmail.com>
 #
 
 # Full path to the afdsmgrd executable

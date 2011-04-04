@@ -59,7 +59,7 @@ dsmgrd.parallelxfrs 30
 # Very important: it is common to use ROOT macros to verify the files; remember
 # to launch ROOT via the root.exe executable, and *not* via the sole root
 # command!
-dsmgrd.stagecmd @DIR_LIBEXEC@/launch-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
+dsmgrd.stagecmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
 
 # Set this to a number above zero to tell the daemon to mark files as corrupted
 # after a certain number of either download or verification failures. A value of
