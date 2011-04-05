@@ -18,18 +18,15 @@ include_directories (${CMAKE_CURRENT_BINARY_DIR})
 #
 
 add_library (afDataSetList afDataSetList.cc)
-add_library (afOpQueue afOpQueue.cc)
+add_library (afOpQueue afOpQueue.cc sqlite3.c)
 add_library (afExtCmd afExtCmd.cc)
 add_library (afConfig afConfig.cc)
 add_library (afRegex afRegex.cc)
 add_library (afLog afLog.cc)
-add_library (sqlite3 sqlite3.c)
 
 # Test shared libraries (for plugins)
 #add_library (shared_1 SHARED shared_1.cc)
 #add_library (shared_2 SHARED shared_2.cc)
-
-target_link_libraries(afOpQueue afExtCmd sqlite3 -ldl -pthread)
 
 #
 # List of executables and their link-time dependencies
@@ -40,7 +37,7 @@ add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
 # Daemon executable and its libraries
 add_executable (afdsmgrd afdsmgrd.cc)
-target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afOpQueue ${Root_LIBS})
+target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd afOpQueue ${Root_LIBS} -ldl -pthread)
 
 #
 # Where to install the stuff
@@ -56,7 +53,7 @@ install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION ${DIR_LIBEXEC})
 if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 
   add_executable (afdsmgrd-test-libs test.cc)
-  target_link_libraries (afdsmgrd-test-libs afLog afOpQueue afConfig afDataSetList afRegex ${Root_LIBS})
+  target_link_libraries (afdsmgrd-test-libs afLog afConfig afDataSetList afRegex afExtCmd afOpQueue ${Root_LIBS} -ldl -pthread)
   install (TARGETS afdsmgrd-test-libs RUNTIME DESTINATION ${DIR_BIN})
 
 endif ()
