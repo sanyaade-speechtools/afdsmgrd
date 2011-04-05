@@ -57,4 +57,4 @@ CDDIR=$(dirname "$DIR")
 DIR=$(basename "$DIR")
 
 cd "$CDDIR"
-tar czf "$PAR" "$DIR" --exclude-vcs
+tar czf "$PAR" "$DIR" --exclude '.svn' # --exclude-vcs not ubiquitous :(
