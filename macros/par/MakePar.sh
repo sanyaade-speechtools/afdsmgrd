@@ -39,22 +39,36 @@ if [ "$1" == "" ]; then
   exit 1
 fi
 
+if [ "$2" != "" ]; then
+  BASEPAR="$2"
+else
+  BASEPAR=$(basename "$1")
+fi
+
 DIR=$(NormalizePath "$1")
-PAR=$(basename "$1")
 
 if [ "$PAR" == "/" ]; then
   echo "Cannot create PARFiles from the root directory!"
   exit 2
 fi
 
-PAR=$(dirname "$0")/"$PAR".par
+PAR=$(dirname "$0")/"$BASEPAR".par
 PAR=$(NormalizePath "$PAR")
+TMP=$(mktemp -d)
 
 echo -e "\033[1;35mInput dir\033[m  : $DIR"
 echo -e "\033[1;35mOutput PAR\033[m : $PAR"
+#echo -e "\033[1;35mWork dir\033[m   : $TMP"
 
-CDDIR=$(dirname "$DIR")
-DIR=$(basename "$DIR")
+if [ ! -d "$DIR" ]; then
+  echo "Can't access input directory $DIR"
+  exit 2
+fi
 
-cd "$CDDIR"
-tar czf "$PAR" "$DIR" --exclude '.svn' # --exclude-vcs not ubiquitous :(
+rsync -a "$DIR" "$TMP"
+cd "$TMP"
+mv $(basename "$DIR") "$BASEPAR" 2> /dev/null
+
+tar czf "$PAR" "$BASEPAR" --exclude '.svn' # --exclude-vcs not ubiquitous :(
+
+#rm -rf "$TMP"

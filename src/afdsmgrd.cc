@@ -146,8 +146,8 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
   std::string *dsm_mss = (std::string *)args_array[2];
   std::string *dsm_opt = (std::string *)args_array[3];
 
-  af::log::info(af::log_level_normal, "(To Be Removed) name=%s val=%s", name,
-    val);
+  af::log::info(af::log_level_debug, "Full dataset source directive: "
+    "name=%s value=%s", name, val);
 
   char *cfgline = NULL;
   char *tok = NULL;

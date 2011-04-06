@@ -400,7 +400,7 @@ bool opQueue::failed(const char *url, bool is_staged) {
     sqlite3_clear_bindings(query_failed_nothr);
 
     sqlite3_bind_int64(query_failed_nothr, 1, ++last_queue_rowid);
-    sqlite3_bind_int64(query_failed_thr, 2, is_staged);
+    sqlite3_bind_int64(query_failed_nothr, 2, is_staged);
     sqlite3_bind_text(query_failed_nothr, 3, url, -1, SQLITE_STATIC);
 
     r = sqlite3_step(query_failed_nothr);
