@@ -158,7 +158,7 @@ void notifyApMon::dataset(const char *ds_name, int n_files, int n_staged,
   unsigned long long total_size_bytes) {
 
   if ((!apmon) || (apmon_prefix.empty())) {
-    log::warning(log_level_debug,
+    log::warning(log_level_high,
       "Skipping MonALISA datasets notification due to invalid configuration");
     return;
   }
@@ -215,7 +215,7 @@ void notifyApMon::queue(unsigned int n_queued, unsigned int n_runn,
 void notifyApMon::commit() {
 
   if ((!apmon) || (apmon_prefix.empty())) {
-    log::warning(log_level_debug,
+    log::warning(log_level_high,
       "Skipping MonALISA status notification due to invalid configuration");
     return;
   }
