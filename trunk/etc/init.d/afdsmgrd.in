@@ -176,7 +176,7 @@ function LaunchDaemon() {
 
   # This is a setuid program: for security reasons, LD_LIBRARY_PATH is not
   # inherited in the environment inside the daemon
-  ( export LD_LIBRARY_PATH="$ROOTSYS/lib:$LD_LIBRARY_PATH" ; \
+  ( export LD_LIBRARY_PATH="$ROOTSYS/lib:$AFDSMGRD_LIBS:$LD_LIBRARY_PATH" ; \
     "$AFDSMGRD_PROG" -b -u "$SUSER" -p "$PIDFILE" -c "$CONF" -d "$LOG_LEVEL" \
     -l "$LOGFILE" -e "$AFDSMGRD_LIBEXEC" > /dev/null 2>&1 )
 

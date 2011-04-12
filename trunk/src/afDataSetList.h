@@ -55,6 +55,7 @@ namespace af {
       void free_datasets();
       bool save_dataset();
       const char *get_default_tree();
+      const TFileCollection *get_fc() const { return fi_coll; };
       bool set_default_tree(const char *treename);
 
       // Browse entries of a dataset

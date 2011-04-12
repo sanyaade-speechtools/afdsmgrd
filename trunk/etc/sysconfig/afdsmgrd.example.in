@@ -17,11 +17,16 @@ export AFDSMGRD_CONF=@DIR_ETC@/afdsmgrd.conf
 # Root of your ROOT installation directory
 export ROOTSYS=@ROOTSYS@
 
+# Extra library paths for afdsmgrd -- used for instance to locate external
+# plugins. This list does not include ROOT libraries, which are automatically
+# added by means of the ROOTSYS variable
+export AFDSMGRD_LIBS=/opt/aaf/alien/api/lib
+
 # Extra libraries for external staging command
-export AFDSMGRD_EXTRALIBS=/opt/aaf/alien/api/lib
+export AFDSMGRD_EXTCMD_LIBS=/opt/aaf/alien/api/lib
 
 # Extra path for external staging command
-export AFDSMGRD_EXTRAPATH=/opt/aaf/alien/api/bin
+export AFDSMGRD_EXTCMD_PATH=/opt/aaf/alien/api/bin
 
 # Path where to find helper executables for the stager daemon
 export AFDSMGRD_LIBEXEC=@DIR_LIBEXEC@

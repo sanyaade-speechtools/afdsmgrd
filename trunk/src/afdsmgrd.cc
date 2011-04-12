@@ -27,6 +27,7 @@
 #include "afExtCmd.h"
 #include "afOpQueue.h"
 #include "afNotify.h"
+#include "afOptions.h"
 
 #include <TDataSetManagerFile.h>
 
@@ -56,8 +57,17 @@ typedef struct {
   long max_stage_retries;    // dsmgrd.corruptafterfails
   std::string stage_cmd;     // dsmgrd.stagecmd
   af::regex url_regex;       // dsmgrd.urlregex
+  af::notify *notif;
 
 } afdsmgrd_vars_t;
+
+/** Custom resources holder.
+ */
+typedef struct {
+  unsigned int size_kib;
+  unsigned int vsize_kib;
+  float total_pcpu;
+} afdsmgrd_res_t;
 
 /** Global variables.
  */
@@ -69,7 +79,7 @@ bool quit_requested = false;
 af::log *set_logfile(const char *log_file) {
 
   af::log *log;
-  std::string banner = "*** cyppalyppa ***";
+  std::string banner = AF_VERSION_BANNER;
 
   if (log_file) {
     try {
@@ -213,6 +223,40 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
 }
 
+/** Callback called when directive dsmgrd.notify changes: it loads and unloads
+ *  external libraries for notification. Remember that val is NULL if no value
+ *  was specified (i.e., directive is missing).
+ */
+void config_callback_notify(const char *name, const char *val, void *args) {
+
+  void **args_array = (void **)args;
+
+  af::notify **notif = (af::notify **)args_array[0];
+  af::config *cfg = (af::config *)args_array[1];
+
+  // Since directive is called only if something has changed, let's delete
+  // any previously loaded library, if present
+  if (*notif) {
+    af::notify::unload(*notif);
+    *notif = NULL;
+    af::log::info(af::log_level_high, "Notification plugin unloaded");
+  }
+
+  // Then, if a right value is specified, load a new one and report status
+  if (!val) return;
+
+  *notif = af::notify::load(val, *cfg);
+  if (*notif) {
+    af::log::ok(af::log_level_high, "Plugin loaded: %s (%s)",
+      val, (*notif)->whoami());
+  }
+  else {
+    af::log::error(af::log_level_high, "Can't load notification plugin: %s",
+      val);
+  }
+
+}
+
 /** Toggles between unprivileged user and super user. Saves the unprivileged UID
  *  and GID inside static variables.
  *
@@ -279,39 +323,36 @@ void toggle_suid(bool enable = false) {
 
 }
 
-/**
+/** Gets the daemon resources by launching ps. If called with pid as argument,
+ *  pid of current process will be known by subsequent calls without arguments,
+ *  which will return a reference to an internal statically allocated struct.
  */
-void print_daemon_status(pid_t pid = 0) {
+afdsmgrd_res_t &get_daemon_resources(pid_t pid = 0) {
+
   static pid_t daemon_pid = 0;
   static char cmdline[50];
   static char outp[200];
+  static afdsmgrd_res_t res;
 
   if (pid != 0) {
     daemon_pid = pid;
-    return;
+    return res;
   }
 
-  snprintf(cmdline, 50, "ps ax -o pid,size,vsize | grep '^\\s*%d'", daemon_pid);
+  snprintf(cmdline, 50, "ps ax -o pid,size,vsize,pcpu | "
+    "grep '^\\s*%d'", daemon_pid);
 
   FILE *ps_file = popen(cmdline, "r");
-  unsigned int size = 0;   // KiB
-  unsigned int vsize = 0;  // KiB
 
   if (ps_file) {
     if (fgets(outp, 200, ps_file)) {
-      sscanf(outp, "%*u %u %u", &size, &vsize);
+      sscanf(outp, "%*u %u %u %f", &(res.size_kib), &(res.vsize_kib),
+        &(res.total_pcpu));
     }
     pclose(ps_file);
   }
 
-  if ((size != 0) && (vsize != 0)) {
-    af::log::info(af::log_level_normal,
-      "Daemon memory occupation: size: %u KiB, vsize: %u KiB", size, vsize);
-  }
-  else {
-    af::log::error(af::log_level_normal,
-      "Can't fetch daemon memory occupation");
-  }
+  return res;
 }
 
 /** Transfer queue is processed: check if slots are freed, then insert elements
@@ -478,7 +519,7 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
   }
 
   //
-  // Dump database and summary
+  // Summary (also notification)
   //
 
   unsigned int n_queued, n_runn, n_success, n_fail, n_total;
@@ -487,6 +528,8 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
   af::log::info(af::log_level_normal, "Total elements in queue: %u || "
     "Queued: %u | Downloading: %u | Success: %u | Failed: %u",
     n_total, n_queued, n_runn, n_success, n_fail);
+  if (vars.notif)
+    vars.notif->queue(n_queued, n_runn, n_success, n_fail, n_total);
 
   //af::log::info(af::log_level_normal, "========== Begin Of Queue ==========");
   //opq.dump(true);
@@ -730,10 +773,40 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
       af::log::info(af::log_level_low, "Dataset %s not modified", ds);
     }
 
+    if (vars.notif) {
+      const TFileCollection *fc = dsm.get_fc();
+      const char *tree_name = dsm.get_default_tree();
+      int n_events;
+      long long total_size = fc->GetTotalSize();
+
+      if (tree_name) {
+        n_events = fc->GetTotalEntries(tree_name);
+        if (n_events < 0) n_events = 0;
+      }
+      else {
+        tree_name = "";
+        n_events = 0;
+      }
+
+      if (total_size < 0LL) total_size = 0LL;
+
+      vars.notif->dataset(
+        ds,                             // const char *ds_name
+        (int)fc->GetNFiles(),           // int n_files
+        (int)fc->GetNStagedFiles(),     // int n_taged
+        (int)fc->GetNCorruptFiles(),    // int n_corrupted
+        (char *)tree_name,              // const char *tree_name
+        n_events,                       // int n_events
+        (unsigned long long)total_size  // unsigned ll total_size_bytes
+      );
+
+    }
+
     dsm.free_files();
     count_ds++;
 
-  }
+  }  // end loop over datasets
+
   dsm.free_datasets();
 
   af::log::info(af::log_level_low, "Number of datasets processed: %u",
@@ -774,6 +847,10 @@ void main_loop(af::config &config) {
   vars.scan_ds_every_loops = 0;
   vars.max_concurrent_xfrs = 0;
   vars.max_stage_retries = 0;
+  vars.notif = NULL;
+
+  // Variables for notify plugin loader/unloader (through callback)
+  void *notif_cbk_args[] = { &vars.notif, &config };
 
   // Bind directives to either variables or special callbacks
   config.bind_callback("xpd.datasetsrc", &config_callback_datasetsrc,
@@ -787,6 +864,8 @@ void main_loop(af::config &config) {
     1000);
   config.bind_callback("dsmgrd.urlregex", &config_callback_urlregex,
     &vars.url_regex);
+  config.bind_callback("dsmgrd.notifyplugin", &config_callback_notify,
+    notif_cbk_args);
 
   // The loop counter
   long count_loops = -1;
@@ -844,7 +923,21 @@ void main_loop(af::config &config) {
     // Report resources and sleep until next loop
     //
 
-    print_daemon_status();
+    afdsmgrd_res_t &res = get_daemon_resources();
+
+    if ((res.size_kib != 0) && (res.vsize_kib != 0)) {
+      af::log::info(af::log_level_normal,
+        "Daemon resources usage: size: %u KiB, vsize: %u KiB, "
+        "total CPU time: %.1f%%", res.size_kib, res.vsize_kib, res.total_pcpu);
+      if (vars.notif) {
+        vars.notif->resources(res.size_kib, res.vsize_kib, res.total_pcpu);
+        vars.notif->commit();
+      }
+    }
+    else {
+      af::log::error(af::log_level_normal,
+        "Can't fetch daemon memory occupation");
+    }
 
     af::log::info(af::log_level_low, "Sleeping %ld seconds", vars.sleep_secs);
     sleep(vars.sleep_secs);
@@ -947,7 +1040,7 @@ int main(int argc, char *argv[]) {
   // Report current PID on log facility
   pid_t pid = getpid();
   write_pidfile(pid, pid_file);
-  print_daemon_status(pid);
+  get_daemon_resources(pid);
 
   af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
 

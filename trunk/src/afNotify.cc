@@ -16,22 +16,30 @@ using namespace af;
 notify *notify::load(const char *libpath, config &cfg) {
 
   void *lib_handler = dlopen(libpath, RTLD_LAZY);
-  if (!lib_handler) return NULL;
+  if (!lib_handler) {
+    af::log::error(af::log_level_high, "dlopen() failed: %s", dlerror());
+    return NULL;
+  }
 
   const char *dlerr;
 
   create_t lib_create = (create_t)dlsym(lib_handler, "create");
-  if (dlerr = dlerror()) return NULL;
+  if (dlerr = dlerror()) {
+    af::log::error(af::log_level_high, "dlsym() can't find create()!");
+    return NULL;
+  }
 
   destroy_t lib_destroy = (destroy_t)dlsym(lib_handler, "destroy");
-  if (dlerr = dlerror()) return NULL;
+  if (dlerr = dlerror()) {
+    af::log::error(af::log_level_high, "dlsym() can't find destroy()!");
+    return NULL;
+  }
 
   af::notify *notif = lib_create(cfg);
   if (notif) {
     notif->lib_handler = lib_handler;
     notif->lib_create  = lib_create;
     notif->lib_destroy = lib_destroy;
-    notif->init();
   }
 
   return notif;

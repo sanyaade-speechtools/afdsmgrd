@@ -10,6 +10,66 @@
 
 using namespace af;
 
+/** Static variables: suffixes for "cluster" name for datasets and daemon
+ *  status. They are appended to the value specified in the apmonprefix
+ *  directive on file.
+ */
+const char *notifyApMon::ds_suffix = "_datasets";
+const char *notifyApMon::stat_suffix = "_status";
+
+/** Arrays used by ApMon::sendParameters().
+ */
+
+char *notifyApMon::stat_param_names[] = {
+  (char *)"size_kib",
+  (char *)"vsize_kib",
+  (char *)"total_pcpu",
+  (char *)"queue_queued",
+  (char *)"queue_running",
+  (char *)"queue_success",
+  (char *)"queue_failed",
+  (char *)"queue_total"
+};
+
+int notifyApMon::stat_val_types[] = {
+  XDR_INT32,
+  XDR_INT32,
+  XDR_REAL32,
+  XDR_INT32,
+  XDR_INT32,
+  XDR_INT32,
+  XDR_INT32,
+  XDR_INT32
+};
+
+unsigned int notifyApMon::stat_n_params = sizeof(stat_val_types)/sizeof(int);
+
+char *notifyApMon::ds_param_names[] = {
+  (char *)"dsname",
+  (char *)"filescount",
+  (char *)"stagecount",
+  (char *)"corruptedcount",
+  (char *)"stagedpct",
+  (char *)"corruptedpct",
+  (char *)"treename",
+  (char *)"nevts",
+  (char *)"totsizemb" // mb is for MiB, i.e. 1024*1024 bytes
+};
+
+int notifyApMon::ds_val_types[] = {
+  XDR_STRING,
+  XDR_INT32,
+  XDR_INT32,
+  XDR_INT32,
+  XDR_REAL32,
+  XDR_REAL32,
+  XDR_STRING,
+  XDR_INT32,
+  XDR_INT32
+};
+
+unsigned int notifyApMon::ds_n_params = sizeof(ds_val_types)/sizeof(int);
+
 /** Non-member function with C-style name binding (i.e., no mangling) to
  *  allow for classes in libraries through polymorphism.
  */
@@ -31,25 +91,13 @@ extern "C" void destroy(notify *notif) {
 
 /** Returns a string identifier for this plugin.
  */
-const char *notifyApMon::whoami() {
+const char *notifyApMon::whoami() const {
   return "ApMon (MonALISA) notification plugin";
 }
 
 /** Default constructor.
  */
 notifyApMon::notifyApMon(config &_cfg) : notify(_cfg) {
-  printf("this is constructor -- we set config here\n");
-}
-
-/** Destructor.
- */
-notifyApMon::~notifyApMon() {
-  printf("this is destructor\n");
-}
-
-/** Initialization function: called right after plugin is loaded.
- */
-void notifyApMon::init() {
 
   apmon = NULL;
   apmon_pool = malloc( sizeof(ApMon) );  // pool-allocating memory for ApMon
@@ -62,15 +110,45 @@ void notifyApMon::init() {
   cbk_args[1] = apmon_pool;     // void *
   cbk_args[2] = &apmon_params;  // apmon_params_t *
 
-  printf("[ini] &apmon        = 0x%016lx\n", &apmon);
-  printf("[ini] &apmon_pool   = 0x%016lx\n", apmon_pool);
-  printf("[ini] &apmon_params = 0x%016lx\n", &apmon_params);
-  printf("[ini]        ->port = 0x%016lx\n", apmon_params.port);
-  printf("[ini]        ->host = 0x%016lx\n", apmon_params.host);
-  printf("[ini]        ->pwd  = 0x%016lx\n", apmon_params.pwd);
-
+  // Bind directives to the configuration file
   cfg.bind_callback("dsmgrd.apmonurl", notifyApMon::config_apmonurl_callback,
     cbk_args);
+  cfg.bind_text("dsmgrd.apmonprefix", &apmon_prefix, "");
+
+  // Allocate array for parameters and init it to zero: for info, see:
+  // http://stackoverflow.com/questions/2204176/
+  // how-to-initialise-memory-with-new-operator-in-c
+  stat_param_vals = new char *[stat_n_params];
+  ds_param_vals = new char *[ds_n_params]();
+
+  // Pointers to values inside a pool
+  stat_param_vals[0] = (char *)&(stat_vals_pool.size_kib);
+  stat_param_vals[1] = (char *)&(stat_vals_pool.vsize_kib);
+  stat_param_vals[2] = (char *)&(stat_vals_pool.total_pcpu);
+  stat_param_vals[3] = (char *)&(stat_vals_pool.n_queued);
+  stat_param_vals[4] = (char *)&(stat_vals_pool.n_runn);
+  stat_param_vals[5] = (char *)&(stat_vals_pool.n_success);
+  stat_param_vals[6] = (char *)&(stat_vals_pool.n_fail);
+  stat_param_vals[7] = (char *)&(stat_vals_pool.n_total);
+
+}
+
+/** Destructor: frees memory (if used), then frees the pool.
+ */
+notifyApMon::~notifyApMon() {
+
+  if (apmon) apmon->~ApMon();
+  if (apmon_params.host[0]) free(apmon_params.host[0]);
+  if (apmon_params.pwd[0]) free(apmon_params.pwd[0]);
+
+  free(apmon_pool);
+
+  cfg.unbind("dsmgrd.apmonurl");
+  cfg.unbind("dsmgrd.apmonprefix");
+
+  delete[] stat_param_vals;
+  delete[] ds_param_vals;
+
 }
 
 /** Notifies to MonALISA the presence of a dataset.
@@ -79,10 +157,118 @@ void notifyApMon::dataset(const char *ds_name, int n_files, int n_staged,
   int n_corrupted, const char *tree_name, int n_events,
   unsigned long long total_size_bytes) {
 
+  if ((!apmon) || (apmon_prefix.empty())) {
+    log::warning(log_level_debug,
+      "Skipping MonALISA datasets notification due to invalid configuration");
+    return;
+  }
+
+  float pct_stg = 100. * n_staged / n_files;
+  float pct_cor = 100. * n_corrupted / n_files;
+
+  int total_size_mib = (int)(total_size_bytes / 1048576L);
+
+  ds_param_vals[0] = (char *)ds_name;
+  ds_param_vals[1] = (char *)&n_files;
+  ds_param_vals[2] = (char *)&n_staged;
+  ds_param_vals[3] = (char *)&n_corrupted;
+  ds_param_vals[4] = (char *)&pct_stg;
+  ds_param_vals[5] = (char *)&pct_cor;
+  ds_param_vals[6] = (char *)tree_name;
+  ds_param_vals[7] = (char *)&n_events;
+  ds_param_vals[8] = (char *)&total_size_mib;
+
+  snprintf(id_str_buf, AF_NOTIFYAPMON_ID_BUFSIZE, "%08x", hash(ds_name));
+  snprintf(prefix_buf, AF_NOTIFYAPMON_PREFIX_BUFSIZE, "%s%s",
+    apmon_prefix.c_str(), ds_suffix);
+
+  apmon_send(prefix_buf, (char *)id_str_buf,
+    ds_n_params, ds_param_names, ds_val_types, ds_param_vals);
 
 }
 
-/**
+/** Report resources usage, notably memory size and vsize, and percentage of CPU
+ *  used since daemon bootstrap. Note: a call to commit() is required to send to
+ *  ApMon.
+ */
+void notifyApMon::resources(unsigned int size_kib, unsigned int vsize_kib,
+  float total_pcpu) {
+  stat_vals_pool.size_kib   = size_kib;
+  stat_vals_pool.vsize_kib  = vsize_kib;
+  stat_vals_pool.total_pcpu = total_pcpu;
+}
+
+/** Report queue status. Note: a call to commit() is required to send to ApMon.
+ */
+void notifyApMon::queue(unsigned int n_queued, unsigned int n_runn,
+  unsigned int n_success, unsigned int n_fail, unsigned int n_total) {
+  stat_vals_pool.n_queued  = n_queued;
+  stat_vals_pool.n_runn    = n_runn;
+  stat_vals_pool.n_success = n_success;
+  stat_vals_pool.n_fail    = n_fail;
+  stat_vals_pool.n_total   = n_total;
+}
+
+/** Commits to MonALISA data collected through queue() and resources(). Datasets
+ *  data needn't this because it is sent immediately.
+ */
+void notifyApMon::commit() {
+
+  if ((!apmon) || (apmon_prefix.empty())) {
+    log::warning(log_level_debug,
+      "Skipping MonALISA status notification due to invalid configuration");
+    return;
+  }
+
+  // We suppose that valid data is inside stat_param_vals! Beware!
+
+  snprintf(prefix_buf, AF_NOTIFYAPMON_PREFIX_BUFSIZE, "%s%s",
+    apmon_prefix.c_str(), stat_suffix);
+
+  apmon_send(prefix_buf, "afdsmgrd",
+    stat_n_params, stat_param_names, stat_val_types, stat_param_vals);
+
+  // Eventually reset cache
+  memset(&stat_vals_pool, 0, sizeof(stat_vals_pool));
+
+}
+
+/** Wrapper around ApMon's sendParameters() that absorbs any error or exception.
+ */
+void notifyApMon::apmon_send(char *cluster, char *node, int n_params,
+  char **param_names, int *val_types, char **param_vals) {
+
+  try {
+
+    // TODO: can config it... or find a better solution (i.e. increase num. of
+    // datagrams per second)
+    const unsigned int max_retries = 5;
+    int r;
+
+    for (unsigned int i=0; i<max_retries; i++) {
+      r = apmon->sendParameters(cluster, node, n_params, param_names,
+        val_types, param_vals);
+      if (r != RET_NOT_SENT) break;
+    }
+
+    // Report error only if fails to send message after max_retries
+    if (r == RET_NOT_SENT) {
+      log::error(log_level_low, "MonALISA notification skipped after %u tries: "
+        "maximum number of datagrams per second exceeded", max_retries);
+    }
+
+  }
+  catch (runtime_error &e) {
+    log::error(log_level_high, "Error sending information to MonALISA");
+  }
+
+}
+
+/** Callback called every time the dsmgrd.apmonurl changes: it deletes the
+ *  current instance of ApMon and creates a new one (if parameters are OK) using
+ *  new parameters. Memory for the ApMon object is pool-allocated only once in
+ *  the constructor. Note: this function is static and has to be like this,
+ *  because a pointer to it is given to the af::config class.
  */
 void notifyApMon::config_apmonurl_callback(const char *dir_name,
   const char *dir_val, void *args) {
@@ -92,34 +278,24 @@ void notifyApMon::config_apmonurl_callback(const char *dir_name,
   void *apmon_mempool = (void *)args_array[1];
   apmon_params_t *apmon_params_ptr = (apmon_params_t *)args_array[2];
 
-  printf("[cbk] Callback invoked\n");
-  printf("[cbk] name=%s\n", dir_name);
-  printf("[cbk] val=%s\n", dir_val);
-
-  printf("[cbk] apmon_ptr        = 0x%016lx --> 0x%016lx\n", apmon_ptr, *apmon_ptr);
-  printf("[cbk] apmon_mempool    = 0x%016lx\n", apmon_mempool);
-  printf("[cbk] apmon_params_ptr = 0x%016lx\n", apmon_params_ptr);
-  printf("[cbk]           ->port = 0x%016lx\n", apmon_params_ptr->port);
-  printf("[cbk]           ->host = 0x%016lx --> 0x%016lx\n", apmon_params_ptr->host, apmon_params_ptr->host[0]);
-  printf("[cbk]           ->pwd  = 0x%016lx --> 0x%016lx\n", apmon_params_ptr->pwd, apmon_params_ptr->pwd[0]);
-
   //
   // Delete previous instance of ApMon, if there is one
   //
 
-  printf("[cbk] apmon_ptr = %016lx\n", *apmon_ptr);
   if (*apmon_ptr) {
+    log::info(log_level_normal,
+      "Configuration changed: removing former ApMon notifier");
     (*apmon_ptr)->~ApMon();  // don't free, just destroy: it's a pool
     *apmon_ptr = NULL; 
   }
 
-  if ( apmon_params_ptr->host[0] ) {
-    free( apmon_params_ptr->host[0] );
+  if (apmon_params_ptr->host[0]) {
+    free( apmon_params_ptr->host[0]);
     apmon_params_ptr->host[0] = NULL;
   }
 
-  if ( apmon_params_ptr->pwd[0] ) {
-    free( apmon_params_ptr->pwd[0] );
+  if (apmon_params_ptr->pwd[0]) {
+    free(apmon_params_ptr->pwd[0]);
     apmon_params_ptr->pwd[0] = NULL;
   }
 
@@ -160,7 +336,6 @@ void notifyApMon::config_apmonurl_callback(const char *dir_name,
           case 5: pwd   = sub; break;
           case 6: host  = sub; break;
           case 8:
-            printf("[cbk] port is %s\n", sub.c_str());
             port = (int)strtol(sub.c_str(), NULL, 0);
           break;
         }
@@ -172,7 +347,6 @@ void notifyApMon::config_apmonurl_callback(const char *dir_name,
     //
 
     // Memory is allocated in pool and zeroed because ApMon is deeply bugged!
-    printf("[cbk] Setting to zero %u bytes\n", sizeof(ApMon));
     memset(apmon_mempool, 0, sizeof(ApMon));
 
     if (proto == "apmon") {
@@ -180,17 +354,17 @@ void notifyApMon::config_apmonurl_callback(const char *dir_name,
       // Check port and assign default (8884) if needed
       if ((port <= 0) || (port > 65535)) port = 8884;
 
-      // ApMon(int nDestinations, char **destAddresses, int *destPorts,
-      //   char **destPasswds)
-      printf("[cbk] protocol is apmon\n");
-      printf("[cbk] pwd=%s host=%s port=%d\n", pwd.c_str(), host.c_str(),
-        port);
+      log::info(log_level_normal,
+        "Creating new ApMon instance from direct server specification: "
+        "host=%s, port=%d, pwd=%s", host.c_str(), port, pwd.c_str());
 
       apmon_params_ptr->host[0] = strdup(host.c_str());
       apmon_params_ptr->pwd[0]  = strdup(pwd.c_str());
       apmon_params_ptr->port[0] = port;
 
       // In memory pool
+      // ApMon(int nDestinations, char **destAddresses, int *destPorts,
+      //   char **destPasswds)
       *apmon_ptr = new(apmon_mempool) ApMon(1,
         apmon_params_ptr->host,
         apmon_params_ptr->port,
@@ -198,22 +372,21 @@ void notifyApMon::config_apmonurl_callback(const char *dir_name,
 
     }
     else {
-      // ApMon(char *initsource);
-      printf("[cbk] protocol is any\n");
-      printf("[cbk] init with url=%s\n", url.c_str());
+      log::info(log_level_normal,
+        "Creating new ApMon instance from configuration URL: %s", url.c_str());
 
       apmon_params_ptr->host[0] = strdup(url.c_str());
 
       // In memory pool
+      // ApMon(char *initsource);
       *apmon_ptr = new(apmon_mempool) ApMon(1, apmon_params_ptr->host);
     }
 
-    printf("[cbk] *apmon_ptr = %016lx, apmon_pool = %016lx\n",
-      *apmon_ptr, apmon_mempool);
-
   }
 
+  //
   // If URL is not valid, nothing is done: no valid ApMon will be available
+  //
 
   // Free regex
   regfree(re_compd);
@@ -221,113 +394,28 @@ void notifyApMon::config_apmonurl_callback(const char *dir_name,
 
 }
 
-/*
+/** Hash function identical (i.e., copied and adapted) to the one in ROOT's
+ *  TString. Used to hash dataset name.
+ */
+unsigned int notifyApMon::hash(const char *str) {
 
-void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
-  Int_t nFiles, Int_t nStaged, Int_t nCorrupted, const char *treeName,
-  Int_t nEvts, Long64_t totalSizeBytes) {
+  unsigned int len      = (unsigned int)strlen(str);
+  unsigned int hv       = len;  // mix in the string length
+  unsigned int i        = hv * sizeof(char) / sizeof(unsigned int);
+  const unsigned int *p = (const unsigned int *)str;
 
-  #ifdef WOTH_APMON
+  while (i--) AF_NOTIFYAPMON_MASH(hv, *p++);  // xor in the chars
 
-  if (!fApMon) {
-    return;
-  }
+  // xor in any remaining char
 
-  Float_t pctStaged = 100. * nStaged / nFiles;
-  Float_t pctCorrupted = 100. * nCorrupted / nFiles;
-
-  char *paramNames[] = {
-    (char *)"dsname",
-    (char *)"filescount",
-    (char *)"stagecount",
-    (char *)"corruptedcount",
-    (char *)"stagedpct",
-    (char *)"corruptedpct",
-    (char *)"treename",
-    (char *)"nevts",
-    (char *)"totsizemb" // MB = 1024*1024 bytes
-  };
-
-  Int_t valueTypes[] = {
-    XDR_STRING,
-    XDR_INT32,
-    XDR_INT32,
-    XDR_INT32,
-    XDR_REAL32,
-    XDR_REAL32,
-    XDR_STRING,
-    XDR_INT32,
-    XDR_INT32
-  };
-
-  Int_t totalSizeMB = (Int_t)(totalSizeBytes / 1048576L);
-
-  char *paramValues[] = {
-    (char *)dsName,
-    (char *)&nFiles,
-    (char *)&nStaged,
-    (char *)&nCorrupted,
-    (char *)&pctStaged,
-    (char *)&pctCorrupted,
-    (char *)treeName,
-    (char *)&nEvts,
-    (char *)&totalSizeMB
-  };
-
-  Int_t nParams = sizeof(paramNames) / sizeof(char *);
-
-  char buf[10];
-  snprintf(buf, 10, "%08x", uniqueId);
-
-  try {
-
-    const UInt_t maxRetries = 5;
-    Int_t r;
-
-    for (UInt_t i=0; i<maxRetries; i++) {
-      r = fApMon->sendParameters( (char *)fApMonDsPrefix.Data(),
-        (char *)buf, nParams, paramNames, valueTypes, paramValues);
-
-      if (r != RET_NOT_SENT) break;
+  if ((i = len*sizeof(char)%sizeof(unsigned int)) != 0) {
+    unsigned int h = 0;
+    const char* c = (const char*)p;
+    while (i--) {
+      h = ((h << 8 * sizeof(char)) | *c++);
     }
-
-    // Report error only if fails to send message after maxRetries retries
-    if (r == RET_NOT_SENT) {
-      AfLogDebug(10, "MonALISA notification skipped after %u tries: maximum "
-        "number of datagrams per second exceeded", maxRetries);
-    }
-
-  }
-  catch (runtime_error &e) {
-    AfLogError("Error sending information to MonALISA");
+    AF_NOTIFYAPMON_MASH(hv, h);
   }
 
-  #endif // WOTH_APMON
+  return hv;
 }
-
-void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
-
-  #ifdef WOTH_APMON
-
-  try {
-    if (strcmp(monUrl->GetProtocol(), "apmon") == 0) {
-      char *host = (char *)monUrl->GetHost();
-      Int_t port = monUrl->GetPort();
-      char *pwd = (char *)monUrl->GetPasswd();
-      fApMon = new ApMon(1, &host, &port, &pwd);
-    }
-    else {
-      fApMon = new ApMon((char *)monUrl->GetUrl());
-    }
-  }
-  catch (runtime_error &e) {
-    AfLogError("Can't create ApMon object from URL %s, error was: %s",
-      monUrl->GetUrl(), e.what());
-    delete fApMon;
-    fApMon = NULL;
-  }
-
-  #endif // WOTH_APMON
-}
-
-*/

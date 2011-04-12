@@ -152,7 +152,6 @@ bool dataSetList::set_default_tree(const char *treename) {
   return false;
 }
 
-
 /** Asks for the list of files (TFileInfo objs) for a given dataset name in
  *  current dataset manager. If ds_name is NULL then the last dataset name
  *  obtained via next_dataset() is used, if one. If reading of dataset fails for

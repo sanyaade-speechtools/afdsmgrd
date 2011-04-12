@@ -386,6 +386,22 @@ void test_dl() {
       printf("Configuration updated\n");
     }
 
+    //
+    // Notify datasets
+    //
+
+    // const char *ds_name, int n_files, int n_staged,
+    // int n_corrupted, const char *tree_name, int n_events,
+    // unsigned long long total_size_bytes
+    notif->dataset(
+      "/pippo/paperino/test",  // ds_name
+      150,                     // n_files
+      0,                       // n_corrupted
+      147,                     // n_staged
+      "/pippoTree",            // tree_name
+      150000,                  // n_events
+      123456789L               // total_size_bytes
+    );
 
     printf("--\n");
     for (unsigned int elapsed_secs=0; elapsed_secs<secs; elapsed_secs++) {
@@ -446,7 +462,7 @@ int main(int argc, char *argv[]) {
   //test_queue();
   //test_extcmd(argv[0]);
   //test_config(999);
-  test_log();
+  //test_log();
   test_dl();
 
   printf("!!! goodbye !!!\n");
