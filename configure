@@ -6,8 +6,11 @@
 # This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
 #
 # Configure script that uses CMake to allow the building of afdsmgrd. This
-# script is designed both to run as a standalone and to fit within the
-# xrd-installer system if distributed with xrootd.
+# script is designed to:
+#
+#  - run as a standalone script called by the user for a custom build
+#  - fit within the xrd-installer system if distributed with xrootd
+#  - fit within the ROOT framework (--root-mode) if distributed with ROOT
 #
 
 #

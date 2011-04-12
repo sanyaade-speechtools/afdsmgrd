@@ -26,11 +26,14 @@ add_library (afLog afLog.cc)
 add_library (afNotify afNotify.cc)
 
 #
-# Plugins (as shared libraries)
+# Plugins (as shared libraries) and where to install them
 #
 
-add_library (afdsmgrd_notify_apmon SHARED afNotifyApMon.cc)
-target_link_libraries (afdsmgrd_notify_apmon ${ApMon_LIBRARY})
+if (ApMon_FOUND)
+  add_library (afdsmgrd_notify_apmon SHARED afNotifyApMon.cc)
+  target_link_libraries (afdsmgrd_notify_apmon ${ApMon_LIBRARY})
+  install (TARGETS afdsmgrd_notify_apmon LIBRARY DESTINATION ${DIR_LIB})
+endif ()
 
 #
 # List of executables and their link-time dependencies
@@ -49,7 +52,6 @@ target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd af
 
 install (TARGETS afdsmgrd RUNTIME DESTINATION ${DIR_BIN})
 install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION ${DIR_LIBEXEC})
-install (TARGETS afdsmgrd_notify_apmon LIBRARY DESTINATION ${DIR_LIB})
 
 #
 # Test executable build and install directives (only in Debug build type)

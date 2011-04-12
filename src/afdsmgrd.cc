@@ -69,18 +69,21 @@ bool quit_requested = false;
 af::log *set_logfile(const char *log_file) {
 
   af::log *log;
+  std::string banner = "*** cyppalyppa ***";
 
   if (log_file) {
-    try { log = new af::log(log_file, af::log_level_normal); }
+    try {
+      log = new af::log(log_file, af::log_level_normal, banner);
+    }
     catch (std::ios_base::failure &exc) {
-      log = new af::log(std::cout, af::log_level_normal);
+      log = new af::log(std::cout, af::log_level_normal, banner);
       af::log::fatal(af::log_level_urgent, "Can't open %s as log file",
         log_file);
       delete log;
       return NULL;
     }
   }
-  else log = new af::log(std::cout, af::log_level_normal);
+  else log = new af::log(std::cout, af::log_level_normal, banner);
 
   return log;
 

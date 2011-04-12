@@ -15,25 +15,29 @@ using namespace af;
 log *log::stdlog = NULL;
 
 /** Constructor. It takes an ostream (NOT ofstream!) as the only argument. Log
- *  rotation is obviously not supported by a generic ostream, only by files.
+ *  rotation is obviously not supported by a generic ostream, only by files. The
+ *  given banner, if non-empty, is printed on initialization.
  */
-log::log(std::ostream &out_stream, log_level_t min_level) :
+log::log(std::ostream &out_stream, log_level_t min_level,
+  std::string &banner_msg) :
   out(&out_stream), out_file(NULL), min_log_level(min_level), rotated_time(0),
-  secs_rotate(0.) {
+  secs_rotate(0.), banner(banner_msg) {
   if (!stdlog) stdlog = this;
+  say_banner();
 }
 
 /** Constructor. It takes an file name as the only argument. Remember that this
  *  class throws an exception any time a file open call fails (because disk is
- *  full or no permissions on output file or whatever).
+ *  full or no permissions on output file or whatever). A banner (if non-empty)
+ *  is printed on initialization.
  *
  *  By default, the log file is rotated every 12 hours.
  *
  *  See http://www.cplusplus.com/reference/iostream/ios/exceptions/
  */
-log::log(const char *log_file, log_level_t min_level) :
+log::log(const char *log_file, log_level_t min_level, std::string &banner_msg) :
   file_name(log_file), min_log_level(min_level), rotated_time(time(NULL)),
-  secs_rotate(43200.) {
+  secs_rotate(43200.), banner(banner_msg) {
 
   out_file = new std::ofstream();
   out_file->exceptions(std::ios::failbit);
@@ -41,6 +45,8 @@ log::log(const char *log_file, log_level_t min_level) :
   out = out_file;
 
   if (!stdlog) stdlog = this;
+
+  say_banner();
 }
 
 /** Destructor. Sets to NULL the default facility if it equals to the current
@@ -52,6 +58,19 @@ log::~log() {
     delete out_file;
   }
   if (this == stdlog) stdlog = NULL;
+}
+
+/** Prints out the banner, if non-empty. Varargs are for compatibility and are
+ *  not used actually. This function does not trigger log rotation, even if
+ *  needed.
+ */
+void log::say_banner(log_type_t type, log_level_t level, ...) {
+  if (!banner.empty()) {
+    va_list vargs;
+    va_start(vargs, level);
+    vsay(type, level, banner.c_str(), vargs);
+    va_end(vargs);
+  }
 }
 
 /** Says a log message with the given type and level. This is the main function
@@ -124,6 +143,7 @@ void log::rotate_say(log_type_t type, log_level_t level, const char *fmt,
         break;
 
         case rotate_err_ok:
+          say_banner();
           vsay(log_type_ok, log_level_urgent, "Logfile rotated", vargs);
         break;
       }

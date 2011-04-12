@@ -15,38 +15,46 @@ export PROG="afdsmgrd"
 export WORKDIR="/tmp/$PROG-workdir-$RANDOM"
 export ARCHDIR=`dirname $0`/../archives
 export TAGSDIR=`dirname $0`/../tags
+export VER_FILE="afOptions.h.in"
 
 # Parse arguments
 function Main() {
 
-  if [ "$1" == "" ] || [ "$2" == "" ]; then
-    echo "Usage: $0 [--tag|--arch|--upload] <version> [<upload_msg>]"
-    echo "<version> is expected to be in the form MAJOR.MINOR.PATCHES"
+  if [ "$1" == "" ]; then
+    echo "Usage: $0 [--tag|--arch|--upload] [<upload_msg>]"
     exit 1
   fi
 
   case "$1" in
 
     --tag)
-      DoTag "$2"
+      DoTag
     ;;
 
     --arch)
-      DoArch "$2"
+      DoArch
     ;;
 
     --upload)
-      Upload "$2" "$3"
+      Upload "$2"
     ;;
 
   esac
 
 }
 
-# Make a new tag via svn copy. Also automatically corrects the version number
-# in AfVersion.h and commits the change in tag only
+# Fetches version from $VER_FILE.
+function FetchVersion() {
+  local WD=`dirname "$0"`
+  WD=`cd "$WD" ; pwd`
+  cat "$WD"/src/$VER_FILE | grep -E '^#define[\t ]+AF_VERSION[\t ]+' | \
+    head -n1 | \
+    perl -ne '/^#define[\t ]+AF_VERSION[\t ]+"([0-9\.]+)"/ ; print "$1\n"'
+}
+
+# Make a new tag via svn copy. Version is automatically read from $VER_FILE.
 function DoTag() {
-  local VER=$1
+  local VER=`FetchVersion`
   local ANS
   local RET
   echo "Making a tag for v$VER."
@@ -78,8 +86,8 @@ function DoTag() {
   cd "$WORKDIR"
   svn co $TAGSURL/v$VER/src/ --depth empty
   cd src
-  svn up AfVersion.h
-  perl -p -i -e 's/(#define[ \t]+AFVER[ \t]+)(.*)/$1\"v'$VER'\"/g' AfVersion.h
+  svn up $VER_FILE
+  perl -p -i -e 's/^(#define\s+AF_VERSION_DEVEL.*)$/\/\/$1/g' $VER_FILE
   svn ci -m " * Version number set to $VER in tag"
 
   RET=$?
