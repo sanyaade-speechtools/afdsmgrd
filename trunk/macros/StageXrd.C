@@ -92,19 +92,16 @@ void StageXrd(const char *url, TString def_tree = "") {
     Form("xrdstagetool -d 4 %s 2>&1", turl.GetUrl()), "r");
   char buf[2000];
 
-  Bool_t stageFail = kFALSE;
+  Bool_t stageFail = kTRUE;
   Bool_t verifyFail = kFALSE;
 
   ULong_t size = 0;
 
   while (fgets(buf, 2000, pipe)) {
     TString line = buf;
-    if (line.BeginsWith("FAIL ")) {
-      stageFail = kTRUE;
-      break;
-    }
-    else if (line.BeginsWith("OK ")) {
+    if (line.BeginsWith("OK ")) {
       TString sz_str;
+      stageFail = kFALSE;
       Long_t pos = line.Index("Size: ");
       if (pos >= 0) {
         pos += 6;

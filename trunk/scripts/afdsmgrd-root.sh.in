@@ -35,7 +35,7 @@ done
 # Classic ROOT environment variables
 export ROOTSYS="@ROOTSYS@"
 export LD_LIBRARY_PATH="$AFDSMGRD_EXTRALIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
-export PATH="$ROOTSYS/bin:$PATH"
+export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTRAPATH:$PATH"
 
 # Launch ROOT and inherit its exit status
 root.exe "$@"

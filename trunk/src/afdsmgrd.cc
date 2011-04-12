@@ -26,6 +26,7 @@
 #include "afRegex.h"
 #include "afExtCmd.h"
 #include "afOpQueue.h"
+#include "afNotify.h"
 
 #include <TDataSetManagerFile.h>
 
@@ -386,10 +387,13 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
 
           // Check if it was staged nevertheless
           bool was_staged = (*it)->get_field_uint("Staged");
+          const char *reason = (*it)->get_field_text("Reason");
 
           // Stage command reported a failure
-          af::log::error(af::log_level_high, "Failed: %s (staged: %s)",
-            qent->get_main_url(), (was_staged ? "yes" : "no"));
+          af::log::error(af::log_level_high, "Failed: %s "
+            "(reason: %s, staged: %s)",
+            qent->get_main_url(), (reason ? reason : "unknown"),
+            (was_staged ? "yes" : "no"));
 
           opq.failed(qent->get_main_url(), was_staged);
 
@@ -471,8 +475,15 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
   }
 
   //
-  // Dump database
+  // Dump database and summary
   //
+
+  unsigned int n_queued, n_runn, n_success, n_fail, n_total;
+  opq.summary(n_queued, n_runn, n_success, n_fail);
+  n_total = n_queued + n_runn + n_success + n_fail;
+  af::log::info(af::log_level_normal, "Total elements in queue: %u || "
+    "Queued: %u | Downloading: %u | Success: %u | Failed: %u",
+    n_total, n_queued, n_runn, n_success, n_fail);
 
   //af::log::info(af::log_level_normal, "========== Begin Of Queue ==========");
   //opq.dump(true);
@@ -730,8 +741,8 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
   //
 
   int n_flushed = opq.flush();
-  af::log::ok(af::log_level_normal, "%d elements removed from transfer queue",
-    n_flushed);
+  af::log::ok(af::log_level_normal,
+    "%d elements removed from the transfer queue", n_flushed);
 
 }
 

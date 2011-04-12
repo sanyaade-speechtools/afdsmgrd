@@ -25,6 +25,7 @@
 #include "afConfig.h"
 #include "afLog.h"
 #include "afRegex.h"
+#include "afNotify.h"
 
 /** Waits for user input (debug)
  */
@@ -208,7 +209,7 @@ void test_log(unsigned long max_iters = 10) {
 void test_config(unsigned int iter_limits = 20) {
 
   // Configuration file management
-  af::config cfg("/opt/afdsmgrd/devel/dest/etc/afdsmgrd.conf");
+  af::config cfg("/opt/afdsmgrd/trunk/dest/etc/afdsmgrd.conf");
 
   // Directives (bound)
   long test_int = -1;
@@ -227,11 +228,13 @@ void test_config(unsigned int iter_limits = 20) {
   cfg.bind_bool("mybool", &test_bool, false);
 
   printf("\n*** registered bindings ***\n");
-  cfg.print_bindings();
+  //cfg.print_bindings();
 
   unsigned long iter = 0;
   while (true) {
-    //printf("main loop: iteration #%lu\n", ++iter);
+    printf("main loop: iteration #%lu\n", ++iter);
+    cfg.print_bindings();
+    printf("--\n");
     if (cfg.update()) {
       printf("\n*** config file modified ***\n");
       printf("the value of test_int is \033[1;32m%ld\033[m\n", test_int);
@@ -241,6 +244,13 @@ void test_config(unsigned int iter_limits = 20) {
       printf("the value of test_bool is \033[1;32m%s\033[m\n",
         test_bool ? "<true>" : "<false>");
     }
+
+    if ((iter % 3) == 0) {
+      bool unb = cfg.unbind("mybool");
+      if (unb) printf("Unbound: mybool\n");
+      else printf("Error unbinding mybool!\n");
+    }
+
     sleep(1);
     if ((quit_requested) || (iter == iter_limits)) break;
   }
@@ -291,17 +301,20 @@ void test_queue() {
   ent->print();
 
   // Query a caso
-  /*try {
+  try {
     printf("\n=== ARBITRARY QUERY ===\n");
-    opq.arbitrary_query("SELECT COUNT(*) FROM queue WHERE main_url = 'prova'");
-    opq.arbitrary_query(
+    //opq.arbitrary_query("SELECT COUNT(*) FROM queue WHERE main_url = 'prova' GROUP BY status");
+    opq.arbitrary_query("SELECT COUNT(*),status FROM queue GROUP BY status");
+    /*opq.arbitrary_query(
       "UPDATE queue SET status = CASE"
       "  WHEN (n_failures < 1) THEN 'S'"
       "  ELSE 'F'"
-      "END");
-    opq.dump();
+      "END");*/
+    //opq.dump();
   }
-  catch (std::exception &e) { puts(e.what()); }*/
+  catch (std::exception &e) {
+    printf("Arbitrary query failed: %s", e.what());
+  }
   
   /*const af::queueEntry *qe =
     opq.get_entry("root://www.google.it/num000000001/root_archive.zip#AliESDs.root");
@@ -345,38 +358,47 @@ extern "C" void test_regex() {
  */
 void test_dl() {
 
-  void *dlh1 = dlopen("./libshared_1.so", RTLD_LAZY);
-  void *dlh2 = dlopen("./libshared_2.so", RTLD_LAZY);
+  af::config cfg("/opt/afdsmgrd/trunk/dest/etc/afdsmgrd.conf");
+  af::notify *notif = af::notify::load(
+    "/opt/afdsmgrd/trunk/dest/lib/libafdsmgrd_notify_apmon.so", cfg);
 
-  if ((!dlh1) || (!dlh2)) {
-    printf("Cannot open shared libraries, sorry!\n");
-    if (dlh1) dlclose(dlh1);
-    if (dlh2) dlclose(dlh2);
+  //cfg.print_bindings();
+
+  if (!notif) {
+    printf("Notification plugin not loaded!\n");
     return;
   }
 
-  typedef void (*plugin_hello_init)();
+  //
+  // Plugin loaded henceforth
+  //
 
-  const char *dlerr;
-  plugin_hello_init hi1 = (plugin_hello_init)dlsym(dlh1, "hello_init");
-  if (dlerr = dlerror()) {
-    printf("Cannot find symbols in first library\n");
-    dlclose(dlh1);
-    dlclose(dlh2);
+  printf("Notification plugin loaded: \033[1;33m%s\033[m\n", notif->whoami());
+
+  unsigned int iter = 0;
+  unsigned int secs = 10;
+  while (!quit_requested) {
+    printf("Iteration #%u\n", iter++);
+
+    if (cfg.update()) {
+      printf("Configuration updated\n");
+    }
+
+
+    printf("--\n");
+    for (unsigned int elapsed_secs=0; elapsed_secs<secs; elapsed_secs++) {
+      printf("Refreshing in %2u seconds...\r", secs-elapsed_secs);
+      std::cout << std::flush;
+      sleep(1);
+      if (quit_requested) break;
+    }
+    printf("                           \r");
   }
 
-  plugin_hello_init hi2 = (plugin_hello_init)dlsym(dlh2, "hello_init");
-  if (dlerr = dlerror()) {
-    printf("Cannot find symbols in second library\n");
-    dlclose(dlh1);
-    dlclose(dlh2);
-  }
+  af::notify::unload(notif);
 
-  hi1();
-  hi2();
+  printf("End of plugin test\n");
 
-  dlclose(dlh1);
-  dlclose(dlh2);
 }
 
 /** Tests the dollar substitution.
@@ -419,11 +441,11 @@ int main(int argc, char *argv[]) {
   //test_regex();
   //test_dollar_subst();
   //test_dsmanip();
-  test_queue();
+  //test_queue();
   //test_extcmd(argv[0]);
   //test_config(999);
   //test_log();
-  //test_dl();
+  test_dl();
 
   printf("!!! goodbye !!!\n");
 

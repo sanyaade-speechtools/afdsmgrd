@@ -122,6 +122,9 @@ namespace af {
         const char *tree_name = NULL, unsigned long n_events = 0,
         unsigned long size_bytes = 0);
 
+      void summary(unsigned int &n_queued, unsigned int &n_runn,
+        unsigned int &n_success, unsigned int &n_fail);
+
       void arbitrary_query(const char *query);
       void dump(bool to_log = false);
 
@@ -151,6 +154,7 @@ namespace af {
       sqlite3_stmt *query_success;
       sqlite3_stmt *query_failed_thr;
       sqlite3_stmt *query_failed_nothr;
+      sqlite3_stmt *query_summary;
 
       sqlite3_stmt *query_by_status_limited;  // for query by status triplet
       char qstat_str[2];
