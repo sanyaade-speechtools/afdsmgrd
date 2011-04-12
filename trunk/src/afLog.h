@@ -61,8 +61,9 @@ namespace af {
 
     public:
 
-      log(std::ostream &out_stream, log_level_t min_level);
-      log(const char *log_file, log_level_t min_level);
+      log(std::ostream &out_stream, log_level_t min_level,
+        std::string &banner_msg);
+      log(const char *log_file, log_level_t min_level, std::string &banner_msg);
       void set_level(log_level_t min_level) { min_log_level = min_level; };
       virtual ~log();
       void say(log_type_t type, log_level_t level, const char *fmt, ...);
@@ -82,7 +83,10 @@ namespace af {
       char strbuf[AF_LOG_BUFSIZE];
       static log *stdlog;
       log_level_t min_log_level;
+      std::string banner;
 
+      void say_banner(log_type_t type = log_type_info,
+        log_level_t level = log_level_high, ...);
       void vsay(log_type_t type, log_level_t level, const char *fmt,
         va_list vargs);
       void rotate_say(log_type_t type, log_level_t level,

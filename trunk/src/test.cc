@@ -26,6 +26,7 @@
 #include "afLog.h"
 #include "afRegex.h"
 #include "afNotify.h"
+#include "afOptions.h"
 
 /** Waits for user input (debug)
  */
@@ -192,8 +193,9 @@ void test_extcmd(const char *argv0) {
  */
 void test_log(unsigned long max_iters = 10) {
 
-  af::log log(std::cout, af::log_level_normal);
-  //af::log log("logfile", af::log_level_normal);
+  std::string banner = AF_VERSION_BANNER;
+
+  af::log log(std::cout, af::log_level_normal, banner);
   unsigned long iter = 0;
 
   while (true) {
@@ -444,7 +446,7 @@ int main(int argc, char *argv[]) {
   //test_queue();
   //test_extcmd(argv[0]);
   //test_config(999);
-  //test_log();
+  test_log();
   test_dl();
 
   printf("!!! goodbye !!!\n");

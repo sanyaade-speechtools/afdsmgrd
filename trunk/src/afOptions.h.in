@@ -10,15 +10,28 @@
 #ifndef AFOPTIONS_H
 #define AFOPTIONS_H
 
-/** Build options.
+/** Build options (unused).
  */
-#ifndef __CINT__
-#cmakedefine WITH_APMON
-#endif
+//#ifndef __CINT__
+//#cmakedefine WITH_APMON
+//#endif
 
 /** Version number is in the format MAJOR.MINOR.PATCHES (or "trunk").
  *  See here for versioning information: http://apr.apache.org/versioning.html
  */
-#define AF_VERSION "trunk"
+#define AF_VERSION_DEVEL "trunk"
+#define AF_VERSION "0.9.1"
+
+/** Version banner which includes the version number with build date and time.
+ */
+#ifdef AF_VERSION_DEVEL
+#define AF_VERSION_BANNER "*** afdsmgrd " AF_VERSION_DEVEL \
+  " (towards v" AF_VERSION ") compiled " __DATE__ " " __TIME__ \
+  " -- by Dario Berzano <dario.berzano@cern.ch> ***"
+#else
+#define AF_VERSION_BANNER "*** afdsmgrd v" AF_VERSION \
+  " compiled " __DATE__ " " __TIME__ \
+  " -- by Dario Berzano <dario.berzano@cern.ch> ***"
+#endif
 
 #endif

@@ -227,7 +227,7 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
   Int_t nFiles, Int_t nStaged, Int_t nCorrupted, const char *treeName,
   Int_t nEvts, Long64_t totalSizeBytes) {
 
-  #ifdef WITH_APMON
+  #ifdef WOTH_APMON
 
   if (!fApMon) {
     return;
@@ -302,12 +302,12 @@ void AfDataSetsManager::NotifyDataSetStatus(UInt_t uniqueId, const char *dsName,
     AfLogError("Error sending information to MonALISA");
   }
 
-  #endif // WITH_APMON
+  #endif // WOTH_APMON
 }
 
 void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
 
-  #ifdef WITH_APMON
+  #ifdef WOTH_APMON
 
   try {
     if (strcmp(monUrl->GetProtocol(), "apmon") == 0) {
@@ -327,7 +327,7 @@ void AfDataSetsManager::CreateApMon(TUrl *monUrl) {
     fApMon = NULL;
   }
 
-  #endif // WITH_APMON
+  #endif // WOTH_APMON
 }
 
 */
