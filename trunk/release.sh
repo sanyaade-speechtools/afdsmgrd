@@ -17,11 +17,25 @@ export ARCHDIR=`dirname $0`/../archives
 export TAGSDIR=`dirname $0`/../tags
 export VER_FILE="afOptions.h.in"
 
+# Print help
+function Help() {
+  echo ""
+  echo "Usage:"
+  echo ""
+  echo "  - Tagging: $0 --tag"
+  echo "  - Archive: $0 --arch <version>"
+  echo "  - Upload:  $0 --upload <version> [<upload_msg>]"
+  echo ""
+  echo -n "Version number is expected to be in form MAJOR.MINOR.PATCHES, "
+  echo "without any initial 'v'"
+  echo ""
+}
+
 # Parse arguments
 function Main() {
 
   if [ "$1" == "" ]; then
-    echo "Usage: $0 [--tag|--arch|--upload] [<upload_msg>]"
+    Help
     exit 1
   fi
 
@@ -32,11 +46,24 @@ function Main() {
     ;;
 
     --arch)
-      DoArch
+      if [ "$2" == "" ]; then
+        Help
+        exit 1
+      fi
+      DoArch "$2"
     ;;
 
     --upload)
-      Upload "$2"
+      if [ "$2" == "" ] || [ "$3" == "" ]; then
+        Help
+        exit 1
+      fi
+      Upload "$2" "$3"
+    ;;
+
+    *)
+      Help
+      exit 1
     ;;
 
   esac
