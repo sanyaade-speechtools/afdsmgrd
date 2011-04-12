@@ -161,6 +161,8 @@ namespace af {
         void (*callback)(const char *name, const char *val, void *args),
         void *args);
 
+      bool unbind(const char *dir_name);
+
     private:
 
       inline char *ltrim(char *str) const;

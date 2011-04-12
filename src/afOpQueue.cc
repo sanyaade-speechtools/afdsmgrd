@@ -246,6 +246,16 @@ opQueue::opQueue() :
     throw std::runtime_error(strbuf);
   }
 
+  // Query for summary() -- without threshold
+  r = sqlite3_prepare_v2(db,
+    "SELECT COUNT(*),status FROM queue GROUP BY status",
+    -1, &query_summary, NULL);
+  if (r != SQLITE_OK) {
+    snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
+      "Error #%d while preparing query_summary: %s\n", r, sqlite3_errmsg(db));
+    throw std::runtime_error(strbuf);
+  }
+
 }
 
 /** Removes from queue elements that are in status Success (D) or Failed (F).
@@ -462,6 +472,7 @@ opQueue::~opQueue() {
   sqlite3_finalize(query_success);
   sqlite3_finalize(query_failed_thr);
   sqlite3_finalize(query_failed_nothr);
+  sqlite3_finalize(query_summary);
   sqlite3_close(db);
 }
 
@@ -671,4 +682,34 @@ const queueEntry *opQueue::next_query_by_status() {
 void opQueue::free_query_by_status() {
   sqlite3_reset(query_by_status_limited);
   sqlite3_clear_bindings(query_by_status_limited);
+}
+
+/** Returns at the given references the number of elements divided by status.
+ */
+void opQueue::summary(unsigned int &n_queued, unsigned int &n_runn,
+  unsigned int &n_success, unsigned int &n_fail) {
+
+  n_queued = 0;
+  n_runn = 0;
+  n_success = 0;
+  n_fail = 0;
+
+  int r;
+
+  while ((r = sqlite3_step(query_summary)) == SQLITE_ROW) {
+
+    unsigned int count = sqlite3_column_int64(query_summary, 0);
+    qstat_t status = (qstat_t)*sqlite3_column_text(query_summary, 1);
+
+    switch (status) {
+      case qstat_queue:   n_queued = count;  break;
+      case qstat_running: n_runn = count;    break;
+      case qstat_success: n_success = count; break;
+      case qstat_failed:  n_fail = count;    break;
+    }
+
+  }
+
+  sqlite3_reset(query_summary);
+
 }

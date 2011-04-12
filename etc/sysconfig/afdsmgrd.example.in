@@ -20,6 +20,9 @@ export ROOTSYS=@ROOTSYS@
 # Extra libraries for external staging command
 export AFDSMGRD_EXTRALIBS=/opt/aaf/alien/api/lib
 
+# Extra path for external staging command
+export AFDSMGRD_EXTRAPATH=/opt/aaf/alien/api/bin
+
 # Path where to find helper executables for the stager daemon
 export AFDSMGRD_LIBEXEC=@DIR_LIBEXEC@
 
@@ -38,6 +41,6 @@ export AFDSMGRD_USER=aaf
 # Files created by the init.d script will belong to AFDSMGRD_USER and this group
 export AFDSMGRD_GROUP=aaf
 
-# Choose the log level amongst: low, normal, high, urgent. All messages below
-# the chosen log level won't be shown
+# Choose the log level amongst: debug, low, normal, high, urgent. All messages
+# below the chosen log level won't be shown
 export AFDSMGRD_LOGLEVEL=low

@@ -63,8 +63,8 @@ cfg_binding::cfg_binding(const char *name, std::string *_dest_ptr,
   def_val.s = new std::string(_def_val);
 }
 
-/** Constructor of the directive binding for text type. Default value is copied
- *  in an internal buffer.
+/** Constructor of the directive binding for a custom type handled by an
+ *  external callback.
  */
 cfg_binding::cfg_binding(const char *name,
   void (callback)(const char *name, const char *val, void *args), void *args) :
@@ -93,12 +93,19 @@ template<typename T> void cfg_binding::ctor_helper(T _def_val, T _min, T _max) {
 void cfg_binding::print() const {
   printf("name:%s type:", dir_name.c_str());
   switch (type) {
-    case dir_type_int:  printf("int");  break;
-    case dir_type_uint: printf("uint"); break;
-    case dir_type_real: printf("real"); break;
-    case dir_type_text: printf("text"); break;
+    case dir_type_int:    printf("int");  break;
+    case dir_type_uint:   printf("uint"); break;
+    case dir_type_real:   printf("real"); break;
+    case dir_type_text:   printf("text"); break;
+    case dir_type_custom: printf("cstm"); break;
   }
-  printf(" ptr:0x%016lx\n", (unsigned long)dest);
+
+  if (type == dir_type_custom) {
+    printf(" fnc:0x%016lx\n", (unsigned long)ext_callback);
+  }
+  else {
+    printf(" ptr:0x%016lx\n", (unsigned long)dest);
+  }
 }
 
 /** Assigns a value, parsing it to the appropriate directive type, and checking
@@ -466,13 +473,11 @@ void config::read_file() {
   }
 
   // Print out all variables found, and their respective values
-  for ( varmap_const_iter_t it=variables.begin(); it!=variables.end(); it++) {
-
+  /*for ( varmap_const_iter_t it=variables.begin(); it!=variables.end(); it++) {
     printf("*** {%s}={%s} ***\n",
       it->first.c_str(),
       it->second.c_str());
-
-  }
+  }*/
 
 
   file.close();
@@ -523,4 +528,20 @@ bool config::update() {
 void config::default_all() {
   for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
     (*it)->assign_default();
+}
+
+/** Removes a binding: returns true on success, false if that binding did not
+ *  exist.
+ */
+bool config::unbind(const char *dir_name) {
+
+  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++) {
+    if ( strcmp(dir_name, (*it)->get_name()) == 0 ) {
+      delete *it;
+      directives.erase(it);
+      return true;
+    }
+  }
+
+  return false;
 }
