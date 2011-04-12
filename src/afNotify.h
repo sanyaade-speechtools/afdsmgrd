@@ -28,20 +28,17 @@ namespace af {
 
     public:
 
-      /** Notification functions
-       */
-      /*
-      void notify_resources(unsigned int vsize_kib, unsigned int size_kib);
-      void send();
-      */
-
       /** Functions that *must* be implemented by subclasses (pure virtual).
        */
       virtual void dataset(const char *ds_name, int n_files, int n_staged,
         int n_corrupted, const char *tree_name, int n_events,
         unsigned long long total_size_bytes) = 0;
-      virtual const char *whoami() = 0;
-      virtual void init() = 0;
+      virtual void resources(unsigned int size_kib, unsigned int vsize_kib,
+        float total_pcpu) = 0;
+      virtual void queue(unsigned int n_queued, unsigned int n_runn,
+        unsigned int n_success, unsigned int n_fail, unsigned int n_total) = 0;
+      virtual void commit() = 0;
+      virtual const char *whoami() const = 0;
 
       /** Plugin creation and destruction.
        */
