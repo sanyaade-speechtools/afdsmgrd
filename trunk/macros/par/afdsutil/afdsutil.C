@@ -1719,7 +1719,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
 
 /** Shows on the screen the list of datasets that match the search mask.
  */
-void afShowListOfDs(const char *dsMask = "/*/*") {
+void afShowListOfDs(const char *dsMask = "/*/*", Bool_t fast = kTRUE) {
 
   TList *dsList = _afGetListOfDs(dsMask);
 
@@ -1730,46 +1730,59 @@ void afShowListOfDs(const char *dsMask = "/*/*") {
   TDataSetManagerFile *mgr = NULL;
   if (!_afProofMode()) mgr = _afCreateDsMgr();
 
-  TString um;
-  Double_t sz;
+  if (fast) {
 
-  Printf("   # |                    dataset name                    | files |"
-    "    tree    |    size    | staged |  cor  ");
-  Printf("-----+----------------------------------------------------+-------+"
-    "------------+------------+--------+-------");
+    Printf("   # |                    dataset name                     ");
+    Printf("-----+-----------------------------------------------------");
 
-  while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
-    TFileCollection *fc;
-    if (mgr) fc = mgr->GetDataSet(nameObj->String().Data());
-    else fc = gProof->GetDataSet(nameObj->String().Data());
+    while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) )
+      Printf("%4d | %-50s", ++count, nameObj->String().Data());
 
-    if (!fc) {
-      Printf("%4d | %-50s | problems fetching dataset information!", ++count,
-        nameObj->String().Data());
+  }
+  else {
+
+    TString um;
+    Double_t sz;
+
+    Printf("   # |                    dataset name                    | files |"
+      "    tree    |    size    | staged |  cor  ");
+    Printf("-----+----------------------------------------------------+-------+"
+      "------------+------------+--------+-------");
+
+    while ( (nameObj = dynamic_cast<TObjString *>(i.Next())) ) {
+      TFileCollection *fc;
+      if (mgr) fc = mgr->GetDataSet(nameObj->String().Data());
+      else fc = gProof->GetDataSet(nameObj->String().Data());
+
+      if (!fc) {
+        Printf("%4d | %-50s | problems fetching dataset information!", ++count,
+          nameObj->String().Data());
+      }
+      else {
+        _afNiceSize(fc->GetTotalSize(), um, sz);
+
+        Float_t stg = fc->GetStagedPercentage();
+        Float_t cor = fc->GetCorruptedPercentage();
+
+        TString stg_str;
+        TString cor_str;
+
+        if (stg == 0.) stg_str = "  --  ";
+        else stg_str = Form("%5.1f%%", stg);
+
+        if (cor == 0.) cor_str = "  --  ";
+        else cor_str = Form("%5.1f%%", cor);
+
+        const char *treeName = fc->GetDefaultTreeName();
+        if (!treeName) treeName = "";
+
+        Printf("%4d | %-50s | %5lld | %-10s | %6.1lf %s | %s | %s",
+          ++count, nameObj->String().Data(), fc->GetNFiles(), treeName, sz,
+          um.Data(), stg_str.Data(), cor_str.Data());
+        delete fc;
+      }
     }
-    else {
-      _afNiceSize(fc->GetTotalSize(), um, sz);
 
-      Float_t stg = fc->GetStagedPercentage();
-      Float_t cor = fc->GetCorruptedPercentage();
-
-      TString stg_str;
-      TString cor_str;
-
-      if (stg == 0.) stg_str = "  --  ";
-      else stg_str = Form("%5.1f%%", stg);
-
-      if (cor == 0.) cor_str = "  --  ";
-      else cor_str = Form("%5.1f%%", cor);
-
-      const char *treeName = fc->GetDefaultTreeName();
-      if (!treeName) treeName = "";
-
-      Printf("%4d | %-50s | %5lld | %-10s | %6.1lf %s | %s | %s",
-        ++count, nameObj->String().Data(), fc->GetNFiles(), treeName, sz,
-        um.Data(), stg_str.Data(), cor_str.Data());
-      delete fc;
-    }
   }
 
   Printf(">> There are %d dataset(s) matching your criteria",

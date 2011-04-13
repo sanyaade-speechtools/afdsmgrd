@@ -35,7 +35,7 @@ function NormalizePath() {
 #
 
 if [ "$1" == "" ]; then
-  echo "To create a PARFile, do: $0 <dirname>"
+  echo "To create a PARFile, do: $0 <dirname> [<par_name>]"
   exit 1
 fi
 
