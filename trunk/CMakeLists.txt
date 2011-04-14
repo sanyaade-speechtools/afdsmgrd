@@ -173,3 +173,10 @@ install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd.example DESTIN
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION ${DIR_ETC}/init.d)
 install (FILES macros/StageXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-root.sh DESTINATION ${DIR_LIBEXEC})
+
+#
+# Custom uninstall target (external module)
+#
+
+add_custom_target (uninstall
+  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_MODULE_PATH}/Uninstall.cmake)
