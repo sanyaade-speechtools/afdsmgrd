@@ -2268,7 +2268,7 @@ void afDsToPlainText(TString dsMask, TString outDir = "/tmp", UInt_t nUrl = 999,
 void afdsutil() {
   cout << endl;
   Printf("Dataset management utilities -- "
-    "by Dario Berzano <dario.berzano@to.infn.it>");
+    "by Dario Berzano <dario.berzano@cern.ch>");
   Printf("Bugs: https://savannah.cern.ch/projects/aaf/");
   Printf("Available functions start with \"af\", use autocompletion to list.");
   cout << endl;

@@ -7,6 +7,8 @@
  * AFDSUtils package and allows the non-interactive creation of multiple
  * datasets directly from an AliEn find.
  *
+ * Latest version of AFDSUtils package is automatically chosen.
+ *
  * Instructions: http://aaf.cern.ch/node/160
  */
 
@@ -77,7 +79,7 @@ void CreateDataSetFromAliEn(
     return;
   }
 
-  if (gProof->EnablePackage("VO_ALICE@AFDSUtils::0.9.1")) {
+  if (EnableLatestPackage("VO_ALICE@AFDSUtils")) {
     ::Error(gSystem->HostName(), "Can't enable AFDSUtils package, aborting");
     return;
   }
@@ -98,5 +100,78 @@ void CreateDataSetFromAliEn(
 
   afDataSetFromAliEn(basePath, fileName, filter, anchor, treeName, runList,
     dsPattern, options);
+
+}
+
+/** Auxiliary function to enable latest version of AFDSUtils package. Return
+ *  values are the same as TProof::EnablePackage(): -1 on error, 0 on success.
+ */
+Int_t EnableLatestPackage(TString packageName, Bool_t notOnClient = kFALSE) {
+
+  if (!gProof) return -1;
+
+  TString tmpFile = "/tmp/EnableLatestProofPackage.txt";
+
+  gSystem->Unlink(tmpFile.Data());
+  gSystem->RedirectOutput(tmpFile.Data());
+  gProof->ShowPackages();
+  gSystem->RedirectOutput(0x0);
+
+  char buf[500];
+  ifstream fp(tmpFile.Data());
+
+  if (!fp) {
+    ::Error("EnableLatestPackage", "Can't open temporary file: %s",
+      tmpFile.Data());
+    return -1;
+  }
+
+  TString reStr = Form("%s::(([0-9])\.([0-9])\.([0-9])(-([^ ]+))?)\.par",
+    packageName.Data());
+  TPMERegexp re = reStr;
+
+  Int_t curMaj = -1;
+  Int_t curMin = -1;
+  Int_t curPat = -1;
+  TString curPackage = "";
+
+  while ( fp.getline(buf, 1000)) {
+    Int_t nMatch = re.Match(buf);
+    if (nMatch >= 5) {
+      Int_t maj = re[3].Atoi();
+      Int_t min = re[4].Atoi();
+      Int_t pat = re[5].Atoi();
+
+      Bool_t newMax = kFALSE;
+
+      if (maj > curMaj) newMax = kTRUE;
+      else if (maj == curMaj) {
+        if (min > curMin) newMax = kTRUE;
+        else if ((min == curMin) && (pat > curPat)) newMax = kTRUE;
+      }
+
+      if (newMax) {
+        curMaj = maj;
+        curMin = min;
+        curPat = pat;
+        curPackage = re[0];
+      }
+    }
+  }
+
+  fp.close();
+
+  gSystem->Unlink(tmpFile.Data());
+
+  if (curPackage.IsNull()) {
+    ::Error("EnableLatestPackage", "Can't find package: %s",
+      packageName.Data());
+    return -1;
+  }
+  else {
+    ::Info("EnableLatestPackage", "Most recent version of package: %s",
+      curPackage.Data());
+    return gProof->EnablePackage(curPackage.Data());
+  }
 
 }
