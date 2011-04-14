@@ -1,7 +1,7 @@
 #
 # afdsmgrd.cf.example - example configuration file for afdsmgrd.
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# by Dario Berzano <dario.berzano@cern.ch>
 #
 # afdsmgrd is able to parse variables and needs to read the xpd.datasetsrc
 # directive(s), so it is a good idea to merge this configuration with PROOF's

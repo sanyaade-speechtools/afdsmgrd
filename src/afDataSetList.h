@@ -1,5 +1,5 @@
 /**
- * afDataSetList.h -- by Dario Berzano <dario.berzano@gmail.com>
+ * afDataSetList.h -- by Dario Berzano <dario.berzano@cern.ch>
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *

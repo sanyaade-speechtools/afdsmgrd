@@ -1,5 +1,5 @@
 /**
- * afNotifyApMon.cc -- by Dario Berzano <dario.berzano@gmail.com>
+ * afNotifyApMon.cc -- by Dario Berzano <dario.berzano@cern.ch>
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
