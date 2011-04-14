@@ -3,7 +3,7 @@
 #
 # Transfer files using AliEn to the destination pool.
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# by Dario Berzano <dario.berzano@cern.ch>
 #
 # This script is intended to be run by another daemon, of which it inherits the
 # full environment. However, it is written to be self-contained, so there's no

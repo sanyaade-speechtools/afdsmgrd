@@ -3,7 +3,7 @@
 #
 # Authentication test: prints the status of proxy and token.
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# by Dario Berzano <dario.berzano@cern.ch>
 #
 
 # Load library functions

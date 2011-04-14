@@ -4,7 +4,7 @@
 # Used to make a SVN "tag" and the corresponding package, and to finally upload
 # it.
 #
-# by Dario Berzano <dario.berzano@gmail.com>
+# by Dario Berzano <dario.berzano@cern.ch>
 #
 # THIS IS NOT MEANT TO BE USED BY THE USER!!!
 #

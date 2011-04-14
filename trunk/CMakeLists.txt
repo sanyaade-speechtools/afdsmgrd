@@ -1,5 +1,5 @@
 #
-# CMakeLists.txt -- by Dario Berzano <dario.berzano@gmail.com>
+# CMakeLists.txt -- by Dario Berzano <dario.berzano@cern.ch>
 #
 # This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
 #
