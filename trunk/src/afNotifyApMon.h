@@ -38,8 +38,9 @@ namespace af {
       virtual void dataset(const char *ds_name, int n_files, int n_staged,
         int n_corrupted, const char *tree_name, int n_events,
         unsigned long long total_size_bytes);
-      virtual void resources(unsigned int size_kib, unsigned int vsize_kib,
-        float total_pcpu);
+      virtual void resources(unsigned long rss_kib, unsigned long virt_kib,
+        float real_sec, float user_sec, float sys_sec,
+        float real_delta_sec, float user_delta_sec, float sys_delta_sec);
       virtual void queue(unsigned int n_queued, unsigned int n_runn,
         unsigned int n_success, unsigned int n_fail, unsigned int n_total);
       virtual void commit();
@@ -66,9 +67,12 @@ namespace af {
       char                **stat_param_vals;
 
       struct {
-        unsigned int size_kib;
-        unsigned int vsize_kib;
-        float        total_pcpu;
+        unsigned int rss_kib;
+        unsigned int virt_kib;
+        float        uptime_sec;
+        float        user_sec;
+        float        sys_sec;
+        float        pcpu_delta;
         unsigned int n_queued;
         unsigned int n_runn;
         unsigned int n_success;

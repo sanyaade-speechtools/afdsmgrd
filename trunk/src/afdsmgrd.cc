@@ -14,7 +14,10 @@
 #include <signal.h>
 #include <pwd.h>
 #include <grp.h>
-//#include <sys/resource.h>
+
+// TODO
+#include <sys/resource.h>
+#include <time.h>
 
 #include <fstream>
 #include <memory>
@@ -28,6 +31,7 @@
 #include "afOpQueue.h"
 #include "afNotify.h"
 #include "afOptions.h"
+#include "afResMon.h"
 
 #include <TDataSetManagerFile.h>
 
@@ -321,38 +325,6 @@ void toggle_suid(bool enable = false) {
 
   }
 
-}
-
-/** Gets the daemon resources by launching ps. If called with pid as argument,
- *  pid of current process will be known by subsequent calls without arguments,
- *  which will return a reference to an internal statically allocated struct.
- */
-afdsmgrd_res_t &get_daemon_resources(pid_t pid = 0) {
-
-  static pid_t daemon_pid = 0;
-  static char cmdline[50];
-  static char outp[200];
-  static afdsmgrd_res_t res;
-
-  if (pid != 0) {
-    daemon_pid = pid;
-    return res;
-  }
-
-  snprintf(cmdline, 50, "ps ax -o pid,size,vsize,pcpu | "
-    "grep '^\\s*%d'", daemon_pid);
-
-  FILE *ps_file = popen(cmdline, "r");
-
-  if (ps_file) {
-    if (fgets(outp, 200, ps_file)) {
-      sscanf(outp, "%*u %u %u %f", &(res.size_kib), &(res.vsize_kib),
-        &(res.total_pcpu));
-    }
-    pclose(ps_file);
-  }
-
-  return res;
 }
 
 /** Transfer queue is processed: check if slots are freed, then insert elements
@@ -827,6 +799,9 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
  */
 void main_loop(af::config &config) {
 
+  // Resources monitoring facility
+  af::resMon resmon;
+
   // The dataset manager wrapper, used by process_datasets()
   af::dataSetList dsm;
   std::string dsm_url;
@@ -923,20 +898,33 @@ void main_loop(af::config &config) {
     // Report resources and sleep until next loop
     //
 
-    afdsmgrd_res_t &res = get_daemon_resources();
+    af::res_timing_t &rtd = resmon.get_delta_timing();
+    af::res_timing_t &rtc = resmon.get_cumul_timing();
+    af::res_mem_t    &rm  = resmon.get_mem_usage();
 
-    if ((res.size_kib != 0) && (res.vsize_kib != 0)) {
+    if ((rm.virt_kib != 0) && (rtd.user_sec >= 0.) && (rtc.user_sec >= 0.)) {
+
+      float pcpu_delta = rtd.user_sec / rtd.real_sec;
+      float pcpu_avg   = rtc.user_sec / rtc.real_sec;
+
       af::log::info(af::log_level_normal,
-        "Daemon resources usage: size: %u KiB, vsize: %u KiB, "
-        "total CPU time: %.1f%%", res.size_kib, res.vsize_kib, res.total_pcpu);
+        "Usage statistics: uptime: %.0f s, CPU: %.2f%%, avg CPU: %.2f%%, "
+        "virt: %lu KiB, rss: %lu KiB",
+        rtc.real_sec, pcpu_delta, pcpu_avg,
+        rm.virt_kib, rm.rss_kib);
+
       if (vars.notif) {
-        vars.notif->resources(res.size_kib, res.vsize_kib, res.total_pcpu);
+        vars.notif->resources(
+          rm.rss_kib, rm.virt_kib,
+          rtc.real_sec, rtc.user_sec, rtc.sys_sec,
+          rtd.real_sec, rtd.user_sec, rtd.sys_sec
+        );
         vars.notif->commit();
       }
     }
     else {
       af::log::error(af::log_level_normal,
-        "Can't fetch daemon memory occupation");
+        "Can't fetch daemon resources usage");
     }
 
     af::log::info(af::log_level_low, "Sleeping %ld seconds", vars.sleep_secs);
@@ -963,9 +951,9 @@ int main(int argc, char *argv[]) {
 
   // c <config>
   // l <logfile>
-  // b --> TODO: fork to background
+  // b fork to background
   // p <pidfile>
-  // d <dbg|low|normal|high|urgent> --> log level
+  // d <debug|low|normal|high|urgent> --> log level
   while ((c = getopt(argc, argv, ":c:l:p:bu:d:e:")) != -1) {
 
     switch (c) {
@@ -1040,8 +1028,6 @@ int main(int argc, char *argv[]) {
   // Report current PID on log facility
   pid_t pid = getpid();
   write_pidfile(pid, pid_file);
-  get_daemon_resources(pid);
-
   af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
 
   // Drop current effective user to an unprivileged one

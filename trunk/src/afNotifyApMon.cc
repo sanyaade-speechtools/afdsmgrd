@@ -21,9 +21,12 @@ const char *notifyApMon::stat_suffix = "_status";
  */
 
 char *notifyApMon::stat_param_names[] = {
-  (char *)"size_kib",
-  (char *)"vsize_kib",
-  (char *)"total_pcpu",
+  (char *)"rss_kib",
+  (char *)"virt_kib",
+  (char *)"uptime_sec",
+  (char *)"user_sec",
+  (char *)"sys_sec",
+  (char *)"pcpu_delta",
   (char *)"queue_queued",
   (char *)"queue_running",
   (char *)"queue_success",
@@ -34,6 +37,9 @@ char *notifyApMon::stat_param_names[] = {
 int notifyApMon::stat_val_types[] = {
   XDR_INT32,
   XDR_INT32,
+  XDR_REAL32,
+  XDR_REAL32,
+  XDR_REAL32,
   XDR_REAL32,
   XDR_INT32,
   XDR_INT32,
@@ -122,14 +128,17 @@ notifyApMon::notifyApMon(config &_cfg) : notify(_cfg) {
   ds_param_vals = new char *[ds_n_params]();
 
   // Pointers to values inside a pool
-  stat_param_vals[0] = (char *)&(stat_vals_pool.size_kib);
-  stat_param_vals[1] = (char *)&(stat_vals_pool.vsize_kib);
-  stat_param_vals[2] = (char *)&(stat_vals_pool.total_pcpu);
-  stat_param_vals[3] = (char *)&(stat_vals_pool.n_queued);
-  stat_param_vals[4] = (char *)&(stat_vals_pool.n_runn);
-  stat_param_vals[5] = (char *)&(stat_vals_pool.n_success);
-  stat_param_vals[6] = (char *)&(stat_vals_pool.n_fail);
-  stat_param_vals[7] = (char *)&(stat_vals_pool.n_total);
+  stat_param_vals[0]  = (char *)&(stat_vals_pool.rss_kib);
+  stat_param_vals[1]  = (char *)&(stat_vals_pool.virt_kib);
+  stat_param_vals[2]  = (char *)&(stat_vals_pool.uptime_sec);
+  stat_param_vals[3]  = (char *)&(stat_vals_pool.user_sec);
+  stat_param_vals[4]  = (char *)&(stat_vals_pool.sys_sec);
+  stat_param_vals[5]  = (char *)&(stat_vals_pool.pcpu_delta);
+  stat_param_vals[6]  = (char *)&(stat_vals_pool.n_queued);
+  stat_param_vals[7]  = (char *)&(stat_vals_pool.n_runn);
+  stat_param_vals[8]  = (char *)&(stat_vals_pool.n_success);
+  stat_param_vals[9]  = (char *)&(stat_vals_pool.n_fail);
+  stat_param_vals[10] = (char *)&(stat_vals_pool.n_total);
 
 }
 
@@ -187,15 +196,18 @@ void notifyApMon::dataset(const char *ds_name, int n_files, int n_staged,
 
 }
 
-/** Report resources usage, notably memory size and vsize, and percentage of CPU
- *  used since daemon bootstrap. Note: a call to commit() is required to send to
+/** Report resources usage. Note: a call to commit() is required to send info to
  *  ApMon.
  */
-void notifyApMon::resources(unsigned int size_kib, unsigned int vsize_kib,
-  float total_pcpu) {
-  stat_vals_pool.size_kib   = size_kib;
-  stat_vals_pool.vsize_kib  = vsize_kib;
-  stat_vals_pool.total_pcpu = total_pcpu;
+void notifyApMon::resources(unsigned long rss_kib, unsigned long virt_kib,
+  float real_sec, float user_sec, float sys_sec,
+  float real_delta_sec, float user_delta_sec, float sys_delta_sec) {
+  stat_vals_pool.rss_kib    = rss_kib;
+  stat_vals_pool.virt_kib   = virt_kib;
+  stat_vals_pool.uptime_sec = real_sec;
+  stat_vals_pool.user_sec   = user_sec;
+  stat_vals_pool.sys_sec    = sys_sec;
+  stat_vals_pool.pcpu_delta = user_delta_sec / real_delta_sec;
 }
 
 /** Report queue status. Note: a call to commit() is required to send to ApMon.
