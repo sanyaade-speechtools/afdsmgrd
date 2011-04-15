@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#
+# Authentication test: prints the status of proxy and token.
+#
+# by Dario Berzano <dario.berzano@cern.ch>
+#
+
+# Load library functions
+source `dirname $0`/aflib
+
+# Debug line, can be removed...
+#echo "[`Datime`] $0 invoked with args: $@" >> /home/xrd/scratch/afmss.log
+
+# The main function
+function Main() {
+
+  IsTokenExpiring
+  if [ $? != 0 ]; then
+    prn -w "Token is expiring"
+  else
+    prn -o "Token valid"
+  fi
+
+  IsProxyExpiring
+  if [ $? != 0 ]; then
+    prn -w "Proxy is expiring"
+  else
+    prn -o "Proxy valid"
+  fi
+
+}
+
+Main $@
