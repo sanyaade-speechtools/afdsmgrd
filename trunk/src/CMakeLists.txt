@@ -14,6 +14,15 @@
 include_directories (${CMAKE_CURRENT_BINARY_DIR})
 
 #
+# Use -fPIC on 64-bit machines
+#
+
+if ("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+  set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fPIC")
+  set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fPIC")
+endif ()
+
+#
 # List of the libraries to build
 #
 
@@ -26,15 +35,13 @@ add_library (afLog afLog.cc)
 add_library (afNotify afNotify.cc)
 add_library (afResMon afResMon.cc)
 
-target_link_libraries (afResMon -lrt)
-
 #
 # Plugins (as shared libraries) and where to install them
 #
 
 if (ApMon_FOUND)
   add_library (afdsmgrd_notify_apmon SHARED afNotifyApMon.cc)
-  target_link_libraries (afdsmgrd_notify_apmon ${ApMon_LIBRARY})
+  target_link_libraries (afdsmgrd_notify_apmon ${ApMon_LIBRARY} afConfig afLog afRegex)
   install (TARGETS afdsmgrd_notify_apmon LIBRARY DESTINATION ${DIR_LIB})
 endif ()
 

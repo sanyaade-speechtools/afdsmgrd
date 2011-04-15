@@ -88,10 +88,10 @@ bool resMon::fetch_cpu_timing(res_timing_t &rt) {
     rt.sys_sec = 0;
     return false;
   }
-  rt.user_sec = (float)buf_ru.ru_utime.tv_sec + \
-    (float)buf_ru.ru_utime.tv_usec / 1000000.;
-  rt.sys_sec = (float)buf_ru.ru_stime.tv_sec + \
-    (float)buf_ru.ru_stime.tv_usec / 1000000.;
+  rt.user_sec = (double)buf_ru.ru_utime.tv_sec + \
+    (double)buf_ru.ru_utime.tv_usec / 1000000.;
+  rt.sys_sec = (double)buf_ru.ru_stime.tv_sec + \
+    (double)buf_ru.ru_stime.tv_usec / 1000000.;
   return true;
 }
 
@@ -100,7 +100,9 @@ bool resMon::fetch_cpu_timing(res_timing_t &rt) {
  *  considered. The selected timer is chosen to be resilient to system time
  *  modifications.
  */
-float resMon::get_wall_sec() {
-  clock_gettime(CLOCK_MONOTONIC, &buf_ts);
-  return (float)buf_ts.tv_sec + (float)buf_ts.tv_nsec / 1000000000.;
+double resMon::get_wall_sec() {
+  //clock_gettime(CLOCK_MONOTONIC, &buf_ts);
+  //return (double)buf_ts.tv_sec + (double)buf_ts.tv_nsec / 1000000000.;
+  gettimeofday(&buf_tv, 0);
+  return (double)buf_tv.tv_sec + (double)buf_tv.tv_usec / 1000000.;
 }

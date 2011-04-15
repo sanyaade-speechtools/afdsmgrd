@@ -207,7 +207,7 @@ void notifyApMon::resources(unsigned long rss_kib, unsigned long virt_kib,
   stat_vals_pool.uptime_sec = real_sec;
   stat_vals_pool.user_sec   = user_sec;
   stat_vals_pool.sys_sec    = sys_sec;
-  stat_vals_pool.pcpu_delta = user_delta_sec / real_delta_sec;
+  stat_vals_pool.pcpu_delta = 100. * user_delta_sec / real_delta_sec;
 }
 
 /** Report queue status. Note: a call to commit() is required to send to ApMon.
@@ -237,7 +237,7 @@ void notifyApMon::commit() {
   snprintf(prefix_buf, AF_NOTIFYAPMON_PREFIX_BUFSIZE, "%s%s",
     apmon_prefix.c_str(), stat_suffix);
 
-  apmon_send(prefix_buf, "afdsmgrd",
+  apmon_send(prefix_buf, (char *)"afdsmgrd",
     stat_n_params, stat_param_names, stat_val_types, stat_param_vals);
 
   // Eventually reset cache

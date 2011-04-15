@@ -898,11 +898,11 @@ void main_loop(af::config &config) {
 
     if ((rm.virt_kib != 0) && (rtd.user_sec >= 0.) && (rtc.user_sec >= 0.)) {
 
-      float pcpu_delta = rtd.user_sec / rtd.real_sec;
-      float pcpu_avg   = rtc.user_sec / rtc.real_sec;
+      double pcpu_delta = 100. * rtd.user_sec / rtd.real_sec;
+      double pcpu_avg   = 100. * rtc.user_sec / rtc.real_sec;
 
       af::log::info(af::log_level_normal,
-        "Usage statistics: uptime: %.0f s, CPU: %.2f%%, avg CPU: %.2f%%, "
+        "Usage statistics: uptime: %.1lf s, CPU: %.1lf%%, avg CPU: %.1lf%%, "
         "virt: %lu KiB, rss: %lu KiB",
         rtc.real_sec, pcpu_delta, pcpu_avg,
         rm.virt_kib, rm.rss_kib);
@@ -910,8 +910,8 @@ void main_loop(af::config &config) {
       if (vars.notif) {
         vars.notif->resources(
           rm.rss_kib, rm.virt_kib,
-          rtc.real_sec, rtc.user_sec, rtc.sys_sec,
-          rtd.real_sec, rtd.user_sec, rtd.sys_sec
+          (float)rtc.real_sec, (float)rtc.user_sec, (float)rtc.sys_sec,
+          (float)rtd.real_sec, (float)rtd.user_sec, (float)rtd.sys_sec
         );
         vars.notif->commit();
       }
