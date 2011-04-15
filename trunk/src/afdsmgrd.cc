@@ -29,8 +29,6 @@
 #include "afOptions.h"
 #include "afResMon.h"
 
-#include <TDataSetManagerFile.h>
-
 #define AF_ERR_LOG 1
 #define AF_ERR_CONFIG 2
 #define AF_ERR_MEM 3
