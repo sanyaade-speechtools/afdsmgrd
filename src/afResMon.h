@@ -12,7 +12,8 @@
 #include <fstream>
 
 #include <unistd.h>
-#include <time.h>
+//#include <time.h>
+#include <sys/time.h>
 #include <sys/resource.h>
 #include <string.h>
 #include <stdio.h>
@@ -26,9 +27,9 @@ namespace af {
   /** Structure to hold timings.
    */
   typedef struct {
-    float real_sec;
-    float user_sec;
-    float sys_sec;
+    double real_sec;
+    double user_sec;
+    double sys_sec;
   } res_timing_t;
 
   /** Structure to hold memory. 1 KiB = 1024 bytes
@@ -50,11 +51,12 @@ namespace af {
 
     private:
 
-      float get_wall_sec();
+      double get_wall_sec();
       bool fetch_cpu_timing(res_timing_t &rt);
       res_timing_t &get_delta_timing_ref(res_timing_t &ref);
 
-      struct timespec buf_ts;
+      //struct timespec buf_ts;
+      struct timeval buf_tv;
       struct rusage buf_ru;
       char buf[AFRESMON_BUFSIZE];
       std::string procfn;

@@ -26,7 +26,7 @@ bool set_env_var(char *keyval) {
     *val = '\0';
     val++;
   }
-  else val = "";
+  else val = (char *)"";
 
   if ( setenv(keyval, val, 1) == 0 ) return true;
   return false;
