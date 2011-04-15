@@ -24,6 +24,9 @@ add_library (afConfig afConfig.cc)
 add_library (afRegex afRegex.cc)
 add_library (afLog afLog.cc)
 add_library (afNotify afNotify.cc)
+add_library (afResMon afResMon.cc)
+
+target_link_libraries (afResMon -lrt)
 
 #
 # Plugins (as shared libraries) and where to install them
@@ -44,7 +47,7 @@ add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
 # Daemon executable and its libraries
 add_executable (afdsmgrd afdsmgrd.cc)
-target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afNotify ${Root_LIBS} -ldl -pthread)
+target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afNotify afResMon ${Root_LIBS} -ldl -pthread)
 
 #
 # Where to install the stuff
