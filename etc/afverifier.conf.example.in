@@ -1,0 +1,31 @@
+#
+# afverifier.conf.example - example configuration file for afverifier.
+#
+# by Dario Berzano <dario.berzano@cern.ch>
+#
+# See configuration of afdsmgrd or even PROOF for more information.
+#
+
+# Variable with name of redirector
+set PMASTER=pmaster.to.infn.it
+
+# Standard PROOF dataset source
+xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw=1
+
+# Originating URL will be converted to redirector's according to this scheme
+verifier.urlregex alien://(.*)$ root://$PMASTER/$1
+
+# Sleep between each queue check
+verifier.sleepsecs 10
+
+# Verified data on queue is saved on datasets every X seconds
+verifier.scandseveryloops 10
+
+# Parallel verifications
+verifier.parallelverifies 50
+
+# Command that performs the file verification -- variables will be substituted
+verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/Verify.C'("$REDIRURL", "$TREENAME")'
+
+# Maximum number of failures tolerated: verifications are failed after that
+verifier.maxfailures 10
