@@ -56,12 +56,17 @@ add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 add_executable (afdsmgrd afdsmgrd.cc)
 target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afNotify afResMon ${Root_LIBS} -ldl -pthread)
 
+# Verifier executable and its libraries
+add_executable (afverifier verifier.cc)
+target_link_libraries (afverifier afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afResMon ${Root_LIBS} -ldl -pthread)
+
 #
 # Where to install the stuff
 #
 
 install (TARGETS afdsmgrd RUNTIME DESTINATION ${DIR_BIN})
 install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION ${DIR_LIBEXEC})
+install (TARGETS afverifier RUNTIME DESTINATION ${DIR_BIN})
 
 #
 # Test executable build and install directives (only in Debug build type)
