@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #
-# Library functions for the MSS interface between xrootd and AliEn.
+# aflib -- by Dario Berzano <dario.berzano@cern.ch>
 #
-# by Dario Berzano <dario.berzano@cern.ch>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Library functions for the MSS interface between xrootd and AliEn.
 #
 # === EXIT CODES ===
 #
@@ -50,6 +52,9 @@ export PROXY="/tmp/x509up_u$UID"
 
 # Location of the AliEn environment
 export ALIEN_ENV="/tmp/gclient_env_$UID"
+
+# Log file; if empty, output on stdout
+export LOGFILE=""
 
 # Expiration "tolerance": check if token or proxy will expire within the next X
 # seconds. This is useful because it may take a long time between the AliEn LFN
@@ -160,7 +165,8 @@ function StripPoolPrefix() {
   echo "$1" | perl -ne "/^$POOL_PREFIX(.*)/"'; print "$1\n"'
 }
 
-# Echo function with prefixes. If QUIET envvar is set to 1 output is not printed
+# Echo function with prefixes. If QUIET envvar is set to 1 output is not
+# printed; if LOGFILE is not set, output is on stdout
 function prn() {
   if [ "$QUIET" == 1 ]; then
     return
@@ -169,20 +175,30 @@ function prn() {
   local PARAM="$1"
   shift
   local STR="$@"
+
+  local PREF
+
   case $PARAM in
-    -i) STR="*** INF *** $STR" ;;
-    -e) STR="*** ERR *** $STR" ;;
-    -w) STR="*** WRN *** $STR" ;;
-    -o) STR="*** OK! *** $STR" ;;
-    -f) STR="*** FTL *** $STR" ;;
+    -i) PREF="I" ;;
+    -e) PREF="E" ;;
+    -w) PREF="W" ;;
+    -o) PREF="O" ;;
+    -f) PREF="F" ;;
   esac
-  if [ "$LABEL" != "" ]; then
-    STR="[$LABEL] $STR"
-  fi
+
   if [ "$DATIME" != "0" ]; then
-    STR="[`Datime`] $STR"
+    PREF="$PREF-[`Datime`]"
   fi
-  echo "$STR"
+
+  if [ "$LABEL" != "" ]; then
+    PREF="$PREF-[$LABEL]"
+  fi
+
+  if [ "$LOGFILE" == "" ]; then
+    echo "$PREF $STR"
+  else
+    echo "$PREF $STR" >> "$LOGFILE"
+  fi
 }
 
 # This function performs automatic authentication. Messages are printed, i.e.
@@ -194,7 +210,7 @@ function AutoAuth() {
   # to terminate
   Wait alien-token-init
   if [ $? != 0 ]; then
-    prn -f "Timeout reached"
+    prn -e "Timeout reached"
     return 10
   fi
 
@@ -204,7 +220,7 @@ function AutoAuth() {
     prn -i "Token is expiring soon or does not exist: requesting a new one"
     TokenInit
     if [ $? != 0 ]; then
-      prn -f "Cannot obtain a new token"
+      prn -e "Cannot obtain a new token"
       return 11
     else
       prn -o "New token obtained"
@@ -218,7 +234,7 @@ function AutoAuth() {
   # terminate
   Wait xrdgsiproxy
   if [ $? != 0 ]; then
-    prn -f "Timeout reached"
+    prn -e "Timeout reached"
     return 20
   fi
 
@@ -228,7 +244,7 @@ function AutoAuth() {
     prn -i "Proxy is expiring soon or does not exist: requesting a new one"
     ProxyInit
     if [ $? != 0 ]; then
-      prn -f "Cannot obtain a new proxy"
+      prn -e "Cannot obtain a new proxy"
       return 21
     else
       prn -o "New proxy obtained"
@@ -275,5 +291,6 @@ function PurgeSlashes() {
 
 # SQL-like date and time
 function Datime() {
-  date +'%Y-%m-%d %H:%M:%S'
+  #date +'%Y-%m-%d %H:%M:%S'
+  date +'%Y%m%d-%H%M%S'
 }

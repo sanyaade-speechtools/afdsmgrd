@@ -5,7 +5,6 @@
 #
 # Configuration options to launch the afdsmgrd daemon.
 #
-#
 
 # Full path to the afdsmgrd executable
 export AFDSMGRD_PROG=@DIR_BIN@/afdsmgrd

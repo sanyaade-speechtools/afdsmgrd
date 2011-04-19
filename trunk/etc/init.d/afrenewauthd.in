@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #
-# init.d/afdsmgrd -- by Dario Berzano <dario.berzano@cern.ch>
+# init.d/afrenewauthd -- by Dario Berzano <dario.berzano@cern.ch>
 #
 # This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Start (daemonize) and stop the afrenewauth utility for AliEn.
 #
 # This script is conform to the LSB specifications and it is compatible with
 # the chkconfig custom header format. It can also be run by an unprivileged
@@ -26,15 +28,14 @@
 #
 
 ### BEGIN INIT INFO
-# Provides: afdsmgrd
+# Provides: afrenewauthd
 # Default-Start: 2 3 4 5
 # Default-Stop: 0 1 6
 # Required-Start: $local_fs $network
 # Required-Stop: $local_fs $network
-# Short-Description: Dataset manager for PROOF-based AFs
-# Description: afdsmgrd, which stands for Analysis Facility Dataset Manager
-#              Daemon, is a ROOT-based daemon that scans the stored datasets in
-#              order to issue the actual data staging
+# Short-Description: System-wide authentication keeper for AliEn
+# Description: afrenewauth is a daemonized script that automatically renews the
+#              AliEn token and Grid proxy
 ### END INIT INFO
 
 #
@@ -73,7 +74,7 @@ if [ "$CF_FOUND" == 0 ]; then
 fi
 
 # Full path of program
-export PROG="$AFDSMGRD_PROG"
+export PROG="$AFRENEWAUTHD_PROG"
 
 # Silently fails if program is missing (for spurious init.d scripts)
 [ -x "$PROG" ] || exit 0
@@ -82,28 +83,16 @@ export PROG="$AFDSMGRD_PROG"
 export BASEPROG=`basename "$PROG"`
 
 # File that holds the PID
-export PIDFILE="$AFDSMGRD_PIDFILE"
+export PIDFILE="$AFRENEWAUTHD_PIDFILE"
 
 # Log file
-export LOGFILE="$AFDSMGRD_LOGFILE"
-
-# Log dir
-export LOGDIR="$AFDSMGRD_LOGDIR"
-
-# Configuration file
-export CONF="$AFDSMGRD_CONF"
+export LOGFILE="$AFRENEWAUTHD_LOGFILE"
 
 # Daemon user
-export SUSER="$AFDSMGRD_USER"
-
-# Log level
-export LOG_LEVEL="$AFDSMGRD_LOGLEVEL"
-
-# Temporary directory (hardcoded)
-export TEMPDIR="/tmp/afdsmgrd"
+export SUSER="$AFRENEWAUTHD_USER"
 
 # Temporary startup log
-export STARTUP_LOG=$(mktemp /tmp/afdsmgrd-startup-XXXXX)
+export STARTUP_LOG=$(mktemp /tmp/afrenewauthd-startup-XXXXX)
 
 #
 # Functions
@@ -164,26 +153,35 @@ function Cleanup() {
 # effectively launch the daemon
 function LaunchDaemon() {
 
-  # Creates temporary directory
-  Cleanup
-  mkdir -p "$TEMPDIR"
-  chmod -R u=rwX,g=rX,o=rX "$TEMPDIR" > /dev/null 2>&1
-  chown -R "$SUSER" "$TEMPDIR" > /dev/null 2>&1
+  local AUX RETVAL
 
-  # Change permissions of log directory
-  mkdir -p "$LOGDIR" > /dev/null 2>&1
-  touch "$LOGFILE" > /dev/null 2>&1
-  chmod -R u=rwX,g=rX,o=rX "$LOGDIR" > /dev/null 2>&1
-  chown -R "$SUSER" "$LOGDIR" > /dev/null 2>&1
+  rm -f "$LOGFILE".0
+  mv "$LOGFILE" "$LOGFILE".0 2> /dev/null
+  touch "$LOGFILE" "$PIDFILE"
+  chown "$SUSER" "$LOGFILE"
+  chown "$SUSER" "$PIDFILE"
 
-  # Creates directory for pidfile (if not exists)
-  mkdir -p $(dirname "$PIDFILE")
+  AUX="$(mktemp /tmp/$BASENAME-launch-XXXXX)"
 
-  # This is a setuid program: for security reasons, LD_LIBRARY_PATH is not
-  # inherited in the environment inside the daemon
-  ( export LD_LIBRARY_PATH="$ROOTSYS/lib:$AFDSMGRD_LIBS:$LD_LIBRARY_PATH" ; \
-    "$AFDSMGRD_PROG" -b -u "$SUSER" -p "$PIDFILE" -c "$CONF" -d "$LOG_LEVEL" \
-    -l "$LOGFILE" -e "$AFDSMGRD_LIBEXEC" > "$STARTUP_LOG" 2>&1 )
+  echo "#!/bin/bash" > "$AUX"
+  echo "export PATH=$AFRENEWAUTHD_PATH:\$PATH" >> "$AUX"
+  echo "export LD_LIBRARY_PATH=$AFRENEWAUTHD_LIBS:\$LD_LIBRARY_PATH" >> "$AUX"
+  echo "cd /tmp" >> "$AUX"
+  echo nohup \"$PROG\" -l \"$LOGFILE\" -p \"$PIDFILE\" \
+    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME "> \"$STARTUP_LOG\" 2>&1 &" >> "$AUX"
+
+  chmod 0777 "$AUX"
+  chmod 0777 "$STARTUP_LOG"
+
+  if [ "$USER" != "root" ]; then
+    "$AUX"
+    RETVAL=$?
+  else
+    su "$SUSER" -c "$AUX" > /dev/null 2>&1
+    RETVAL=$?
+  fi
+
+  rm -f "$AUX"
 
   return $?
 }
@@ -280,9 +278,6 @@ case "$1" in
     echo "Using startup configuration file: $CF"
     exit 0
   ;;
-  #drain)
-  # to be implemented
-  #;;
   *)
     echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status|sysconfig|log}"
     exit 1
