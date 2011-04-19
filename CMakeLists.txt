@@ -175,6 +175,33 @@ install (FILES macros/StageXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-root.sh DESTINATION ${DIR_LIBEXEC})
 
 #
+# Renew authentication daemon (optional, only in debug mode)
+#
+
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+
+  # Renew authentication daemon: startup script
+  configure_file (
+    "${PROJECT_SOURCE_DIR}/etc/init.d/afrenewauthd.in"
+    "${PROJECT_BINARY_DIR}/etc/init.d/afrenewauthd"
+    @ONLY
+  )
+
+  # Renew authentication daemon: startup configuration
+  configure_file (
+    "${PROJECT_SOURCE_DIR}/etc/sysconfig/afrenewauthd.example.in"
+    "${PROJECT_BINARY_DIR}/etc/sysconfig/afrenewauthd.example"
+    @ONLY
+  )
+
+  install (PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/afrenewauth DESTINATION ${DIR_LIBEXEC})
+  install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/scripts/aflib DESTINATION ${DIR_LIBEXEC})
+  install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afrenewauthd DESTINATION ${DIR_ETC}/init.d)
+  install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afrenewauthd.example DESTINATION ${DIR_ETC}/sysconfig)
+
+endif ()
+
+#
 # Custom uninstall target (external module)
 #
 

@@ -1,13 +1,28 @@
 #!/bin/bash
 
 #
-# Transfer files using AliEn to the destination pool.
+# afxfr -- by Dario Berzano <dario.berzano@cern.ch>
 #
-# by Dario Berzano <dario.berzano@cern.ch>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Transfer files using AliEn to the destination pool.
 #
 # This script is intended to be run by another daemon, of which it inherits the
 # full environment. However, it is written to be self-contained, so there's no
 # need to have a particular environment to run it.
+#
+# === PARAMS ===
+#
+# afxfr is invoked by xrootd with the following parameters:
+#
+#   afxfr <LFN> <local_destination>
+#
+# Where:
+#
+#  - LFN is the Logical File Name without the leading alien://, e.g.:
+#    /alien/alice/cern.ch/user/d/dberzano/MeoniPt/AliESDs-00198.root
+#  - local_destination is the full destination path on the local disk, that
+#    includes the destination file name
 #
 # === EXIT CODES ===
 #

@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #
-# Authentication test: prints the status of proxy and token.
+# afauthtest -- by Dario Berzano <dario.berzano@cern.ch>
 #
-# by Dario Berzano <dario.berzano@cern.ch>
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Authentication test: prints the status of proxy and token.
 #
 
 # Load library functions
