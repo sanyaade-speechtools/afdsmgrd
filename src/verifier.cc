@@ -360,18 +360,24 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
           // Operation failed
           //
 
-          // External command reported a failure: this could mean, during
-          // verification, that either the file is not staged or another error
-          // occured
-          af::log::error(af::log_level_high, "Failed: %s",
-            qent->get_main_url());
-
           // Get the reason: if the reason is *explicitly* not_staged, then the
           // file will be marked as not staged in processing datasets. File is
           // staged by default.
           const char *reason = (*it)->get_field_text("Reason");
           bool staged = true;
           if ((reason) && (strcmp(reason, "not_staged") == 0)) staged = false;
+
+          // External command reported a failure: this could mean, during
+          // verification, that either the file is not staged or another error
+          // occured
+          if (staged) { 
+            af::log::error(af::log_level_high, "Failed: %s",
+              qent->get_main_url());
+          }
+          else {
+            af::log::warning(af::log_level_high, "Not staged: %s",
+              qent->get_main_url());
+          }
 
           opq.failed(qent->get_main_url(), staged);
 
@@ -437,8 +443,8 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
         // Turn status to "running"
         opq.set_status(qent->get_main_url(), af::qstat_running);
 
-        // Set timeout of 200 seconds on each command (TODO)
-        ext_op_cmd->set_timeout_secs(200);
+        // Set timeout of 1000 seconds on each command (TODO)
+        ext_op_cmd->set_timeout_secs(1000);
 
         // Enqueue in command queue
         cmdq.push_back(ext_op_cmd);
