@@ -171,6 +171,14 @@ configure_file (
   @ONLY
 )
 
+# xrd locateall wrapper for the verifier
+configure_file (
+  "${PROJECT_SOURCE_DIR}/scripts/afverifier-xrd-locate.sh.in"
+  "${PROJECT_BINARY_DIR}/scripts/afverifier-xrd-locate.sh"
+  @ONLY
+)
+
+
 #
 # Install directives for non-src files
 #
@@ -182,6 +190,7 @@ install (FILES macros/StageXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-root.sh DESTINATION ${DIR_LIBEXEC})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afverifier.conf.example DESTINATION ${DIR_ETC})
 install (FILES macros/Verify.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
+install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier-xrd-locate.sh DESTINATION ${DIR_LIBEXEC})
 
 #
 # Renew authentication daemon (optional, only in debug mode)

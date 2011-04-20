@@ -24,8 +24,14 @@ verifier.scandseveryloops 10
 # Parallel verifications
 verifier.parallelverifies 50
 
-# Command that performs the file verification -- variables will be substituted
-verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/Verify.C'("$REDIRURL", "$TREENAME", 0)'
+# Command that performs the file verification -- variables will be substituted.
+# With current distribution, you may choose between two different methods:
+#
+# 1) ROOT macro with option to do only locate (0) or rescan metadata (1)
+#verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/Verify.C'("$REDIRURL", "$TREENAME", 0)'
+#
+# 2) External script that wraps "xrd locateall" (way faster and lighter)
+verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL"
 
 # Maximum number of failures tolerated: verifications are failed after that
 verifier.maxfailures 10

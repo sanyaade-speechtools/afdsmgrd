@@ -182,7 +182,7 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
     af::log::info(af::log_level_low, "Scanning dataset %s", ds);
 
     TFileInfo *fi;
-    dsm.fetch_files(NULL, "Sc");  // Sc == staged AND not corrupted
+    dsm.fetch_files(NULL, "SsCc");  // every file
     int count_changes = 0;
     int count_files = 0;
 
@@ -498,7 +498,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
     af::log::info(af::log_level_low, "Scanning dataset %s", ds);
 
     TFileInfo *fi;
-    dsm.fetch_files(NULL, "Sc");  // Sc == staged AND not corrupted
+    dsm.fetch_files(NULL, "SsCc");  // Sc == staged AND not corrupted
     int count_changes = 0;
     int count_files = 0;
 
@@ -730,12 +730,16 @@ void main_loop(af::config &config) {
 
     process_opqueue(opq, cmdq, vars);
 
+    unsigned int n_queued, n_runn, n_success, n_fail, n_total;
+    opq.summary(n_queued, n_runn, n_success, n_fail);
+
     //
     // Process datasets (every X loops)
     //
 
-    if (count_loops == 0) {
-      process_datasets_save(opq, dsm, vars);
+    // Either proper loop number or no more elements are running/waiting
+    if ((count_loops == 0) || (n_queued+n_runn == 0)) {
+      if (n_success+n_fail > 0) process_datasets_save(opq, dsm, vars);
     }
     else {
       int diff_loops = vars.scan_ds_every_loops - count_loops;
@@ -778,7 +782,6 @@ void main_loop(af::config &config) {
     // End of loop: do we still have something to do? Check queue...
     //
 
-    unsigned int n_queued, n_runn, n_success, n_fail, n_total;
     opq.summary(n_queued, n_runn, n_success, n_fail);
     n_total = n_queued + n_runn + n_success + n_fail;
 
@@ -792,7 +795,7 @@ void main_loop(af::config &config) {
       sleep(vars.sleep_secs);
     }
 
-  }  // while
+  }  // big while
 
   //
   // Report final statistics
