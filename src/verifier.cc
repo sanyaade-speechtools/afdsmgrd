@@ -25,9 +25,14 @@
 #include "afOpQueue.h"
 #include "afOptions.h"
 #include "afResMon.h"
+#include "afOptions.h"
 
 #define AF_ERR_CONFIG 2
 #define AF_ERR_LIBEXEC 15
+
+/** Program name that goes in version banner.
+ */
+#define AF_PROG_NAME "afverifier"
 
 /** Set of variables in configuration file.
  */
@@ -345,7 +350,6 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
           unsigned int size_bytes = (*it)->get_field_uint("Size");
           unsigned int n_events = (*it)->get_field_uint("Events");
 
-          // NOTE: if endp_url is NULL, it means that file is not staged!
           opq.success(qent->get_main_url(), endp_url, tree_name, n_events,
             size_bytes);
 
@@ -356,11 +360,20 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
           // Operation failed
           //
 
-          // Stage command reported a failure
+          // External command reported a failure: this could mean, during
+          // verification, that either the file is not staged or another error
+          // occured
           af::log::error(af::log_level_high, "Failed: %s",
             qent->get_main_url());
 
-          opq.failed(qent->get_main_url(), false);
+          // Get the reason: if the reason is *explicitly* not_staged, then the
+          // file will be marked as not staged in processing datasets. File is
+          // staged by default.
+          const char *reason = (*it)->get_field_text("Reason");
+          bool staged = true;
+          if ((reason) && (strcmp(reason, "not_staged") == 0)) staged = false;
+
+          opq.failed(qent->get_main_url(), staged);
 
         }
 
@@ -423,6 +436,9 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
 
         // Turn status to "running"
         opq.set_status(qent->get_main_url(), af::qstat_running);
+
+        // Set timeout of 200 seconds on each command (TODO)
+        ext_op_cmd->set_timeout_secs(200);
 
         // Enqueue in command queue
         cmdq.push_back(ext_op_cmd);
@@ -504,72 +520,85 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
       if (qent) {
 
-        if (qent->get_status() == af::qstat_success) {
+        const char *endp_url = qent->get_endp_url();
+
+        if ((qent->get_status() == af::qstat_success) && (endp_url)) {
 
           //
-          // File correctly staged; corrupted bit will not be touched
+          // OK reported --> file correctly staged; if we used extended
+          // verification, we can also update metadata.
           //
 
-          const char *endp_url = qent->get_endp_url();
+          bool meta_upd = false;
 
-          if (endp_url) {
+          // Staged and Not Corrupted
+          fi->SetBit( TFileInfo::kStaged );
+          fi->ResetBit( TFileInfo::kCorrupted );
 
-            //
-            // File is staged and we have its server's URL. If we used extended
-            // verification, we can also update metadata.
-            //
+          if (!fi->AddUrl(qent->get_endp_url(), kTRUE)) {
+            af::log::warning(af::log_level_debug, "In dataset %s, "
+              "endpoint URL %s is a duplicate", ds, endp_url);
+          }
 
-            bool meta_upd = false;
+          // Update file size (only if meaningful)
+          if (qent->get_size_bytes() > 0) {
+            fi->SetSize(qent->get_size_bytes());
+          }
 
-            fi->SetBit( TFileInfo::kStaged );
-            if (!fi->AddUrl(qent->get_endp_url(), kTRUE)) {
-              af::log::warning(af::log_level_debug, "In dataset %s, "
-                "endpoint URL %s is a duplicate", ds, endp_url);
-            }
+          // Update tree name and events (only if meaningful)
+          if ((qent->get_tree_name()) && (qent->get_n_events() > 0)) {
 
-            // Update file size (only if meaningful)
-            if (qent->get_size_bytes() > 0) {
-              fi->SetSize(qent->get_size_bytes());
-            }
+            meta_upd = true;
 
-            // Update tree name and events (only if meaningful)
-            if ((qent->get_tree_name()) && (qent->get_n_events() > 0)) {
+            // All metadata is first removed...
+            TList *mdl = fi->GetMetaDataList();
+            if ((mdl) && (mdl->GetEntries() > 0)) fi->RemoveMetaData();
 
-              meta_upd = true;
+            // ...then new metadata is added
+            TFileInfoMeta *meta = new TFileInfoMeta(qent->get_tree_name());
+            meta->SetEntries(qent->get_n_events());
+            fi->AddMetaData(meta);
 
-              // All metadata is first removed...
-              TList *mdl = fi->GetMetaDataList();
-              if ((mdl) && (mdl->GetEntries() > 0)) fi->RemoveMetaData();
+          }
 
-              // ...then new metadata is added
-              TFileInfoMeta *meta = new TFileInfoMeta(qent->get_tree_name());
-              meta->SetEntries(qent->get_n_events());
-              fi->AddMetaData(meta);
-            }
+          af::log::ok(af::log_level_normal,
+            "File %s is staged as %s (metadata updated: %s)",
+            out_url, endp_url, (meta_upd ? "yes" : "no"));
 
-            af::log::ok(af::log_level_normal,
-              "File %s is staged as %s (metadata updated: %s)",
-              out_url, endp_url, (meta_upd ? "yes" : "no"));
+          count_changes++;
+
+        }  // end if success
+        else if (qent->get_status() == af::qstat_failed) {
+
+          //
+          // FAIL reported --> file not staged (Reason: not_staged) or another
+          // error
+          //
+
+          // File is always staged when FAIL occurs, except when Reason is
+          // not_staged: in this very case we change the staged and the
+          // corrupted bit, elsewhere we don't touch anything
+          if (!qent->is_staged()) {
+            // Reason: not_staged
+            // Not Staged and Corrupted --> why?
+            // Because we have the Real Status (not staged) but we don't trigger
+            // restaging through daemon (corrupted)
+            fi->ResetBit( TFileInfo::kStaged );
+            fi->SetBit( TFileInfo::kCorrupted );
+
+            af::log::warning(af::log_level_normal, "File %s is not staged: "
+              "marked as not staged and corrupted", out_url);
+
+            count_changes++;
 
           }
           else {
             // File is not staged: mark as unstaged
-            af::log::warning(af::log_level_normal, "File %s is not staged",
-              out_url);
-            fi->ResetBit( TFileInfo::kStaged );
+            af::log::error(af::log_level_normal, "File %s is not verifiable: "
+              "staged and corrupted bits not touched", out_url);
           }
 
-          count_changes++;
-
-        }  // end if qent ended successfully
-        else if (qent->get_status() == af::qstat_failed) {
-
-          // File is marked as corrupted
-          af::log::error(af::log_level_normal, "File %s seems corrupted");
-          fi->SetBit( TFileInfo::kCorrupted );
-          count_changes++;
-
-        }  // end if qent ended badly
+        }  // end if failed
 
       } // end if qent
 
@@ -794,10 +823,9 @@ int main(int argc, char *argv[]) {
 
   }
 
-  std::string empty;
-
+  std::string banner = AF_VERSION_BANNER;
   std::auto_ptr<af::log> global_log(
-    new af::log(std::cout, af::log_level_low, empty) );
+    new af::log(std::cout, af::log_level_low, banner) );
 
   // "libexec" path
   if (!libexec_path) {

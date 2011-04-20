@@ -28,6 +28,10 @@
 #include "afNotify.h"
 #include "afOptions.h"
 
+/** Program name that goes in version banner.
+ */
+#define AF_PROG_NAME "afdsmgrd-test-libs"
+
 /** Waits for user input (debug)
  */
 //#define WAIT_USER

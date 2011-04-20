@@ -25,7 +25,7 @@ verifier.scandseveryloops 10
 verifier.parallelverifies 50
 
 # Command that performs the file verification -- variables will be substituted
-verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/Verify.C'("$REDIRURL", "$TREENAME")'
+verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/Verify.C'("$REDIRURL", "$TREENAME", 0)'
 
 # Maximum number of failures tolerated: verifications are failed after that
 verifier.maxfailures 10
