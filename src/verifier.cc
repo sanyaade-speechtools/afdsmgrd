@@ -682,7 +682,7 @@ void main_loop(af::config &config) {
   config.bind_int("verifier.scandseveryloops", &vars.scan_ds_every_loops, 10, 1,
     AF_INT_MAX);
   config.bind_int("verifier.parallelverifies", &vars.parallel_verifies,
-    8, 1, 1000);
+    8, 1, AF_INT_MAX);
   config.bind_text("verifier.verifycmd", &vars.verify_cmd, "/bin/false");
   config.bind_int("verifier.maxfailures", &vars.max_failures, 0, 0,
     1000);
