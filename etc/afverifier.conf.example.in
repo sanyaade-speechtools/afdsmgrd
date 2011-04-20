@@ -16,13 +16,15 @@ xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw
 verifier.urlregex alien://(.*)$ root://$PMASTER/$1
 
 # Sleep between each queue check
-verifier.sleepsecs 10
+verifier.sleepsecs 6
 
 # Verified data on queue is saved on datasets every X seconds
 verifier.scandseveryloops 10
 
-# Parallel verifications
-verifier.parallelverifies 50
+# Parallel verifications: there is no upper limit, and it has been proven to
+# handle thousands of elements. It is however better to keep this number not too
+# high and to lower the "sleepsecs"
+verifier.parallelverifies 800
 
 # Command that performs the file verification -- variables will be substituted.
 # With current distribution, you may choose between two different methods:
@@ -34,4 +36,4 @@ verifier.parallelverifies 50
 verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL"
 
 # Maximum number of failures tolerated: verifications are failed after that
-verifier.maxfailures 10
+verifier.maxfailures 3

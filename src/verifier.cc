@@ -28,6 +28,7 @@
 #include "afOptions.h"
 
 #define AF_ERR_CONFIG 2
+#define AF_ERR_LOGLEVEL 4
 #define AF_ERR_LIBEXEC 15
 
 /** Program name that goes in version banner.
@@ -50,11 +51,14 @@ typedef struct {
 /** Global variables.
  */
 bool quit_requested = false;
+unsigned long total_files = 0;
+unsigned long total_saved_back = 0;
 
 /** Handles a typical quit signal (see signal()).
  */
 void signal_quit_callback(int signum) {
-  af::log::info(af::log_level_urgent, "Quit requested with signal %d", signum);
+  af::log::warning(af::log_level_urgent, "Quit requested with signal %d",
+    signum);
   quit_requested = true;
 }
 
@@ -169,8 +173,8 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
   verifier_vars_t &vars) {
 
-  af::log::info(af::log_level_normal,
-    "*** Scanning datasets for files to verify ***");
+  af::log::info(af::log_level_high,
+    "*** Scanning datasets for files to verify and fixing URLs ***");
 
   const af::queueEntry *qent;
   const char *ds;
@@ -179,7 +183,7 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
 
   while (ds = dsm.next_dataset()) {
 
-    af::log::info(af::log_level_low, "Scanning dataset %s", ds);
+    af::log::info(af::log_level_normal, "Scanning dataset %s", ds);
 
     TFileInfo *fi;
     dsm.fetch_files(NULL, "SsCc");  // every file
@@ -189,6 +193,7 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
     while (fi = dsm.next_file()) {
 
       count_files++;
+      total_files++;
 
       // Originating URL is the last one; redirector URL is the last but one
       TUrl *orig_url = dsm.get_url(-1);
@@ -302,7 +307,13 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
     extcmd_vars.insert( af::varpair_t("TREENAME", "") );
   }
 
-  af::log::info(af::log_level_normal, "*** Processing operations queue ***");
+  af::log::info(af::log_level_high, "*** Processing operations queue ***");
+
+  // Variables for summaries
+  unsigned int sum_cmd_finished = 0;
+  unsigned int sum_cmd_ok = 0;
+  unsigned int sum_cmd_err = 0;
+  unsigned int sum_cmd_started = 0;
 
   opq.set_max_failures((unsigned int)vars.max_failures);
 
@@ -333,6 +344,8 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
 
         // Processing (download, stage, verify...) has finished
 
+        sum_cmd_finished++;
+
         (*it)->get_output();
 
         if ( (*it)->is_ok() ) {
@@ -341,7 +354,8 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
           // Operation OK
           //
 
-          af::log::ok(af::log_level_high, "Success: %s", qent->get_main_url());
+          af::log::ok(af::log_level_normal, "Success: %s",
+            qent->get_main_url());
 
           // The strings are owned by (*it); note that these fields are not
           // mandatory for the external command, thus they might be NULL or 0!
@@ -352,6 +366,8 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
 
           opq.success(qent->get_main_url(), endp_url, tree_name, n_events,
             size_bytes);
+
+          sum_cmd_ok++;
 
         }
         else {
@@ -375,12 +391,14 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
               qent->get_main_url());
           }
           else {
-            af::log::warning(af::log_level_high, "Not staged: %s",
+            af::log::warning(af::log_level_normal, "Not staged: %s",
               qent->get_main_url());
           }
 
           opq.failed(qent->get_main_url(), staged);
 
+          sum_cmd_err++;
+          
         }
 
         //(*it)->print_fields(true);
@@ -437,8 +455,10 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
       if (r == 0) {
 
         // Command started successfully
-        af::log::ok(af::log_level_normal, "Operation started: %s (uiid=%u)",
+        af::log::ok(af::log_level_low, "Operation started: %s (uiid=%u)",
           qent->get_main_url(), qent->get_instance_id());
+
+        sum_cmd_started++;
 
         // Turn status to "running"
         opq.set_status(qent->get_main_url(), af::qstat_running);
@@ -453,7 +473,7 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
       else {
         af::log::error(af::log_level_high, "Error running external command, "
           "wrapper returned %d: check permissions on %s. Command issued: %s",
-          af::extCmd::get_temp_path(), vars.verify_cmd.c_str());
+          r, af::extCmd::get_temp_path(), url_cmd.c_str());
       }
 
     }
@@ -462,15 +482,21 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
   }
 
   //
-  // Summary (also notification)
+  // Summary
   //
 
   unsigned int n_queued, n_runn, n_success, n_fail, n_total;
   opq.summary(n_queued, n_runn, n_success, n_fail);
   n_total = n_queued + n_runn + n_success + n_fail;
-  af::log::info(af::log_level_normal, "Total elements in queue: %u || "
+  af::log::info(af::log_level_high, "Total elements in queue: %u || "
     "Queued: %u | Processing: %u | Success: %u | Failed: %u",
     n_total, n_queued, n_runn, n_success, n_fail);
+
+  af::log::info(af::log_level_high, "Operations summary: "
+    "Freshly started: %u | Freshly finished: %u (%u OK, %u failed, "
+    "%.1f per second)",
+    sum_cmd_started, sum_cmd_finished, sum_cmd_ok, sum_cmd_err,
+    (float)sum_cmd_finished/(float)vars.sleep_secs );
 
   //af::log::info(af::log_level_normal, "========== Begin Of Queue ==========");
   //opq.dump(true);
@@ -486,7 +512,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
   const af::queueEntry *qent;
 
-  af::log::info(af::log_level_normal,
+  af::log::info(af::log_level_high,
     "*** Saving entries back on datasets ***");
 
   const char *ds;
@@ -495,7 +521,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
   while (ds = dsm.next_dataset()) {
 
-    af::log::info(af::log_level_low, "Scanning dataset %s", ds);
+    af::log::info(af::log_level_normal, "Scanning dataset %s", ds);
 
     TFileInfo *fi;
     dsm.fetch_files(NULL, "SsCc");  // Sc == staged AND not corrupted
@@ -567,7 +593,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
           }
 
-          af::log::ok(af::log_level_normal,
+          af::log::ok(af::log_level_low,
             "File %s is staged as %s (metadata updated: %s)",
             out_url, endp_url, (meta_upd ? "yes" : "no"));
 
@@ -617,8 +643,10 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
     if (count_changes > 0) {
       bool save_ok = dsm.save_dataset();  // no toggle_suid here
       if (save_ok) {
-        af::log::ok(af::log_level_high, "Dataset %s saved: %d entries", ds,
-          count_files);
+        af::log::ok(af::log_level_high,
+          "Dataset %s saved: %d entries, %d just updated", ds, count_files,
+          count_changes);
+        total_saved_back += count_changes;
       }
       else {
         af::log::error(af::log_level_high,
@@ -636,7 +664,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
   dsm.free_datasets();
 
-  af::log::info(af::log_level_low, "Number of datasets processed: %u",
+  af::log::info(af::log_level_normal, "Number of datasets processed: %u",
     count_ds);
 
   //
@@ -644,7 +672,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
   //
 
   int n_flushed = opq.flush();
-  af::log::ok(af::log_level_normal,
+  af::log::ok(af::log_level_high,
     "%d elements removed from the operations queue", n_flushed);
 
 }
@@ -678,7 +706,7 @@ void main_loop(af::config &config) {
     dsm_cbk_args);
   config.bind_callback("verifier.urlregex", &config_callback_urlregex,
     &vars.url_regex);
-  config.bind_int("verifier.sleepsecs", &vars.sleep_secs, 30, 5, AF_INT_MAX);
+  config.bind_int("verifier.sleepsecs", &vars.sleep_secs, 30, 2, AF_INT_MAX);
   config.bind_int("verifier.scandseveryloops", &vars.scan_ds_every_loops, 10, 1,
     AF_INT_MAX);
   config.bind_int("verifier.parallelverifies", &vars.parallel_verifies,
@@ -703,7 +731,7 @@ void main_loop(af::config &config) {
   // The actual loop
   while (!quit_requested) {
 
-    af::log::info(af::log_level_low, "*** Inside main loop ***");
+    af::log::info(af::log_level_normal, "*** Inside main loop ***");
 
     //
     // Check and load updates from the configuration file
@@ -744,11 +772,11 @@ void main_loop(af::config &config) {
     else {
       int diff_loops = vars.scan_ds_every_loops - count_loops;
       if (diff_loops == 1) {
-        af::log::info(af::log_level_low, "Not processing datasets now: they "
+        af::log::info(af::log_level_high, "Not processing datasets now: they "
           "will be processed in the next loop");
       }
       else {
-        af::log::info(af::log_level_low, "Not processing datasets now: "
+        af::log::info(af::log_level_high, "Not processing datasets now: "
           "%d loops remaining before processing", diff_loops);
       }
     }
@@ -766,7 +794,7 @@ void main_loop(af::config &config) {
       double pcpu_delta = 100. * rtd.user_sec / rtd.real_sec;
       double pcpu_avg   = 100. * rtc.user_sec / rtc.real_sec;
 
-      af::log::info(af::log_level_normal,
+      af::log::info(af::log_level_high,
         "Usage statistics: uptime: %.1lf s, CPU: %.1lf%%, avg CPU: %.1lf%%, "
         "virt: %lu KiB, rss: %lu KiB",
         rtc.real_sec, pcpu_delta, pcpu_avg,
@@ -790,8 +818,8 @@ void main_loop(af::config &config) {
         "Every operation has completed, let's quit");
       quit_requested = true;
     }
-    else {
-      af::log::info(af::log_level_low, "Sleeping %ld seconds", vars.sleep_secs);
+    else if (!quit_requested) {
+      af::log::info(af::log_level_high, "Sleeping %ld seconds", vars.sleep_secs);
       sleep(vars.sleep_secs);
     }
 
@@ -805,8 +833,11 @@ void main_loop(af::config &config) {
 
   if (rtc.user_sec >= 0.) {
     double pcpu_avg   = 100. * rtc.user_sec / rtc.real_sec;
-    af::log::info(af::log_level_high,
-      "Completed in %.1lf s (average CPU: %.1lf%%)", rtc.real_sec, pcpu_avg);
+    af::log::info(af::log_level_urgent,
+      "Completed in %.1lf s || Entries saved back: %lu | "
+      "Rate: %.1lf entries per sec | Average CPU: %.1lf%%",
+      rtc.real_sec, total_saved_back,
+      (double)total_saved_back/(double)rtc.real_sec, pcpu_avg);
   }
 
 }
@@ -818,23 +849,52 @@ int main(int argc, char *argv[]) {
   int c;
   const char *config_file = NULL;
   const char *libexec_path = NULL;
+  const char *log_level = NULL;
 
   opterr = 0;
 
   // c <config>
   // e <libexec_path>
-  while ((c = getopt(argc, argv, ":c:e:")) != -1) {
+  // l <log_level>
+  while ((c = getopt(argc, argv, ":c:e:d:")) != -1) {
 
     switch (c) {
       case 'c': config_file = optarg; break;
       case 'e': libexec_path = optarg; break;
+      case 'd': log_level = optarg; break;
     }
 
   }
 
   std::string banner = AF_VERSION_BANNER;
   std::auto_ptr<af::log> global_log(
-    new af::log(std::cout, af::log_level_low, banner) );
+    new af::log(std::cout, af::log_level_normal, banner) );
+
+  // Set the log level amongst low, normal, high and urgent
+  if (log_level) {
+    if (strcmp(log_level, "debug") == 0)
+      global_log->set_level(af::log_level_debug);
+    else if (strcmp(log_level, "low") == 0)
+      global_log->set_level(af::log_level_low);
+    else if (strcmp(log_level, "normal") == 0)
+      global_log->set_level(af::log_level_normal);
+    else if (strcmp(log_level, "high") == 0)
+      global_log->set_level(af::log_level_high);
+    else if (strcmp(log_level, "urgent") == 0)
+      global_log->set_level(af::log_level_urgent);
+    else {
+      // Invalid log level is fatal for the daemon
+      af::log::fatal(af::log_level_urgent,
+        "Invalid log level \"%s\": specify with -d one amongst: "
+        "low, normal, high, urgent", log_level);
+      return AF_ERR_LOGLEVEL;
+    }
+    af::log::ok(af::log_level_normal, "Log level set to %s", log_level);
+  }
+  else {
+    af::log::warning(af::log_level_normal, "No log level specified (with -d): "
+      "defaulted to normal");
+  }
 
   // "libexec" path
   if (!libexec_path) {
@@ -872,6 +932,9 @@ int main(int argc, char *argv[]) {
     //std::string extcmd_temp_path = "/tmp/afdsmgrd-" + pid;
     //af::extCmd::set_temp_path(extcmd_temp_path.c_str());
     af::extCmd::set_temp_path("/tmp/afverifier");
+
+    // Clean up temp path
+    system("rm -f /tmp/afverifier/*");
   }
 
   // Trap some signals to terminate gently

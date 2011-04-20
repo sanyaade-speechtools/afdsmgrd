@@ -480,7 +480,7 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
       else {
         af::log::error(af::log_level_high, "Error running staging command, "
           "wrapper returned %d: check permissions on %s. Command issued: %s",
-          af::extCmd::get_temp_path(), vars.stage_cmd.c_str());
+          r, af::extCmd::get_temp_path(), url_cmd.c_str());
       }
 
     }
@@ -925,8 +925,10 @@ void main_loop(af::config &config) {
         "Can't fetch daemon resources usage");
     }
 
-    af::log::info(af::log_level_low, "Sleeping %ld seconds", vars.sleep_secs);
-    sleep(vars.sleep_secs);
+    if (!quit_requested) {
+      af::log::info(af::log_level_low, "Sleeping %ld seconds", vars.sleep_secs);
+      sleep(vars.sleep_secs);
+    }
 
   }
 
