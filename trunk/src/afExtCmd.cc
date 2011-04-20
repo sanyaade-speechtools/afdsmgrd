@@ -168,8 +168,6 @@ bool extCmd::cleanup() {
  */
 bool extCmd::stop() {
 
-  af::log::info(af::log_level_urgent, "OKOKOKOK");
-
   if (!already_started) return false;
 
   int r;
