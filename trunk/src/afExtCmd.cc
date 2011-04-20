@@ -24,7 +24,7 @@ const char *extCmd::pidf_pref = "pid";
  */
 extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1),
-  timeout_secs(0), stop_grace_secs(10) {
+  timeout_secs(0), stop_grace_secs(1) {
 
   if ((helper_path.empty()) || (temp_path.empty()))
     throw std::runtime_error("Helper path and temp path must be defined");
