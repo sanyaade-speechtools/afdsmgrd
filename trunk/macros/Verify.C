@@ -21,12 +21,12 @@
  * - CASE 2: file is not staged: no EndpointUrl is reported (don't be mistaken
  *   by the "OK", it just means that the verification succeeded even if the file
  *   is not there):
- *     OK <orig_url_no_anchor>
+ *     FAIL <orig_url_no_anchor> Reason: not_staged
  *
- * - CASE 3: can't initialize the stager interface
+ * - CASE 3: can't initialize the stager interface: no reason is reported
  *     FAIL <orig_url_no_anchor>
  *
- * - CASE 4: file is corrupted
+ * - CASE 4: file is corrupted: the reason why is reported
  *     FAIL <orig_url_no_anchor> Reason: <a_reason>
  */
 
@@ -53,7 +53,9 @@ void DefaultTree(TFile *file, TString &def_tree) {
 
 /** Main function.
  */
-void Verify(const char *redir_url, TString def_tree = "", Bool_t deep = kTRUE) {
+void Verify(const char *redir_url, TString def_tree = "", Bool_t deep) {
+
+  gSystem->Sleep(1000000000);
 
   TUrl turl(redir_url);
   TString turl_anchor = turl.GetAnchor();
@@ -150,8 +152,8 @@ void Verify(const char *redir_url, TString def_tree = "", Bool_t deep = kTRUE) {
     }
   }
   else {
-    // Not staged: don't be fooled by the OK!
-    Printf("OK %s", redir_url);
+    // Not staged: this condition is treated as a failure
+    Printf("FAIL %s Reason: not_staged", redir_url);
   }
 
 }

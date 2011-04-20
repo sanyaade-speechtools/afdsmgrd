@@ -23,7 +23,8 @@ const char *extCmd::pidf_pref = "pid";
  *  not set: the exception is fatal if not caught.
  */
 extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
-  cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1) {
+  cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1),
+  timeout_secs(0), stop_grace_secs(10) {
 
   if ((helper_path.empty()) || (temp_path.empty()))
     throw std::runtime_error("Helper path and temp path must be defined");
@@ -76,6 +77,7 @@ int extCmd::run() {
 
   // Runs the program
   af::log::info(af::log_level_debug, "Wrapped external comand: %s", strbuf);
+  gettimeofday(&start_tv, 0);
   int r = system(strbuf);
   if (r != 0) return r;
 
@@ -99,8 +101,40 @@ int extCmd::run() {
  *  the signal 0 (noop) to the process.
  */
 bool extCmd::is_running() {
+
+
   if ((pid <= 0) || (kill(pid, 0) == -1)) return false;
-  else return true;
+  else {
+
+    // Program is still running: check timeout
+
+    if (timeout_secs > 0) {  // timeout == 0 --> no timeout
+
+      gettimeofday(&now_tv, 0);
+      double running_time = \
+        ( (double)now_tv.tv_sec + (double)now_tv.tv_usec / 1000000. ) - \
+        ( (double)start_tv.tv_sec + (double)start_tv.tv_usec / 1000000. );
+
+     //log::info(log_level_normal, "Checking if pid=%d (id=%d) is running: "
+     // "%.1lf seconds have passed since start", pid, id, running_time);
+
+      if ((long)running_time > timeout_secs) {
+        if (stop()) {
+          log::warning(log_level_debug, "Stopped due to timeout: "
+            "pid=%d (id=%d)", pid, id);
+          return false; // stopped with success
+        }
+        else {
+          log::error(log_level_debug, "Can't force stop of pid=%d (id=%d)",
+            pid, id);
+          return true;  // still running
+        }
+      }
+
+    }
+
+    return true;
+  }
 }
 
 /** Removes temporary files (pidfile, stderr, stdout) used by the external
@@ -108,7 +142,7 @@ bool extCmd::is_running() {
  */
 bool extCmd::cleanup() {
 
-  if (is_running()) return false;
+  if ((pid <= 0) || (kill(pid, 0) == -1)) return false;
 
   const char *fmt = "%s/%s-%u";
   unsigned int nerr = 0;
@@ -129,10 +163,12 @@ bool extCmd::cleanup() {
 /** Stops the currently executing job. If either stop succeeds, or program has
  *  already been stopped, it returns true. If job hasn't been started yet or
  *  sending signals fails for some reason it returns false. Job is terminated
- *  using the SIGTERM signal, and a SIGKILL is sent after a grace time (defaults
- *  to zero seconds) if it is unresponsive to SIGTERM.
+ *  using the SIGSTOP signal, and a SIGKILL is sent after a grace time (defaults
+ *  to one second, see ctor) if it hasn't terminated yet.
  */
-bool extCmd::stop(unsigned int grace_secs) {
+bool extCmd::stop() {
+
+  af::log::info(af::log_level_urgent, "OKOKOKOK");
 
   if (!already_started) return false;
 
@@ -144,7 +180,8 @@ bool extCmd::stop(unsigned int grace_secs) {
     else return false;
   }
 
-  for (unsigned int s=0; s<grace_secs; s++) {
+  for (unsigned int s=0; s<stop_grace_secs; s++) {
+    sleep(1);
     r = kill(pid, 0);  // is it running?
     if (r == -1) {
       if (errno == ESRCH) return true;

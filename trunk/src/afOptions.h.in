@@ -25,11 +25,11 @@
 /** Version banner which includes the version number with build date and time.
  */
 #ifdef AF_VERSION_DEVEL
-#define AF_VERSION_BANNER "*** afdsmgrd " AF_VERSION_DEVEL \
+#define AF_VERSION_BANNER "*** " AF_PROG_NAME " " AF_VERSION_DEVEL \
   " (towards v" AF_VERSION ") compiled " __DATE__ " " __TIME__ \
   " -- by Dario Berzano <dario.berzano@cern.ch> ***"
 #else
-#define AF_VERSION_BANNER "*** afdsmgrd v" AF_VERSION \
+#define AF_VERSION_BANNER "*** " AF_PROG_NAME " v" AF_VERSION \
   " compiled " __DATE__ " " __TIME__ \
   " -- by Dario Berzano <dario.berzano@cern.ch> ***"
 #endif

@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 namespace af {
 
@@ -49,12 +50,18 @@ namespace af {
       void print_fields(bool log = false);
       bool is_ok() { return ok; };
       unsigned int get_id() { return id; };
-      bool stop(unsigned int grace_secs = 2);
+      bool stop();
 
       unsigned long get_field_uint(const char *key);
       long get_field_int(const char *key);
       double get_field_real(const char *key);
       const char *get_field_text(const char *key);
+
+      inline void set_timeout_secs(unsigned long ts) { timeout_secs = ts; };
+      inline void set_stop_grace_secs(unsigned long gs) {
+        stop_grace_secs = gs; };
+      inline long get_timeout_secs() { return timeout_secs; };
+      inline long get_stop_grace_secs() { return stop_grace_secs; };
 
       static void set_helper_path(const char *path);
       static void set_temp_path(const char *path);
@@ -72,6 +79,12 @@ namespace af {
       fields_t fields_map;
       bool ok;
       bool already_started;
+
+      struct timeval start_tv;
+      struct timeval now_tv;
+
+      unsigned long timeout_secs;
+      unsigned long stop_grace_secs;
 
       static std::string helper_path;
       static std::string temp_path;

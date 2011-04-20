@@ -45,6 +45,10 @@
 #define AF_ERR_SUID_ROOT_UID 14
 #define AF_ERR_LIBEXEC 15
 
+/** Program name that goes in version banner.
+ */
+#define AF_PROG_NAME "afdsmgrd"
+
 /** Set of variables in configuration file.
  */
 typedef struct {
