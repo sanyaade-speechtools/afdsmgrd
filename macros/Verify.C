@@ -55,8 +55,6 @@ void DefaultTree(TFile *file, TString &def_tree) {
  */
 void Verify(const char *redir_url, TString def_tree = "", Bool_t deep) {
 
-  gSystem->Sleep(1000000000);
-
   TUrl turl(redir_url);
   TString turl_anchor = turl.GetAnchor();
   turl.SetAnchor("");
