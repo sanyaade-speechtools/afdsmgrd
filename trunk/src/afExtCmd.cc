@@ -142,7 +142,7 @@ bool extCmd::is_running() {
  */
 bool extCmd::cleanup() {
 
-  if ((pid <= 0) || (kill(pid, 0) == -1)) return false;
+  if ((pid > 0) && (kill(pid, 0) == 0)) return false;
 
   const char *fmt = "%s/%s-%u";
   unsigned int nerr = 0;
