@@ -564,8 +564,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
           bool meta_upd = false;
 
           // Staged and Not Corrupted
-          fi->SetBit( TFileInfo::kStaged );
-          fi->ResetBit( TFileInfo::kCorrupted );
+
 
           if (!fi->AddUrl(qent->get_endp_url(), kTRUE)) {
             af::log::warning(af::log_level_debug, "In dataset %s, "
@@ -591,11 +590,31 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
             meta->SetEntries(qent->get_n_events());
             fi->AddMetaData(meta);
 
+            // In this case only we are sure that the file is there and
+            // not corrupted!
+            fi->SetBit(TFileInfo::kStaged);
+            fi->ResetBit(TFileInfo::kCorrupted);
+
+          }
+          else {
+
+            // No "deep" check occured: trust preexistant corrupted bit
+
+            if (fi->TestBit(TFileInfo::kCorrupted)) {
+              // File is corrupted: mark it as not staged (even if it is!)
+              fi->ResetBit(TFileInfo::kStaged);
+            }
+            else {
+              // File is not corrupted: mark it as staged
+              fi->SetBit(TFileInfo::kStaged);
+            }
+
           }
 
           af::log::ok(af::log_level_low,
-            "File %s is staged as %s (metadata updated: %s)",
-            out_url, endp_url, (meta_upd ? "yes" : "no"));
+            "File %s is staged as %s (metadata updated: %s, corrupted: %s)",
+            out_url, endp_url, (meta_upd ? "yes" : "no"),
+            (fi->TestBit(TFileInfo::kCorrupted) ? "yes" : "no"));
 
           count_changes++;
 
@@ -611,6 +630,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
           // not_staged: in this very case we change the staged and the
           // corrupted bit, elsewhere we don't touch anything
           if (!qent->is_staged()) {
+
             // Reason: not_staged
             // Not Staged and Corrupted --> why?
             // Because we have the Real Status (not staged) but we don't trigger
@@ -934,7 +954,7 @@ int main(int argc, char *argv[]) {
     af::extCmd::set_temp_path("/tmp/afverifier");
 
     // Clean up temp path
-    system("rm -f /tmp/afverifier/*");
+    system("ls -1 /tmp/afverifier | xargs -l rm -f");
   }
 
   // Trap some signals to terminate gently
