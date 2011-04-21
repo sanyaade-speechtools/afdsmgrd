@@ -949,12 +949,13 @@ int main(int argc, char *argv[]) {
     exec_wrapper_path += "/afdsmgrd-exec-wrapper";
     af::extCmd::set_helper_path(exec_wrapper_path.c_str());
 
+    // Clean up temp path
+    system("rm -rf /tmp/afverifier");
+
     //std::string extcmd_temp_path = "/tmp/afdsmgrd-" + pid;
     //af::extCmd::set_temp_path(extcmd_temp_path.c_str());
     af::extCmd::set_temp_path("/tmp/afverifier");
 
-    // Clean up temp path
-    system("ls -1 /tmp/afverifier | xargs -l rm -f");
   }
 
   // Trap some signals to terminate gently
