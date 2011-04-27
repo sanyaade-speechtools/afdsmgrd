@@ -1,0 +1,285 @@
+#!/bin/bash
+
+#
+# init.d/afrenewauthd -- by Dario Berzano <dario.berzano@cern.ch>
+#
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Start (daemonize) and stop the afrenewauth utility for AliEn.
+#
+# This script is conform to the LSB specifications and it is compatible with
+# the chkconfig custom header format. It can also be run by an unprivileged
+# user and without being installed system-wide.
+#
+
+#
+# chkconfig header
+#
+
+# chkconfig: 2345 99 0
+# description: afdsmgrd, which stands for Analysis Facility Dataset Manager
+#              Daemon, is a ROOT-based daemon that scans the stored datasets in
+#              order to issue the actual data staging
+# processname: afdsmgrd
+# pidfile: /var/run/afdsmgrd.pid
+
+#
+# LSB header
+#
+
+### BEGIN INIT INFO
+# Provides: afrenewauthd
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Required-Start: $local_fs $network
+# Required-Stop: $local_fs $network
+# Short-Description: System-wide authentication keeper for AliEn
+# Description: afrenewauth is a daemonized script that automatically renews the
+#              AliEn token and Grid proxy
+### END INIT INFO
+
+#
+# External libraries and global variables
+#
+
+# Basename of the script, wrt invoking command (i.e. no symlinks resolved)
+BASENAME=`basename "$0"`
+
+# Get the configuration variables from the first configuration file found
+declare -a CONF_FILES
+CONF_FILES=(
+  "@DIR_ETC@/sysconfig/$BASENAME" \
+  "@DIR_ETC@/default/$BASENAME" \
+  "/etc/sysconfig/$BASENAME" \
+  "/etc/default/$BASENAME" \
+  "$HOME/.$BASENAME.cf"
+)
+
+CF_FOUND=0
+for CF in "${CONF_FILES[@]}"; do
+  if [ -r "$CF" ]; then
+    CF_FOUND=1
+    source "$CF"
+    break
+  fi
+done
+
+# No configuration file found?
+if [ "$CF_FOUND" == 0 ]; then
+  echo "No configuration file found for $BASENAME amongst (in order):"
+  for CF in "${CONF_FILES[@]}"; do
+    echo " * $CF"
+  done
+  exit 1
+fi
+
+# Full path of program
+export PROG="$AFRENEWAUTHD_PROG"
+
+# Silently fails if program is missing (for spurious init.d scripts)
+[ -x "$PROG" ] || exit 0
+
+# Basename of program
+export BASEPROG=`basename "$PROG"`
+
+# File that holds the PID
+export PIDFILE="$AFRENEWAUTHD_PIDFILE"
+
+# Log file
+export LOGFILE="$AFRENEWAUTHD_LOGFILE"
+
+# Daemon user
+export SUSER="$AFRENEWAUTHD_USER"
+
+# Temporary startup log
+export STARTUP_LOG=$(mktemp /tmp/afrenewauthd-startup-XXXXX)
+
+#
+# Functions
+#
+
+# Auxiliary messaging function: normal echo
+function Msg() {
+  echo "$@"
+}
+
+# Auxiliary messaging function: begin of operation
+function MsgBegin() {
+  echo -n "$@: "
+}
+
+# Auxiliary messaging function: end of operation
+function MsgEnd() {
+  local STATUS
+  [ "$1" == 0 ] && \
+    STATUS="\033[1;32mOK\033[m" || \
+    STATUS="\033[1;31mfailed\033[m"
+  shift
+  if [ "$*" != "" ]; then
+    echo -e "$STATUS ($@)"
+  else
+    echo -e "$STATUS"
+  fi
+}
+
+# Echoes the PID of the program if running; empty string otherwise
+function GetPid() {
+  local PID=`cat "$PIDFILE" 2> /dev/null`
+  kill -0 "$PID" 2> /dev/null && echo $PID
+}
+
+# Tries to stop, then kills the specified PID
+function StopKill() {
+  local PID="$1"
+  kill -15 "$PID" 2> /dev/null
+  for ((I=0; $I<3; I++)); do
+    sleep 1
+    kill -0 "$PID" 2> /dev/null
+    [ $? != 0 ] && return 0
+  done
+  kill -9 "$PID" 2> /dev/null
+  sleep 1
+  kill -0 "$PID" 2> /dev/null && return 1 || return 0
+}
+
+# Cleanup of daemon's temporary directory: called on startup and shutdown. This
+# is the first function to customize
+function Cleanup() {
+  rm -rf "$TEMPDIR"
+  return $?
+}
+
+# This is the second function to edit: it contains the custom commands to
+# effectively launch the daemon
+function LaunchDaemon() {
+
+  local AUX RETVAL
+
+  rm -f "$LOGFILE".0
+  mv "$LOGFILE" "$LOGFILE".0 2> /dev/null
+  touch "$LOGFILE" "$PIDFILE"
+  chown "$SUSER" "$LOGFILE"
+  chown "$SUSER" "$PIDFILE"
+
+  AUX="$(mktemp /tmp/$BASENAME-launch-XXXXX)"
+
+  echo "#!/bin/bash" > "$AUX"
+  echo "export PATH=$AFRENEWAUTHD_PATH:\$PATH" >> "$AUX"
+  echo "export LD_LIBRARY_PATH=$AFRENEWAUTHD_LIBS:\$LD_LIBRARY_PATH" >> "$AUX"
+  echo "cd /tmp" >> "$AUX"
+  echo nohup \"$PROG\" -l \"$LOGFILE\" -p \"$PIDFILE\" \
+    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME "> \"$STARTUP_LOG\" 2>&1 &" >> "$AUX"
+
+  chmod 0777 "$AUX"
+  chmod 0777 "$STARTUP_LOG"
+
+  if [ "$USER" != "root" ]; then
+    "$AUX"
+    RETVAL=$?
+  else
+    su "$SUSER" -c "$AUX" > /dev/null 2>&1
+    RETVAL=$?
+  fi
+
+  rm -f "$AUX"
+
+  return $?
+}
+
+# Starts the daemon (if not running)
+function Start() {
+  local PID RETVAL
+  MsgBegin "Starting $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    LaunchDaemon
+    RETVAL=$?
+    MsgEnd $RETVAL
+    if [ $RETVAL != 0 ]; then
+      echo "Error was:"
+      cat "$STARTUP_LOG"
+    fi
+    rm "$STARTUP_LOG"
+  else
+    MsgEnd 1 "already running with PID=$PID"
+    RETVAL=1
+  fi
+  return $RETVAL
+}
+
+# Stops the daemon
+function Stop() {
+  local PID RETVAL
+  MsgBegin "Stopping $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    MsgEnd 0 "not running"
+    RETVAL=0
+  else
+    StopKill $PID
+    RETVAL=$?
+    if [ $RETVAL == 0 ]; then
+      rm -f "$PIDFILE"
+      Cleanup
+    fi
+    MsgEnd $RETVAL
+  fi
+  return $RETVAL
+}
+
+# Status of the daemon; returns 0 if running, nonzero otherwise
+function Status() {
+  local PID
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    Msg "$BASEPROG is not running"
+    return 1
+  else
+    Msg "$BASEPROG is running with PID=$PID"
+    return 0
+  fi
+}
+
+# Last lines of log
+function ShowLog() {
+  Status
+  if [ $? == 0 ]; then
+    echo "Showing last lines of $LOGFILE with tail -f (abort with Ctrl+C):"
+    tail -f "$LOGFILE"
+  fi
+}
+
+#
+# Entry point
+#
+
+case "$1" in
+  start)
+    Start
+    exit $?
+  ;;
+  stop)
+    Stop
+    exit $?
+  ;;
+  status)
+    Status
+    exit 0
+  ;;
+  log)
+    ShowLog
+    exit 0
+  ;;
+  restart|condrestart|reload)
+    Stop && Start
+    exit $?
+  ;;
+  sysconfig)
+    echo "Using startup configuration file: $CF"
+    exit 0
+  ;;
+  *)
+    echo  "Usage: `basename $0` {start|stop|restart|condrestart|reload|status|sysconfig|log}"
+    exit 1
+  ;;
+esac
