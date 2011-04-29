@@ -144,6 +144,8 @@ namespace af {
       void read_file();
       void default_all();
       bool update();
+      bool unbind(const char *dir_name);
+      void unbind_all();
 
       /** Bindings.
        */
@@ -160,8 +162,6 @@ namespace af {
       void bind_callback(const char *dir_name,
         void (*callback)(const char *name, const char *val, void *args),
         void *args);
-
-      bool unbind(const char *dir_name);
 
     private:
 

@@ -57,6 +57,7 @@ typedef struct {
   long scan_ds_every_loops;  // dsmgrd.scandseveryloops
   long max_concurrent_xfrs;  // dsmgrd.parallelxfrs
   long max_stage_retries;    // dsmgrd.corruptafterfails
+  long cmd_timeout_secs;     // dsmgrd.cmdtimeoutsecs
   std::string stage_cmd;     // dsmgrd.stagecmd
   af::regex url_regex;       // dsmgrd.urlregex
   af::notify *notif;
@@ -70,6 +71,10 @@ typedef struct {
   unsigned int vsize_kib;
   float total_pcpu;
 } afdsmgrd_res_t;
+
+/** Command queue handy alias.
+ */
+typedef std::list<af::extCmd *> cmdq_t;
 
 /** Global variables.
  */
@@ -259,6 +264,22 @@ void config_callback_notify(const char *name, const char *val, void *args) {
 
 }
 
+/** Callback called when directive dsmgrd.cmdtimeoutsecs changes. Remember that
+ *  val is NULL if no value was specified (i.e., directive is missing).
+ */
+/*void config_callback_timeout(const char *name, const char *val, void *args) {
+
+  cmdq_t *cmdq = (cmdq_t *)args;
+
+  af::log::info(af::log_level_urgent, "CALLBACK val=<%lx> args=<%lx>",
+    val, args);
+
+  for (cmdq_t::iterator it=cmdq->begin(); it!=cmdq->end(); it++) {
+    af::log::info(af::log_level_urgent, "CALLBACK -- element");
+  }
+
+}*/
+
 /** Toggles between unprivileged user and super user. Saves the unprivileged UID
  *  and GID inside static variables.
  *
@@ -329,7 +350,7 @@ void toggle_suid(bool enable = false) {
  *  from opq in free slots of cmdq. Handle successes and failures by syncing
  *  info between cmdq and opq
  */
-void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
+void process_transfer_queue(af::opQueue &opq, cmdq_t &cmdq,
   afdsmgrd_vars_t &vars) {
 
   const af::queueEntry *qent;
@@ -356,8 +377,7 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
       qent->get_instance_id());
 
     // Check status in transfer queue
-    for (std::list<af::extCmd *>::iterator it=cmdq.begin();
-      it!=cmdq.end(); it++) {
+    for (cmdq_t::iterator it=cmdq.begin(); it!=cmdq.end(); it++) {
 
       if ( (*it)->get_id() == qent->get_instance_id() ) {
 
@@ -462,6 +482,7 @@ void process_transfer_queue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
 
       af::extCmd *ext_stage_cmd = new af::extCmd(url_cmd.c_str(),
         qent->get_instance_id());
+      ext_stage_cmd->set_timeout_secs( (unsigned long)vars.cmd_timeout_secs );
       int r = ext_stage_cmd->run();
       if (r == 0) {
 
@@ -812,7 +833,7 @@ void main_loop(af::config &config) {
   af::opQueue opq;
 
   // The staging queue, used by process_transfer_queue() only
-  std::list<af::extCmd *> cmdq;
+  cmdq_t cmdq;
 
   // Variables in configuration files in a handy struct
   afdsmgrd_vars_t vars;
@@ -822,7 +843,7 @@ void main_loop(af::config &config) {
   vars.max_stage_retries = 0;
   vars.notif = NULL;
 
-  // Variables for notify plugin loader/unloader (through callback)
+  // Variables for the notify plugin loader/unloader (through callback)
   void *notif_cbk_args[] = { &vars.notif, &config };
 
   // Bind directives to either variables or special callbacks
@@ -835,10 +856,15 @@ void main_loop(af::config &config) {
   config.bind_text("dsmgrd.stagecmd", &vars.stage_cmd, "/bin/false");
   config.bind_int("dsmgrd.corruptafterfails", &vars.max_stage_retries, 0, 0,
     1000);
+  config.bind_int("dsmgrd.cmdtimeoutsecs", &vars.cmd_timeout_secs, 0, 1,
+    AF_INT_MAX);  // 0 == timeout off
   config.bind_callback("dsmgrd.urlregex", &config_callback_urlregex,
     &vars.url_regex);
   config.bind_callback("dsmgrd.notifyplugin", &config_callback_notify,
     notif_cbk_args);
+
+  // Initial value for timeout ("manual" callback, see later on)
+  vars.cmd_timeout_secs = 0;
 
   // The loop counter
   long count_loops = -1;
@@ -852,8 +878,18 @@ void main_loop(af::config &config) {
     // Check and load updates from the configuration file
     //
 
+    long prev_to = vars.cmd_timeout_secs;
+
     if (config.update()) {
       af::log::info(af::log_level_high, "Config file modified");
+
+      // "Manual" callback for timeouts
+      if (vars.cmd_timeout_secs != prev_to) {
+        for (cmdq_t::iterator it=cmdq.begin(); it!=cmdq.end(); it++) {
+          (*it)->set_timeout_secs( (unsigned long)vars.cmd_timeout_secs );
+        }
+      }
+
     }
     else af::log::info(af::log_level_low, "Config file unmodified");
 
@@ -933,10 +969,11 @@ void main_loop(af::config &config) {
   }
 
   // Delete elements still in command queue
-  for (std::list<af::extCmd *>::iterator it=cmdq.begin();
-    it!=cmdq.end(); it++) {
-    delete *it;
-  }
+  for (cmdq_t::iterator it=cmdq.begin(); it!=cmdq.end(); it++) delete *it;
+
+  // Unbind directives to avoid disasters for memory destructed past the end of
+  // this function
+  config.unbind_all();
 
 }
 

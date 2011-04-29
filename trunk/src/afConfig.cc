@@ -266,14 +266,10 @@ config::config(const char *config_file) :
   memset(&file_stat, 0, sizeof(struct stat));
 }
 
-/** Destructor. It destructs every pointer to cfg_binding: these directives are
- *  saved as pointers to avoid multiple and useless ctor/copy ctor/dtor calls
- *  when pushing in the list.
+/** Destructor. It solely calls the function that unbinds every directive.
  */
 config::~config() {
-  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
-    delete *it;
-  directives.clear();
+  unbind_all();
 }
 
 /** Prints fields (used for debug and tests).
@@ -530,8 +526,8 @@ void config::default_all() {
     (*it)->assign_default();
 }
 
-/** Removes a binding: returns true on success, false if that binding did not
- *  exist.
+/** Removes a single binding by invoking its destructor: returns true on
+ *  success, false if that binding did not exist.
  */
 bool config::unbind(const char *dir_name) {
 
@@ -544,4 +540,13 @@ bool config::unbind(const char *dir_name) {
   }
 
   return false;
+}
+
+/** This function unbinds every directive: it destructs every pointer to
+ *  cfg_binding and empties the lsit.
+ */
+void config::unbind_all() {
+  for (conf_dirs_iter_t it=directives.begin(); it!=directives.end(); it++)
+    delete *it;
+  directives.clear();
 }
