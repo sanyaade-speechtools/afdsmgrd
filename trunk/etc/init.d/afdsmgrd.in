@@ -102,8 +102,8 @@ export LOG_LEVEL="$AFDSMGRD_LOGLEVEL"
 # Temporary directory (hardcoded)
 export TEMPDIR="/tmp/afdsmgrd"
 
-# Temporary startup log
-export STARTUP_LOG=$(mktemp /tmp/afdsmgrd-startup-XXXXX)
+# Grace time before "kill -9", in seconds
+export GRACEKILL_SEC=10
 
 #
 # Functions
@@ -142,8 +142,9 @@ function GetPid() {
 # Tries to stop, then kills the specified PID
 function StopKill() {
   local PID="$1"
+  local I
   kill -15 "$PID" 2> /dev/null
-  for ((I=0; $I<3; I++)); do
+  for ((I=0; $I<$GRACEKILL_SEC; I++)); do
     sleep 1
     kill -0 "$PID" 2> /dev/null
     [ $? != 0 ] && return 0
@@ -183,7 +184,7 @@ function LaunchDaemon() {
   # inherited in the environment inside the daemon
   ( export LD_LIBRARY_PATH="$ROOTSYS/lib:$AFDSMGRD_LIBS:$LD_LIBRARY_PATH" ; \
     "$AFDSMGRD_PROG" -b -u "$SUSER" -p "$PIDFILE" -c "$CONF" -d "$LOG_LEVEL" \
-    -l "$LOGFILE" -e "$AFDSMGRD_LIBEXEC" > "$STARTUP_LOG" 2>&1 )
+    -l "$LOGFILE" -e "$AFDSMGRD_LIBEXEC" )
 
   return $?
 }
@@ -197,11 +198,6 @@ function Start() {
     LaunchDaemon
     RETVAL=$?
     MsgEnd $RETVAL
-    if [ $RETVAL != 0 ]; then
-      echo "Error was:"
-      cat "$STARTUP_LOG"
-    fi
-    rm "$STARTUP_LOG"
   else
     MsgEnd 1 "already running with PID=$PID"
     RETVAL=1

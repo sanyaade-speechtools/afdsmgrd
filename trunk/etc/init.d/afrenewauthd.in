@@ -17,11 +17,10 @@
 #
 
 # chkconfig: 2345 99 0
-# description: afdsmgrd, which stands for Analysis Facility Dataset Manager
-#              Daemon, is a ROOT-based daemon that scans the stored datasets in
-#              order to issue the actual data staging
-# processname: afdsmgrd
-# pidfile: /var/run/afdsmgrd.pid
+# description: afrenewauth is a daemonized script that automatically renews the
+#              AliEn token and Grid proxy
+# processname: afrenewauth
+# pidfile: /tmp/afrenewauthd.pid
 
 #
 # LSB header
@@ -90,9 +89,6 @@ export LOGFILE="$AFRENEWAUTHD_LOGFILE"
 
 # Daemon user
 export SUSER="$AFRENEWAUTHD_USER"
-
-# Temporary startup log
-export STARTUP_LOG=$(mktemp /tmp/afrenewauthd-startup-XXXXX)
 
 #
 # Functions
@@ -168,10 +164,10 @@ function LaunchDaemon() {
   echo "export LD_LIBRARY_PATH=$AFRENEWAUTHD_LIBS:\$LD_LIBRARY_PATH" >> "$AUX"
   echo "cd /tmp" >> "$AUX"
   echo nohup \"$PROG\" -l \"$LOGFILE\" -p \"$PIDFILE\" \
-    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME "> \"$STARTUP_LOG\" 2>&1 &" >> "$AUX"
+    -s $AFRENEWAUTHD_RENEW_SLEEP_SEC -u $AFRENEWAUTHD_ALIEN_UNAME \
+    " > /dev/null 2>&1 &" >> "$AUX"
 
   chmod 0777 "$AUX"
-  chmod 0777 "$STARTUP_LOG"
 
   if [ "$USER" != "root" ]; then
     "$AUX"
@@ -195,11 +191,6 @@ function Start() {
     LaunchDaemon
     RETVAL=$?
     MsgEnd $RETVAL
-    if [ $RETVAL != 0 ]; then
-      echo "Error was:"
-      cat "$STARTUP_LOG"
-    fi
-    rm "$STARTUP_LOG"
   else
     MsgEnd 1 "already running with PID=$PID"
     RETVAL=1
