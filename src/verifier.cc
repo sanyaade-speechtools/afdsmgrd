@@ -851,6 +851,10 @@ void main_loop(af::config &config) {
     delete *it;
   }
 
+  // Unbind directives to avoid disasters for memory destructed past the end of
+  // this function
+  config.unbind_all();
+
   //
   // Report final statistics
   //

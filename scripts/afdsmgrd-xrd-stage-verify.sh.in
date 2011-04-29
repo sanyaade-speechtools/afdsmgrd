@@ -10,7 +10,8 @@
 # parameters.
 #
 # First of all, file is downloaded by means of the xrdstagetool utility. If the
-# download succeeds, ROOT is called with a proper macro to check file's integrity
+# download succeeds, ROOT is called with a proper macro to check file's
+# integrity.
 #
 # It has been created to overcome a "problem" with setuid programs like
 # afdsmgrd: in these programs, LD_LIBRARY_PATH is unset right after changing
@@ -61,7 +62,8 @@ xrdstagetool -d 0 $CLEANURL | grep '^OK[ \t]' > /dev/null 2>&1
 
 if [ $? == 0 ]; then
   # Status is OK: verify the file
-  exec root.exe -b -q "@DIR_LIBEXEC@"/afdsmgrd-macros/Verify.C'("'$URL'", "'$TREE'")'
+  exec root.exe -b -q \
+    "@DIR_LIBEXEC@"/afdsmgrd-macros/Verify.C'("'$URL'", "'$TREE'")'
 fi
 
 # Here, status is failed: report it

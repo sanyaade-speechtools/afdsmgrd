@@ -80,8 +80,6 @@ void DefaultTree(TFile *file, TString &def_tree) {
  */
 void Verify(const char *url, TString def_tree = "") {
 
-  //gSystem->Sleep( 1000 * 1000 );  // UInt_t millisec --> only to test timeout!
-
   TUrl turl(url);
   TString anchor = turl.GetAnchor();
 
