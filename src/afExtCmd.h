@@ -15,6 +15,7 @@
 #define AFEXTCMD_H
 
 #define AF_EXTCMD_BUFSIZE 1000
+#define AF_EXTCMD_USLEEP 20000
 
 #include "afLog.h"
 
@@ -59,7 +60,9 @@ namespace af {
 
       inline void set_timeout_secs(unsigned long ts) { timeout_secs = ts; };
       inline void set_stop_grace_secs(unsigned long gs) {
-        stop_grace_secs = gs; };
+        stop_grace_secs = gs;
+        stop_grace_loops = 1000000 * gs / AF_EXTCMD_USLEEP;
+      };
       inline long get_timeout_secs() { return timeout_secs; };
       inline long get_stop_grace_secs() { return stop_grace_secs; };
 
@@ -85,6 +88,7 @@ namespace af {
 
       unsigned long timeout_secs;
       unsigned long stop_grace_secs;
+      unsigned long stop_grace_loops;
 
       static std::string helper_path;
       static std::string temp_path;

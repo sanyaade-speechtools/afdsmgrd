@@ -932,6 +932,12 @@ void main_loop(af::config &config) {
 
   }
 
+  // Delete elements still in command queue
+  for (std::list<af::extCmd *>::iterator it=cmdq.begin();
+    it!=cmdq.end(); it++) {
+    delete *it;
+  }
+
 }
 
 /** Entry point of afdsmgrd.

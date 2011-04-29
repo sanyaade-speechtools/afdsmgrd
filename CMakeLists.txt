@@ -40,7 +40,7 @@ elseif (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
 
 else ()
 
-  message (FATAL "Unsupported build type: ${CMAKE_BUILD_TYPE}")
+  message (FATAL_ERROR "Unsupported build type: ${CMAKE_BUILD_TYPE}")
 
 endif ()
 
@@ -72,6 +72,30 @@ endif ()
 #  ")
 #
 #endmacro ()
+
+#
+# Macro to simplify the repetitive use of configure_file () CMake macros.
+#
+
+macro (hardconf RELSRC)
+
+  get_filename_component (_ABSSRC ${PROJECT_SOURCE_DIR}/${RELSRC} ABSOLUTE)
+  string (REGEX REPLACE "\\.in$" "" _RELDST ${RELSRC})
+  get_filename_component (_ABSDST ${PROJECT_BINARY_DIR}/${_RELDST} ABSOLUTE)
+
+  message (STATUS "Configuring ${_ABSSRC}" )
+
+  if (NOT EXISTS ${_ABSSRC})
+    message (FATAL_ERROR "Can't find file to configure: ${RELSRC}")
+  endif ()
+
+  if (${RELSRC} STREQUAL ${_RELDST})
+    message (FATAL_ERROR "File to configure must end with \".in\"")
+  endif ()
+
+  configure_file ("${_ABSSRC}" "${_ABSDST}" @ONLY)
+
+endmacro ()
 
 #
 # Test for packages
@@ -126,58 +150,18 @@ message (STATUS "Directory \"var\" is ${DIR_VAR}")
 add_subdirectory (src)
 
 #
-# Auto-generate the configuration files with proper variables
+# Auto-generate configuration files with proper variables hardcoded: see the
+# hardconf macro for more information
 #
 
-# Several defines as a header file to be included
-configure_file (
-  "${PROJECT_SOURCE_DIR}/src/afOptions.h.in"
-  "${PROJECT_BINARY_DIR}/src/afOptions.h"
-  @ONLY
-)
-
-# Startup variables for the daemon
-configure_file (
-  "${PROJECT_SOURCE_DIR}/etc/sysconfig/afdsmgrd.example.in"
-  "${PROJECT_BINARY_DIR}/etc/sysconfig/afdsmgrd.example"
-  @ONLY
-)
-
-# Control script for the daemon
-configure_file (
-  "${PROJECT_SOURCE_DIR}/etc/init.d/afdsmgrd.in"
-  "${PROJECT_BINARY_DIR}/etc/init.d/afdsmgrd"
-  @ONLY
-)
-
-# Configuration file
-configure_file (
-  "${PROJECT_SOURCE_DIR}/etc/afdsmgrd.conf.example.in"
-  "${PROJECT_BINARY_DIR}/etc/afdsmgrd.conf.example"
-  @ONLY
-)
-
-# Sets the environment for ROOT defined in sysconfig script and launches it
-configure_file (
-  "${PROJECT_SOURCE_DIR}/scripts/afdsmgrd-root.sh.in"
-  "${PROJECT_BINARY_DIR}/scripts/afdsmgrd-root.sh"
-  @ONLY
-)
-
-# Configuration file for the verifier
-configure_file (
-  "${PROJECT_SOURCE_DIR}/etc/afverifier.conf.example.in"
-  "${PROJECT_BINARY_DIR}/etc/afverifier.conf.example"
-  @ONLY
-)
-
-# xrd locateall wrapper for the verifier
-configure_file (
-  "${PROJECT_SOURCE_DIR}/scripts/afverifier-xrd-locate.sh.in"
-  "${PROJECT_BINARY_DIR}/scripts/afverifier-xrd-locate.sh"
-  @ONLY
-)
-
+hardconf ( src/afOptions.h.in )
+hardconf ( etc/sysconfig/afdsmgrd.example.in )
+hardconf ( etc/init.d/afdsmgrd.in )
+hardconf ( etc/afdsmgrd.conf.example.in )
+hardconf ( scripts/afdsmgrd-root.sh.in )
+hardconf ( etc/afverifier.conf.example.in )
+hardconf ( scripts/afverifier-xrd-locate.sh.in )
+hardconf ( scripts/afdsmgrd-xrd-stage-verify.sh.in )
 
 #
 # Install directives for non-src files
@@ -186,11 +170,12 @@ configure_file (
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afdsmgrd.conf.example DESTINATION ${DIR_ETC})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/sysconfig/afdsmgrd.example DESTINATION ${DIR_ETC}/sysconfig)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/etc/init.d/afdsmgrd DESTINATION ${DIR_ETC}/init.d)
-install (FILES macros/StageXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
+install (FILES macros/Verify.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-root.sh DESTINATION ${DIR_LIBEXEC})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afverifier.conf.example DESTINATION ${DIR_ETC})
-install (FILES macros/Verify.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
+install (FILES macros/LocateVerifyXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier-xrd-locate.sh DESTINATION ${DIR_LIBEXEC})
+install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-xrd-stage-verify.sh DESTINATION ${DIR_LIBEXEC})
 
 #
 # Renew authentication daemon (optional, only in debug mode)

@@ -30,7 +30,7 @@ verifier.parallelverifies 800
 # With current distribution, you may choose between two different methods:
 #
 # 1) ROOT macro with option to do only locate (0) or rescan metadata (1)
-#verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/Verify.C'("$REDIRURL", "$TREENAME", 0)'
+#verifier.verifycmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/LocateVerifyXrd.C'("$REDIRURL", "$TREENAME", 0)'
 #
 # 2) External script that wraps "xrd locateall" (way faster and lighter)
 verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL"

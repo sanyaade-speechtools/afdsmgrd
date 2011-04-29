@@ -48,18 +48,10 @@ dsmgrd.parallelxfrs 30
 # Another variable, $TREENAME, will be substituted with the default tree to
 # look for.
 #
-# Look into the macros/StageXrd.C macro source code to see what a stager and
-# verifier command should return on stdout. stderr is completely ignored, while
-# only the first line beginning with either OK or FAIL is parsed on stdout.
-#
-# This macro may require additional libraries (e.g. xrootd ones, like the
-# StageXrd.C example), so remember to set them properly into the startup script
-# that sets the environment for afdsmgrd.
-#
-# Very important: it is common to use ROOT macros to verify the files; remember
-# to launch ROOT via the root.exe executable, and *not* via the sole root
-# command!
-dsmgrd.stagecmd @DIR_LIBEXEC@/afdsmgrd-root.sh -b -q @DIR_LIBEXEC@/afdsmgrd-macros/StageXrd.C'("$URLTOSTAGE", "$TREENAME")'
+# The default command is a script that runs in sequence xrdstagetool, then if
+# everything is fine it runs the macros/Verify.C macro to gather meta
+# information on the staged file.
+dsmgrd.stagecmd @DIR_LIBEXEC@/afdsmgrd-xrd-stage-verify.sh "$URLTOSTAGE" "$TREENAME"
 
 # Set this to a number above zero to tell the daemon to mark files as corrupted
 # after a certain number of either download or verification failures. A value of

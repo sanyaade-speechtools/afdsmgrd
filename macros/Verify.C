@@ -3,31 +3,56 @@
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
- * Given a file's redirector URL checks:
+ * ROOT macro to perform file verification. This macro is meant to be run by the
+ * staging daemon and it should work with any protocol that does not have
+ * peculiar prerequirements: this means that it is not limited to xrootd files.
  *
- *  - whether the file is *really* staged or not;
- *  - its endpoint URL.
+ * Taken arguments are:
+ *
+ *  - url      : the URL of the file to be inspected;
+ *  - def_tree : the tree name to search for (either with or without leading /).
+ *
+ * If the default tree is not given, the first valid tree found in the file is
+ * read.
  *
  * This macro works also as a non-compiled macro: just call it via:
  *
- *   root.exe -b -q Verify.C'("root://server:port//dir/file.zip#esd.root")
+ *   root.exe -b -q Verify.C'("myproto://server:port//dir/file.zip#esd.root", \
+ *     "/tree")'
  *
  * Remember to call root.exe and not just root to have afdsmgrd handling process
  * control correctly.
  *
- * - CASE 1: file is really staged and can be found on some server:
- *     OK <orig_url_no_anchor> EndpointUrl: <endpoint_url_w_anchor>
+ * In case of success, on stdout it returns a format like this:
  *
- * - CASE 2: file is not staged: no EndpointUrl is reported (don't be mistaken
- *   by the "OK", it just means that the verification succeeded even if the file
- *   is not there):
- *     FAIL <orig_url_no_anchor> Reason: not_staged
+ * OK <orig_url_no_anchor> Size: <size_bytes> \
+ *   EndpointUrl: <endpoint_url_w_anchor> Tree: <tree_name> Events: <n_events>
  *
- * - CASE 3: can't initialize the stager interface: no reason is reported
- *     FAIL <orig_url_no_anchor>
+ * Please note that "Tree:" reports the tree name with a leading /.
  *
- * - CASE 4: file is corrupted: the reason why is reported
- *     FAIL <orig_url_no_anchor> Reason: <a_reason>
+ * If the file has been downloaded but no tree is present, the output is like:
+ *
+ * OK <orig_url_no_anchor> Size: <size_bytes> \
+ *   EndpointUrl: <endpoint_url_w_anchor>
+ *
+ * In case of failure, on stdout it prints a format like this:
+ *
+ * FAIL <orig_url_no_anchor> <other_stuff...>
+ *
+ * Different reasons may lead to staging failures. If no reason is given, the
+ * staging itself failed. Elsewhere, in <other_stuff...> there is a "Reason:"
+ * string that may assume the following values:
+ *
+ *  - cant_open        : file can not be accessed
+ *  - tree_disappeared : the tree exists in keys list but can't be read
+ *  - no_such_tree     : the specified tree does not exist
+ *
+ * So, if the status is FAIL but we have a "Reason:", we conclude that the file
+ * is staged but corrupted.
+ *
+ * In case of failure, if "Staged: 1" is reported, it means that the file has
+ * been successfully staged, but it is corrupted. If no Staged: field is
+ * reported, in case of failure the file is both unstaged and corrupted.
  */
 
 /** Auxiliary function that finds a tree name given the specified TFile. If no
@@ -51,107 +76,88 @@ void DefaultTree(TFile *file, TString &def_tree) {
 
 }
 
-/** Main function.
+/** The main function of this ROOT macro.
  */
-void Verify(const char *redir_url, TString def_tree = "", Bool_t deep) {
+void Verify(const char *url, TString def_tree = "") {
 
-  TUrl turl(redir_url);
-  TString turl_anchor = turl.GetAnchor();
+  //gSystem->Sleep( 1000 * 1000 );  // UInt_t millisec --> only to test timeout!
+
+  TUrl turl(url);
+  TString anchor = turl.GetAnchor();
+
   turl.SetAnchor("");
 
-  TUrl stager_url( Form("%s://%s:%d", turl.GetProtocol(), turl.GetHost(),
-    turl.GetPort()) );
+  TFile *file = TFile::Open(url);  // open full file with anchor
 
-  TFileStager *stager = TFileStager::Open(stager_url.GetUrl());
-
-  if ((!stager) || (!stager->IsValid())) {
-    Printf("FAIL %s", turl.GetUrl());
+  if (!file) {
+    Printf("FAIL %s Staged: 1 Reason: cant_open", url);
     return;
   }
 
-  //
-  // Locate file
-  //
+  // Get endpoint URL -- defaults to redirector URL
+  const char *endp_url = url;
+  const TUrl *endp_url_obj = file->GetEndpointUrl();
+  if (endp_url_obj) {
+    endp_url_obj->SetAnchor(anchor);
+    endp_url = endp_url_obj->GetUrl();
+  }
 
-  TString endp_url;
-  Int_t r = stager->Locate(redir_url, endp_url);
+  // Remove initial slash
+  if (def_tree.BeginsWith("/")) def_tree = def_tree(1,1e9);
 
-  if (r == 0) {
-    // Staged: do deep verify if requested
-    if (deep) {
+  // No default tree specified? Search for one
+  if (def_tree == "") DefaultTree(file, def_tree);
 
-      TFile *file = TFile::Open(redir_url);  // open full file with anchor
+  // Search for the specified default tree
+  if (def_tree != "") {
 
-      if (!file) {
-        Printf("FAIL %s EndpointUrl: %s Reason: cant_open", url,
-          endp_url.Data());
-        return;
-      }
+    TKey *key = file->FindKey(def_tree.Data());
+    if (key && TClass::GetClass(key->GetClassName())->InheritsFrom("TTree")) {
 
-      // Remove initial slash
-      if (def_tree.BeginsWith("/")) def_tree = def_tree(1,1e9);
+      TTree *tree = dynamic_cast<TTree *>(key->ReadObj());
+      if (tree) {
 
-      // No default tree specified? Search for one
-      if (def_tree == "") DefaultTree(file, def_tree);
-
-      // Search for the specified default tree
-      if (def_tree != "") {
-
-        TKey *key = file->FindKey(def_tree.Data());
-        if (key &&
-          TClass::GetClass(key->GetClassName())->InheritsFrom("TTree")) {
-
-          TTree *tree = dynamic_cast<TTree *>(key->ReadObj());
-          if (tree) {
-
-            // All OK
-            Printf("OK %s Size: %lld EndpointUrl: %s Tree: /%s Events: %lld",
-              turl.GetUrl(),      // without anchor (mimic xrdstagetool)
-              file->GetSize(),    // in bytes
-              endp_url.Data(),    // with anchor
-              def_tree.Data(),    // tree name (init. slash is added in fmt str)
-              tree->GetEntries()  // events in tree
-            );
-
-          }
-          else {
-            // FAIL because the specified tree disappeared from key: do not
-            // report tree name and events. This should not happen and it is a
-            // strong indicator of file corruption
-            Printf("FAIL %s Size: %lu EndpointUrl: %s Reason: tree_disappeared",
-              turl.GetUrl(), size, endp_url.Data());
-          }
-
-        }
-        else {
-          // FAIL because the specified tree does not exist: this is a weak
-          // indicator of file corruption. Since file has been staged, Staged=1
-          Printf("FAIL %s Size: %lu EndpointUrl: %s Reason: no_such_tree",
-            turl.GetUrl(), size, endp_url.Data());
-        }
+        // All OK
+        Printf("OK %s Size: %lld EndpointUrl: %s Tree: /%s Events: %lld",
+          turl.GetUrl(),      // without anchor (mimic xrdstagetool)
+          file->GetSize(),    // in bytes
+          endp_url,           // with anchor
+          def_tree.Data(),    // tree name (initial slash is added in fmt str)
+          tree->GetEntries()  // events in tree
+        );
 
       }
       else {
 
-        // OK but do not report number of events or tree name, because no tree
-        // has been found
-        Printf("OK %s Size: %lu EndpointUrl: %s", turl.GetUrl(), size,
-          endp_url.Data());
+        // FAIL because the specified tree disappeared from key: do not report
+        // tree name and events. This should not happen and it is a strong
+        // indicator of file corruption. Since file has been staged, Staged=1
+        Printf("FAIL %s Size: %lld EndpointUrl: %s Staged: 1 "
+          "Reason: tree_disappeared", turl.GetUrl(), file->GetSize(), endp_url);
 
       }
 
-      file->Close();
-      delete file;
-
     }
     else {
-      // Shallow verification
-      Printf("OK %s EndpointUrl: %s", redir_url, endp_url.Data());
+
+      // FAIL because the specified tree does not exist: this is a weak
+      // indicator of file corruption. Since file has been staged, Staged=1
+      Printf("FAIL %s Size: %lld EndpointUrl: %s Staged: 1 Reason: no_such_tree",
+        turl.GetUrl(), file->GetSize(), endp_url);
+
     }
+
   }
   else {
-    // Not staged: this condition is treated as a failure
-    Printf("FAIL %s Reason: not_staged", redir_url);
+
+    // OK but do not report number of events or tree name, because no tree has
+    // been found
+    Printf("OK %s Size: %lld EndpointUrl: %s", turl.GetUrl(), file->GetSize(),
+      endp_url);
+
   }
+
+  file->Close();
+  delete file;
 
 }

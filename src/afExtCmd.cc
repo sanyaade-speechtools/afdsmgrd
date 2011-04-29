@@ -24,7 +24,7 @@ const char *extCmd::pidf_pref = "pid";
  */
 extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1),
-  timeout_secs(0), stop_grace_secs(1) {
+  timeout_secs(0) {
 
   if ((helper_path.empty()) || (temp_path.empty()))
     throw std::runtime_error("Helper path and temp path must be defined");
@@ -46,6 +46,8 @@ extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   std::ofstream of(strbuf);
   of.close();
 
+  // Grace time between a SIGHUP and a SIGKILL
+  set_stop_grace_secs(1);
 }
 
 /** Destructor. Its sole purpose is to remove leftovers through cleanup().
@@ -101,7 +103,6 @@ int extCmd::run() {
  *  the signal 0 (noop) to the process.
  */
 bool extCmd::is_running() {
-
 
   if ((pid <= 0) || (kill(pid, 0) == -1)) return false;
   else {
@@ -178,8 +179,8 @@ bool extCmd::stop() {
     else return false;
   }
 
-  for (unsigned int s=0; s<stop_grace_secs; s++) {
-    sleep(1);
+  for (unsigned int l=0; l<stop_grace_loops; l++) {
+    usleep(AF_EXTCMD_USLEEP);
     r = kill(pid, 0);  // is it running?
     if (r == -1) {
       if (errno == ESRCH) return true;
