@@ -161,6 +161,7 @@ hardconf ( etc/afdsmgrd.conf.example.in )
 hardconf ( scripts/afdsmgrd-root.sh.in )
 hardconf ( etc/afverifier.conf.example.in )
 hardconf ( scripts/afverifier-xrd-locate.sh.in )
+hardconf ( scripts/afverifier-xrd-rm.sh.in )
 hardconf ( scripts/afdsmgrd-xrd-stage-verify.sh.in )
 
 #
@@ -175,6 +176,7 @@ install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-root.sh DESTINATI
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/etc/afverifier.conf.example DESTINATION ${DIR_ETC})
 install (FILES macros/LocateVerifyXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macros)
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier-xrd-locate.sh DESTINATION ${DIR_LIBEXEC})
+install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier-xrd-rm.sh DESTINATION ${DIR_LIBEXEC})
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-xrd-stage-verify.sh DESTINATION ${DIR_LIBEXEC})
 
 #

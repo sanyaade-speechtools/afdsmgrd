@@ -35,5 +35,9 @@ verifier.parallelverifies 800
 # 2) External script that wraps "xrd locateall" (way faster and lighter)
 verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL"
 
+# Command that performs the file removal on corrupted files, if requested by
+# the user on command line (-x)
+verifier.erasecmd @DIR_LIBEXEC@/afverifier-xrd-rm.sh "$REDIRURL"
+
 # Maximum number of failures tolerated: verifications are failed after that
 verifier.maxfailures 3

@@ -1,11 +1,12 @@
 #!/bin/bash
 
 #
-# afverify-xrd-locate.sh -- by Dario Berzano <dario.berzano@cern.ch>
+# afverify-xrd-rm.sh -- by Dario Berzano <dario.berzano@cern.ch>
 #
 # This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
 #
-# Wrapper around xrd locateall command, see macros/Verify.C for info on output.
+# Wrapper around xrd rm command. Outputs OK on success, FAIL if for some reason
+# the command can not be launched or terminated abruptly.
 #
 
 # Get the configuration variables from the first configuration file found
@@ -52,35 +53,29 @@ else
 fi
 
 # Launch xrd
-export TMPOUT=$(mktemp /tmp/.afverifier-xrd-locate-XXXXX)
-xrd $HOSTPORT locateall $FILENAME > $TMPOUT 2>&1
-#echo $?
+export TMPOUT=$(mktemp /tmp/.afverifier-xrd-rm-XXXXX)
+xrd $HOSTPORT rm $FILENAME > $TMPOUT 2>&1
+export CODE=$?
+export XRDCODE
 
-if [ $? != 0 ]; then
-  rm $TMPOUT
-  echo "FAIL $CLEANURL Reason: xrd_error"
-  exit 0
-fi
+# Uncomment for debug
+#cat $TMPOUT
 
-# Get Location: line
-export LOCATION=$(cat $TMPOUT | grep "Location: " | head -n1)
-
-# Parse location server
-export ENDP_URL
-if [[ $LOCATION =~ Location:\\s\'(.*)\' ]]; then
-  ENDP_URL="root://${BASH_REMATCH[1]}/${FILENAME}${REMAIN}"
-  echo "OK $CLEANURL EndpointUrl: $ENDP_URL"
-else
-
-  # File is not staged (empirically... bad xrd, bad...)
-  cat $TMPOUT | grep 'matching files' > /dev/null 2>&1
-  if [ $? == 0 ]; then
-    echo "FAIL $CLEANURL Reason: not_staged"
+if [ $CODE == 0 ]; then
+  XRDCODE=$(grep '^Error ' $TMPOUT 2>&1 | \
+    perl -ne '/^Error\s+([0-9]+)/; print "$1\n"')
+  if [ "$XRDCODE" != "" ]; then
+    echo "FAIL $CLEANURL Reason: xrd_err_$XRDCODE"
   else
-    # No reason given, generic error (server down, etc.)
-    echo "FAIL $CLEANURL"
+    grep 'to any server' $TMPOUT > /dev/null 2>&1
+    if [ $? == 0 ]; then
+      echo "FAIL $CLEANURL Reason: server_down"
+    else
+      echo "OK $CLEANURL"
+    fi
   fi
-
+else
+  echo "FAIL $CLEANURL Reason: exit_code_$CODE"
 fi
 
 rm $TMPOUT

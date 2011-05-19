@@ -975,6 +975,9 @@ void main_loop(af::config &config) {
   // this function
   config.unbind_all();
 
+  // Say that everything ended correctly
+  af::log::info(af::log_level_urgent, "Quitting gracefully as requested, bye!");
+
 }
 
 /** Entry point of afdsmgrd.

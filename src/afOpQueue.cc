@@ -15,7 +15,7 @@ using namespace af;
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Default constructor. Constructs an empty instance of this class with the
- *  defined ownership.
+ *  defined ownership. Bitset flags is by default initialized with zeroes.
  */
 queueEntry::queueEntry(bool _own) : main_url(NULL), endp_url(NULL),
   tree_name(NULL), n_events(0L), n_failures(0), size_bytes(0L), staged(false),
@@ -57,6 +57,7 @@ void queueEntry::reset() {
   set_endp_url(NULL);
   set_tree_name(NULL);
   staged = false;
+  flags.reset();
 }
 
 /** Private auxiliary function to assign a value to a string depending on the
@@ -108,6 +109,7 @@ void queueEntry::print() const {
   printf("size_bytes: %lu\n", size_bytes);
   printf("status:     %c\n", status);
   printf("staged:     %s\n", (staged ? "yes" : "no"));
+  printf("flags:      0x%04x\n", (unsigned short)flags.to_ulong());
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,6 +150,7 @@ opQueue::opQueue() :
     "  n_failures INTEGER UNSIGNED NOT NULL DEFAULT 0,"
     "  size_bytes BIGINT UNSIGNED,"
     "  is_staged INTEGER NOT NULL DEFAULT 0,"  // no BOOL in SQLite
+    "  flags INTEGER UNSIGNED NOT NULL DEFAULT 0,"
     "  UNIQUE (main_url)"
     ")",
   NULL, NULL, &sql_err);
@@ -163,7 +166,7 @@ opQueue::opQueue() :
   // Query for get_full_entry()
   r = sqlite3_prepare_v2(db,
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,"
-    "  status,instance_id,is_staged FROM queue WHERE main_url=? LIMIT 1",
+    "  status,instance_id,is_staged,flags FROM queue WHERE main_url=? LIMIT 1",
     -1, &query_get_full_entry, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -186,7 +189,7 @@ opQueue::opQueue() :
   // Query for *_query_by_status()
   r = sqlite3_prepare_v2(db,
     "SELECT main_url,endp_url,tree_name,n_events,n_failures,size_bytes,"
-    "  status,instance_id,is_staged FROM queue WHERE status=? "
+    "  status,instance_id,is_staged,flags FROM queue WHERE status=? "
     "  ORDER BY rank ASC LIMIT ?",
     -1, &query_by_status_limited, NULL);
   if (r != SQLITE_OK) {
@@ -198,7 +201,8 @@ opQueue::opQueue() :
 
   // Query for cond_insert()
   r = sqlite3_prepare_v2(db,
-    "INSERT INTO queue (main_url,tree_name,instance_id) VALUES (?,?,?)", -1,
+    "INSERT INTO queue "
+    "  (main_url,tree_name,instance_id,flags) VALUES (?,?,?,?)", -1,
     &query_cond_insert, NULL);
   if (r != SQLITE_OK) {
     snprintf(strbuf, AF_OPQUEUE_BUFSIZE,
@@ -479,7 +483,7 @@ opQueue::~opQueue() {
 /** Enqueue URL associating an unique "instance id" to it.
  */
 const queueEntry *opQueue::cond_insert(const char *url, const char *treename,
-  unsigned int *iid_ptr) {
+  unsigned int *iid_ptr, unsigned short flags) {
 
   AF_OPQUEUE_NEXT_UIID();
 
@@ -489,6 +493,7 @@ const queueEntry *opQueue::cond_insert(const char *url, const char *treename,
   sqlite3_bind_text(query_cond_insert, 1, url, -1, SQLITE_STATIC);
   sqlite3_bind_text(query_cond_insert, 2, treename, -1, SQLITE_STATIC);
   sqlite3_bind_int64(query_cond_insert, 3, unique_instance_id);
+  sqlite3_bind_int(query_cond_insert, 4, flags);
 
   int r = sqlite3_step(query_cond_insert);
 
@@ -590,8 +595,8 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
 
   // See http://www.sqlite.org/c3ref/c_abort.html for SQLite3 constants
   if (r == SQLITE_ROW) {
-    // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events
-    // 4:n_failures, 5:size_bytes, 6:status, 7:instance_id
+    // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events, 4:n_failures,
+    // 5:size_bytes, 6:status, 7:instance_id, 8:is_staged, 9:flags
 
     qentry_buf.set_main_url(
       (char*)sqlite3_column_text(query_get_full_entry, 0) );
@@ -608,6 +613,8 @@ const queueEntry *opQueue::get_full_entry(const char *url) {
       sqlite3_column_int64(query_get_full_entry, 7) );
     qentry_buf.set_staged(
       (bool)sqlite3_column_int(query_get_full_entry, 8) );
+    qentry_buf.set_flags(
+      (unsigned short)sqlite3_column_int(query_get_full_entry, 9) );
 
     return &qentry_buf;
   }
@@ -653,9 +660,9 @@ const queueEntry *opQueue::next_query_by_status() {
   if (r != SQLITE_ROW) return NULL;
 
   // 0:main_url, 1:endp_url, 2:tree_name, 3:n_events, 4:n_failures,
-  // 5:size_bytes, 6:status, 7:instance_id
+  // 5:size_bytes, 6:status, 7:instance_id, 8:is_staged, 9:flags
 
-  qentry_buf.reset();
+  //qentry_buf.reset(); --> not needed
   qentry_buf.set_main_url(
     (const char *)sqlite3_column_text(query_by_status_limited, 0) );
   qentry_buf.set_endp_url(
@@ -671,6 +678,8 @@ const queueEntry *opQueue::next_query_by_status() {
     sqlite3_column_int64(query_by_status_limited, 7) );
   qentry_buf.set_staged(
     (bool)sqlite3_column_int(query_by_status_limited, 8) );
+  qentry_buf.set_flags(
+    (unsigned short)sqlite3_column_int(query_by_status_limited, 9) );
 
   return &qentry_buf;
 }

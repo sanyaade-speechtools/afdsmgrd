@@ -68,7 +68,7 @@ void CreateDataSetFromAliEn(
   TString redirHost = "",
   //TString redirHost = "alice-caf.cern.ch",
  
-  // Possible options: setstaged:cache:verify:dryrun:aliencmd
+  // Possible options: setstaged:cache:verify:dryrun:aliencmd:update (see doc)
   TString options   = "setstaged:dryrun:aliencmd"
 
   ) {

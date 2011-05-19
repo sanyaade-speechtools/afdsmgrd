@@ -57,7 +57,7 @@ void DefaultTree(TFile *file, TString &def_tree) {
 /** Main function.
  */
 void LocateVerifyXrd(const char *redir_url, TString def_tree = "",
-  Bool_t deep) {
+  Bool_t deep = kFALSE) {
 
   TUrl turl(redir_url);
   TString turl_anchor = turl.GetAnchor();

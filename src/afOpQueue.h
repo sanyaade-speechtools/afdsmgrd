@@ -21,6 +21,7 @@
 
 #include <stdexcept>
 #include <limits>
+#include <bitset>
 
 #define AF_NULL_STR(STR) ((STR) ? (STR) : "#null#")
 #define AF_OPQUEUE_BUFSIZE 1000
@@ -62,6 +63,9 @@ namespace af {
       inline unsigned int get_instance_id() const { return uiid; };
       inline qstat_t get_status() const { return status; };
       inline bool is_staged() const { return staged; }
+      inline unsigned long get_flags() const {
+        return (unsigned short)flags.to_ulong(); }
+      inline bool get_flag(size_t pos) const { return flags.test(pos); }
 
       // Setters
       inline void set_main_url(const char *_main_url);
@@ -78,6 +82,9 @@ namespace af {
       inline void set_instance_id(unsigned int _uiid) { uiid = _uiid; };
       inline void set_status(qstat_t _status) { status = _status; }
       inline void set_staged(bool _staged = true) { staged = _staged; };
+      inline void set_flag(size_t pos, bool val = true) {
+        flags.set(pos, val); };
+      inline void set_flags(unsigned short _flags) { flags = _flags; };
 
       void print() const;
       void reset();
@@ -96,6 +103,7 @@ namespace af {
       unsigned int uiid;
       qstat_t status;
       bool staged;
+      std::bitset<8> flags;
 
   };
 
@@ -109,7 +117,8 @@ namespace af {
       virtual ~opQueue();
 
       const queueEntry *cond_insert(const char *url,
-        const char *treename = NULL, unsigned int *iid_ptr = NULL);
+        const char *treename = NULL, unsigned int *iid_ptr = NULL,
+        unsigned short flags = 0x0);
 
       int flush();
       bool set_status(const char *url, qstat_t qstat);

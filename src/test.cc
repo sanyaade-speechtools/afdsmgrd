@@ -1,9 +1,9 @@
 /**
- * readds.cc -- by Dario Berzano <dario.berzano@cern.ch>
+ * test.cc -- by Dario Berzano <dario.berzano@cern.ch>
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
- * Prints out the list of datasets.
+ * Binary used for tests.
  *
  */
 #include <stdio.h>
@@ -463,11 +463,11 @@ int main(int argc, char *argv[]) {
   //test_regex();
   //test_dollar_subst();
   //test_dsmanip();
-  //test_queue();
+  test_queue();
   //test_extcmd(argv[0]);
   //test_config(999);
   //test_log();
-  test_dl();
+  //test_dl();
 
   printf("!!! goodbye !!!\n");
 

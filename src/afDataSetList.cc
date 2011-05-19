@@ -155,7 +155,7 @@ bool dataSetList::set_default_tree(const char *treename) {
 /** Asks for the list of files (TFileInfo objs) for a given dataset name in
  *  current dataset manager. If ds_name is NULL then the last dataset name
  *  obtained via next_dataset() is used, if one. If reading of dataset fails for
- *  whatever reason, it returns false; if dataset was read successfully, it
+ *  whichever reason, it returns false; if dataset was read successfully, it
  *  returns true. This function has to be called at the beginning of TFileInfos
  *  reading. It is safe to double call it - 2nd call does nothing (and returns
  *  true for success).
@@ -355,20 +355,30 @@ ds_manip_err_t dataSetList::del_urls_but_last(unsigned int howmany) {
   return (all_ok ? ds_manip_err_ok_mod : ds_manip_err_fail);
 }
 
-/** Tries to write the currently selected dataset on disk. On success it
- *  returns true, false on failure.
+/** Tries to write the currently selected dataset on disk, if no parameters are
+ *  given. Elsewhere, the given colleciton is written to the specified dataset
+ *  URI. On success it returns true, false on failure.
+ *
+ *  TODO: directory creation on new datasets: WriteDataSet does not perform it!
  */
-bool dataSetList::save_dataset() {
+bool dataSetList::save_dataset(TFileCollection *fc, const char *ds_uri) {
 
-  if (!fi_inited) return false;
+  if ((!fc) || (!ds_uri)) {
+    if (!fi_inited) return false;
+    else {
+      // Get currently selected dataset (through next_dataset())
+      fc = fi_coll;
+      ds_uri = ds_cur_name.c_str();
+    }
+  }
 
   TString group;
   TString user;
   TString name;
-  ds_mgr->ParseUri( ds_cur_name.c_str(), &group, &user, &name);
+  ds_mgr->ParseUri( ds_uri, &group, &user, &name);
 
-  fi_coll->Update();
-  int r = ds_mgr->WriteDataSet(group, user, name, fi_coll);
+  fc->Update();
+  int r = ds_mgr->WriteDataSet(group, user, name, fc);
 
   af::log::info(af::log_level_debug,
     "WriteDataSet(group=%s, user=%s, name=%s)=%d", group.Data(),
@@ -376,7 +386,7 @@ bool dataSetList::save_dataset() {
 
   if (r != 0) return true;
 
-  //if (ds_mgr->RegisterDataSet(ds_cur_name.c_str(), fi_coll, "O") == 0)
+  //if (ds_mgr->RegisterDataSet(ds_uri, fc, "O") == 0)
   //  return true;
 
   return false;
