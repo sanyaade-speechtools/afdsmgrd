@@ -53,7 +53,8 @@ namespace af {
       const char *next_dataset();
       void rewind_datasets();
       void free_datasets();
-      bool save_dataset();
+      bool save_dataset(TFileCollection *new_fc = NULL,
+        const char *new_name = NULL);
       const char *get_default_tree();
       const TFileCollection *get_fc() const { return fi_coll; };
       bool set_default_tree(const char *treename);

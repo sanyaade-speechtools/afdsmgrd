@@ -17,6 +17,8 @@
 #include <memory>
 #include <list>
 
+#include <TError.h>
+
 #include "afLog.h"
 #include "afConfig.h"
 #include "afDataSetList.h"
@@ -31,6 +33,8 @@
 #define AF_ERR_LOGLEVEL 4
 #define AF_ERR_LIBEXEC 15
 
+#define AF_YESNO(test) ((test) ? "Yes" : "No")
+
 /** Program name that goes in version banner.
  */
 #define AF_PROG_NAME "afverifier"
@@ -44,9 +48,21 @@ typedef struct {
   long parallel_verifies;    // verifier.parallelverifies
   long max_failures;         // verifier.maxfailures
   std::string verify_cmd;    // verifier.verifycmd
+  std::string erase_cmd;     // verifier.erasecmd
   af::regex url_regex;       // verifier.urlregex
+  std::string *ds_path;
 
 } verifier_vars_t;
+
+/** Command-line options for the verifier.
+ */
+typedef struct {
+
+  bool merge;
+  bool rm_corr;
+  const char *filter;
+
+} verifier_options_t;
 
 /** Global variables.
  */
@@ -171,7 +187,7 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
  * After that, the redirector's URL is put into the processing queue.
  */
 void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
-  verifier_vars_t &vars) {
+  verifier_vars_t &vars, verifier_options_t &opts) {
 
   af::log::info(af::log_level_high,
     "*** Scanning datasets for files to verify and fixing URLs ***");
@@ -186,7 +202,7 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
     af::log::info(af::log_level_normal, "Scanning dataset %s", ds);
 
     TFileInfo *fi;
-    dsm.fetch_files(NULL, "SsCc");  // every file
+    dsm.fetch_files(NULL, opts.filter);  // every file
     int count_changes = 0;
     int count_files = 0;
 
@@ -245,7 +261,11 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
       //
 
       unsigned int unique_id;
-      qent = opq.cond_insert(out_url, NULL, &unique_id);
+      unsigned short flags = 0;
+
+      if (fi->TestBit(TFileInfo::kCorrupted)) flags = 1;
+
+      qent = opq.cond_insert(out_url, NULL, &unique_id, flags);
         // NULL value for get_default_tree() is accepted
 
       if (!qent) {
@@ -296,7 +316,7 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
  *  syncing info between cmdq and opq
  */
 void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
-  verifier_vars_t &vars) {
+  verifier_vars_t &vars, verifier_options_t &opts) {
 
   const af::queueEntry *qent;
 
@@ -333,8 +353,8 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
 
       if ( (*it)->get_id() == qent->get_instance_id() ) {
 
-        af::log::ok(af::log_level_debug, "Found uuid=%u in command queue",
-          qent->get_instance_id());
+        af::log::ok(af::log_level_debug, "Found uuid=%u in command queue "
+          "(flags=0x%04x)", qent->get_instance_id(), qent->get_flags());
 
         if ((*it)->is_running()) {
           af::log::info(af::log_level_debug, "Still processing: %s (uiid=%u)",
@@ -342,7 +362,7 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
           break;
         }
 
-        // Processing (download, stage, verify...) has finished
+        // Processing (download, stage, verify, removal...) has finished
 
         sum_cmd_finished++;
 
@@ -376,23 +396,38 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
           // Operation failed
           //
 
+          bool staged = true;
+
           // Get the reason: if the reason is *explicitly* not_staged, then the
           // file will be marked as not staged in processing datasets. File is
           // staged by default.
           const char *reason = (*it)->get_field_text("Reason");
-          bool staged = true;
-          if ((reason) && (strcmp(reason, "not_staged") == 0)) staged = false;
 
-          // External command reported a failure: this could mean, during
-          // verification, that either the file is not staged or another error
-          // occured
-          if (staged) { 
-            af::log::error(af::log_level_high, "Failed: %s",
+          if ((opts.rm_corr) && (qent->get_flag(0))) {
+
+            // It was a removal operation
+
+            if (reason) af::log::error(af::log_level_high, "Removal failed: %s"
+              "(reason: %s)", qent->get_main_url(), reason);
+            else af::log::error(af::log_level_high, "Removal failed: %s",
               qent->get_main_url());
           }
           else {
-            af::log::warning(af::log_level_normal, "Not staged: %s",
-              qent->get_main_url());
+
+            if ((reason) && (strcmp(reason, "not_staged") == 0)) staged = false;
+
+            // External command reported a failure: this could mean, during
+            // verification, that either the file is not staged or another error
+            // occured
+            if (staged) { 
+              af::log::error(af::log_level_high, "Failed: %s",
+                qent->get_main_url());
+            }
+            else {
+              af::log::warning(af::log_level_normal, "Not staged: %s",
+                qent->get_main_url());
+            }
+
           }
 
           opq.failed(qent->get_main_url(), staged);
@@ -441,8 +476,19 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
       const char *def_tree = qent->get_tree_name();
       it->second = def_tree ? def_tree : "";
 
-      std::string url_cmd = af::regex::dollar_subst(vars.verify_cmd.c_str(),
-        extcmd_vars);
+      // Here we get to decide whether to launch either the "verify" command or
+      // the "remove" command
+
+      std::string url_cmd;
+
+      if ((opts.rm_corr) && (qent->get_flag(0))) {
+        url_cmd = af::regex::dollar_subst(vars.erase_cmd.c_str(),
+          extcmd_vars);
+      }
+      else {
+        url_cmd = af::regex::dollar_subst(vars.verify_cmd.c_str(),
+          extcmd_vars);
+      }
 
       af::log::info(af::log_level_debug, "Preparing operation command: %s",
         url_cmd.c_str());
@@ -508,7 +554,7 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
  *  back finished elements from opq
  */
 void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
-  verifier_vars_t &vars) {
+  verifier_vars_t &vars, verifier_options_t &opts) {
 
   const af::queueEntry *qent;
 
@@ -524,7 +570,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
     af::log::info(af::log_level_normal, "Scanning dataset %s", ds);
 
     TFileInfo *fi;
-    dsm.fetch_files(NULL, "SsCc");  // Sc == staged AND not corrupted
+    dsm.fetch_files(NULL, opts.filter);  // SsCc == every file
     int count_changes = 0;
     int count_files = 0;
 
@@ -550,7 +596,36 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
       qent = opq.get_cond_entry(out_url);
 
-      if (qent) {
+      if ((opts.rm_corr) && (qent) && (qent->get_flag(0))) {
+
+        // Handle removal operation
+
+        if (qent->get_status() == af::qstat_success) {
+
+          // In this case, we requested removal because original file was
+          // corrupted, and removal succeeded. File must be marked as unstaged
+          // and corrupted.
+
+          fi->ResetBit(TFileInfo::kStaged);
+          fi->SetBit(TFileInfo::kCorrupted);
+
+          af::log::warning(af::log_level_normal, "File %s has been removed "
+            "since it was corrupted", out_url);
+
+        }
+        else if (qent->get_status() == af::qstat_failed) {
+
+          af::log::error(af::log_level_normal, "File %s: removal requested, "
+            "but failed", out_url);
+
+        }
+
+      }
+      else if (qent) {
+
+        //
+        // Handle verification operation
+        //
 
         const char *endp_url = qent->get_endp_url();
 
@@ -563,9 +638,6 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
           bool meta_upd = false;
 
-          // Staged and Not Corrupted
-
-
           if (!fi->AddUrl(qent->get_endp_url(), kTRUE)) {
             af::log::warning(af::log_level_debug, "In dataset %s, "
               "endpoint URL %s is a duplicate", ds, endp_url);
@@ -576,8 +648,10 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
             fi->SetSize(qent->get_size_bytes());
           }
 
-          // Update tree name and events (only if meaningful)
           if ((qent->get_tree_name()) && (qent->get_n_events() > 0)) {
+
+            // CASE A: in this case we performed a successful deep verification,
+            // on a file that might have been either corrupted or not.
 
             meta_upd = true;
 
@@ -598,7 +672,8 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
           }
           else {
 
-            // No "deep" check occured: trust preexistant corrupted bit
+            // CASE B: neither "deep" check nor removal occured: trust
+            // preexistent corrupted bit. This is "shallow" verification.
 
             if (fi->TestBit(TFileInfo::kCorrupted)) {
               // File is corrupted: mark it as not staged (even if it is!)
@@ -618,7 +693,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
           count_changes++;
 
-        }  // end if success
+        }  // end if success (verif.)
         else if (qent->get_status() == af::qstat_failed) {
 
           //
@@ -697,10 +772,56 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
 }
 
+/** Merge all datasets found into one big dataset named /merged/merged/merged.
+ */
+void merge_datasets(af::dataSetList &dsm, verifier_vars_t &vars) {
+
+  Int_t gErrorIgnoreLevel_old = gErrorIgnoreLevel;
+  gErrorIgnoreLevel = 10000;
+
+  af::log::info(af::log_level_high,
+    "*** Merging all datasets to /merged/merged/merged ***");
+
+  TFileCollection *merged_fc = new TFileCollection();
+
+  dsm.fetch_datasets();
+  const char *ds;
+  while (ds = dsm.next_dataset()) {
+
+    if (dsm.fetch_files()) {
+      af::log::info(af::log_level_low, "Merging dataset %s", ds);
+      merged_fc->Add( (TFileCollection *)dsm.get_fc() );
+    }
+    else af::log::error(af::log_level_high, "Can not merge dataset %s", ds);
+
+    dsm.free_files();
+
+  }
+  dsm.free_datasets();
+
+  // Directory creation is needed
+  // TODO: see save_dataset() in class af::dataSetList
+  std::string ds_dir = *(vars.ds_path) + "/merged";
+  mkdir(ds_dir.c_str(), S_IRWXU|S_IRWXG|S_IRWXO);
+  ds_dir += "/merged";
+  mkdir(ds_dir.c_str(), S_IRWXU|S_IRWXG|S_IRWXO);
+
+  merged_fc->RemoveDuplicates();
+  if (dsm.save_dataset(merged_fc, "/merged/merged/merged"))
+    af::log::ok(af::log_level_high, "Merged dataset saved "
+      "(%lld unique entries)", merged_fc->GetNFiles());
+  else
+    af::log::error(af::log_level_high,"Saving of merged dataset failed");
+
+  delete merged_fc;
+
+  gErrorIgnoreLevel = gErrorIgnoreLevel_old;
+}
+
 /** The main loop. The loop breaks when the external variable quit_requested is
  *  set to true.
  */
-void main_loop(af::config &config) {
+void main_loop(af::config &config, verifier_options_t &opts) {
 
   // Resources monitoring
   af::resMon resmon;
@@ -714,6 +835,7 @@ void main_loop(af::config &config) {
   std::string dsm_mss;
   std::string dsm_opt;
   void *dsm_cbk_args[] = { &dsm, &dsm_url, &dsm_mss, &dsm_opt };
+  vars.ds_path = &dsm_url;
 
   // The operations queue, used by process_opqueue() and process_datasets_*()
   af::opQueue opq;
@@ -732,6 +854,7 @@ void main_loop(af::config &config) {
   config.bind_int("verifier.parallelverifies", &vars.parallel_verifies,
     8, 1, AF_INT_MAX);
   config.bind_text("verifier.verifycmd", &vars.verify_cmd, "/bin/false");
+  config.bind_text("verifier.erasecmd", &vars.erase_cmd, "/bin/false");
   config.bind_int("verifier.maxfailures", &vars.max_failures, 0, 0,
     1000);
 
@@ -743,7 +866,7 @@ void main_loop(af::config &config) {
   config.update();
 
   // Put files in queue
-  process_datasets_enqueue(opq, dsm, vars);
+  process_datasets_enqueue(opq, dsm, vars, opts);
 
   // The loop counter
   long count_loops = -1;
@@ -776,7 +899,7 @@ void main_loop(af::config &config) {
     // Operations queue
     //
 
-    process_opqueue(opq, cmdq, vars);
+    process_opqueue(opq, cmdq, vars, opts);
 
     unsigned int n_queued, n_runn, n_success, n_fail, n_total;
     opq.summary(n_queued, n_runn, n_success, n_fail);
@@ -787,7 +910,7 @@ void main_loop(af::config &config) {
 
     // Either proper loop number or no more elements are running/waiting
     if ((count_loops == 0) || (n_queued+n_runn == 0)) {
-      if (n_success+n_fail > 0) process_datasets_save(opq, dsm, vars);
+      if (n_success+n_fail > 0) process_datasets_save(opq, dsm, vars, opts);
     }
     else {
       int diff_loops = vars.scan_ds_every_loops - count_loops;
@@ -839,7 +962,8 @@ void main_loop(af::config &config) {
       quit_requested = true;
     }
     else if (!quit_requested) {
-      af::log::info(af::log_level_high, "Sleeping %ld seconds", vars.sleep_secs);
+      af::log::info(af::log_level_high, "Sleeping %ld seconds",
+        vars.sleep_secs);
       sleep(vars.sleep_secs);
     }
 
@@ -850,6 +974,9 @@ void main_loop(af::config &config) {
     it!=cmdq.end(); it++) {
     delete *it;
   }
+
+  // Merge datasets
+  if (opts.merge) merge_datasets(dsm, vars);
 
   // Unbind directives to avoid disasters for memory destructed past the end of
   // this function
@@ -881,17 +1008,28 @@ int main(int argc, char *argv[]) {
   const char *libexec_path = NULL;
   const char *log_level = NULL;
 
+  verifier_options_t opts;
+  opts.merge = false;
+  opts.rm_corr = false;
+  opts.filter = NULL;
+
   opterr = 0;
 
   // c <config>
   // e <libexec_path>
   // l <log_level>
-  while ((c = getopt(argc, argv, ":c:e:d:")) != -1) {
+  // m : merge datasets
+  // x : parallel xrd rm on corrupted files
+  // s : verify only staged files
+  while ((c = getopt(argc, argv, ":c:e:d:mxw:")) != -1) {
 
     switch (c) {
       case 'c': config_file = optarg; break;
       case 'e': libexec_path = optarg; break;
       case 'd': log_level = optarg; break;
+      case 'm': opts.merge = true; break;
+      case 'x': opts.rm_corr = true; break;
+      case 'w': opts.filter = optarg; break;
     }
 
   }
@@ -926,6 +1064,9 @@ int main(int argc, char *argv[]) {
       "defaulted to normal");
   }
 
+  // Filter
+  if (!opts.filter) opts.filter = "SsCc";
+
   // "libexec" path
   if (!libexec_path) {
     af::log::fatal(af::log_level_urgent, "No path for auxiliary binaries "
@@ -951,6 +1092,13 @@ int main(int argc, char *argv[]) {
       pwd->pw_name);
   }
 
+  // Review options
+  af::log::info(af::log_level_high, "Merge dataset at the end: %s",
+    AF_YESNO(opts.merge));
+  af::log::info(af::log_level_high, "Verify filter: %s", opts.filter);
+  af::log::info(af::log_level_high, "Delete corrupted files: %s",
+    AF_YESNO(opts.rm_corr));
+
   af::config config(config_file);
 
   // Init external command facility paths
@@ -965,14 +1113,13 @@ int main(int argc, char *argv[]) {
     //std::string extcmd_temp_path = "/tmp/afdsmgrd-" + pid;
     //af::extCmd::set_temp_path(extcmd_temp_path.c_str());
     af::extCmd::set_temp_path("/tmp/afverifier");
-
   }
 
   // Trap some signals to terminate gently
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
-  main_loop(config);
+  main_loop(config, opts);
 
   return 0;
 

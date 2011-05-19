@@ -38,6 +38,7 @@
 #include <TTree.h>
 #include <TKey.h>
 #include <TFileStager.h>
+#include <TRandom.h>
 
 #endif
 
@@ -76,11 +77,45 @@ Bool_t _afProofMode() {
   return proofMode;
 }
 
-/** A TDataSetManagerFile object is created using default parameters.
+/** A TDataSetManagerFile object is created using default parameters, if no
+ *  parameters are given. If repoPath is not NULL (default), a temporary dataset
+ *  repository is created in a temporary directory, and the path to repository
+ *  is returned on the TString pointed by repoPath. After usage, that string can
+ *  be safely removed by means of "rm -rf".
  */
-TDataSetManagerFile *_afCreateDsMgr() {
-  TDataSetManagerFile *mgr = new TDataSetManagerFile( NULL, NULL,
-    Form("dir:%s", gEnv->GetValue("af.dspath", "/pool/datasets")) );
+TDataSetManagerFile *_afCreateDsMgr(TString *repoPath = NULL) {
+
+  TDataSetManagerFile *mgr = NULL;
+  if (repoPath == NULL) {
+
+    //
+    // Ordinary repository from configuration
+    //
+
+    mgr = new TDataSetManagerFile( NULL, NULL,
+      Form("dir:%s", gEnv->GetValue("af.dspath", "/pool/datasets")) );
+  }
+  else {
+
+    //
+    // Creates a temporary unique repository
+    //
+
+    TString tempDir;
+
+    do {
+      tempDir.Form("%s/afdsutil-dsrepo-%04x", gSystem->TempDirectory(),
+        gRandom->Integer(0xffff));
+      Printf("Testing directory: %s", tempDir.Data());
+    }
+    while (!gSystem->AccessPathName(tempDir));
+
+    if (gSystem->mkdir(tempDir.Data()) != 0) return NULL;  // mkdir failed
+    mgr = new TDataSetManagerFile(NULL, NULL, Form("dir:%s", tempDir.Data()));
+
+    if (repoPath) *repoPath = tempDir;
+
+  }
   return mgr;
 }
 
@@ -279,7 +314,7 @@ Bool_t _afAppendAliEnUrlFile(TFileInfo *fi) {
  *  possible to find at least one AliEn URL to match.
  *
  *  It returns kTRUE on success (i.e. URL appended) and kFALSE if it was
- *  impossible to find any alien:// URL.
+ *  impossible to find any alien:// URL, or if redirector URL already existed.
  */
 Bool_t _afPrependRedirUrlFile(TFileInfo *fi) {
 
@@ -287,20 +322,20 @@ Bool_t _afPrependRedirUrlFile(TFileInfo *fi) {
   const char *redirUrl = gEnv->GetValue("af.redirurl",
     "root://localhost:1234/$1");
   TPMERegexp re("^alien:\\/\\/(.*)$");
-  Bool_t found = kFALSE;
+  Bool_t success = kFALSE;
 
   fi->ResetUrl();
   while (( url = fi->NextUrl() )) {
     if ( strcmp( url->GetProtocol(), "alien" ) == 0 ) {
-      found = kTRUE;
       TString buf = url->GetUrl();
       re.Substitute(buf, redirUrl);
-      fi->AddUrl( buf.Data(), kTRUE );  // kTRUE = at beginning of list
+      success = fi->AddUrl( buf.Data(), kTRUE );  // kTRUE = beginning of list
+        // success will be true if URL was added correctly
       break;
     }
   }
 
-  return found;
+  return success;
 }
 
 /** Launch xrd to unstage the file. Return value of xrd is ignored. By default,
@@ -357,34 +392,106 @@ void _afNiceSize(Long64_t bytes, TString &um, Double_t &size) {
   size = b;
 }
 
+/** Appends TFileInfos from fc to origFc, only if the current URL of new entries
+ *  is not present in origFc. Returns number of entries added, or -1 if at least
+ *  one collection is NULL.
+ */
+Long64_t _afUpdateDs(TFileCollection *origFc, TFileCollection *fc) {
+
+  if ((!origFc) || (!fc)) return -1;
+
+  TIter i(fc->GetList());
+  TIter j(origFc->GetList());
+  TFileInfo *fi;
+  TFileInfo *fj;
+  Long64_t added = 0;
+
+  while ((fi = dynamic_cast<TFileInfo *>(i.Next()))) {
+
+    Bool_t found = kFALSE;
+    j.Reset();
+    while ((fj = dynamic_cast<TFileInfo *>(j.Next()))) {
+      if (fj->FindByUrl( fi->GetCurrentUrl()->GetUrl() )) {
+        found = kTRUE;
+        break;
+      }
+    }
+
+    if (!found) {
+      // Add new item at the end of the original file collection
+      fj = new TFileInfo(*fi);  // copy because TFileColl... has ownership
+      origFc->Add(fj);
+      added++;
+    }
+
+    //Printf("[%s] %s", (found ? "NOP" : "ADD"), fi->GetCurrentUrl()->GetUrl());
+  }
+
+  return added;
+}
+
 /** Saves a dataset to the disk or on PROOF, depending on the opened connection.
- *  It returns kTRUE on success, kFALSE on failure. If quiet is kTRUE, it does
- *  print messages on success/failure.
+ *  It returns kTRUE on success, kFALSE on failure.
+ *
+ *  If quiet is kTRUE, it does print messages on success/failure.
+ *
+ *  If overwrite is kTRUE and dsUri exists already, it is overwritten. If update
+ *  is explicitly requested, in case of an already existing dsUri, new URLs are
+ *  added.
+ *
+ *  Options overwrite and update may not be both kTRUE at the same time.
  */
 Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
-  Bool_t quiet = kFALSE) {
+  Bool_t quiet = kFALSE, Bool_t update = kFALSE) {
 
   Bool_t regSuccess;
 
+  TString opts = "T";
+  if (overwrite || update) {
+    opts.Append("O");
+  }
+
+  TFileCollection *origFc = NULL;  // the original one, if reqd
+  TFileCollection *newFc = NULL;   // the one to write
+
   if (!_afProofMode()) {
-    TDataSetManagerFile *mgr = _afCreateDsMgr();
+
+    //
+    // Local mode (TODO: implement NO OVERWRITE)
+    //
+
     TString group, user, name;
+    TDataSetManagerFile *mgr = _afCreateDsMgr();
+
+    if ((update) && (origFc = mgr->GetDataSet(dsUri))) {
+      _afUpdateDs(origFc, fc);
+      newFc = origFc;
+    }
+    else newFc = fc;
+
     mgr->ParseUri(dsUri, &group, &user, &name);
-    if (mgr->WriteDataSet(group, user, name, fc) == 0) {
-      regSuccess = kFALSE;
-    }
-    else {
-      regSuccess = kTRUE;
-    }
+    if (mgr->WriteDataSet(group, user, name, newFc) == 0) regSuccess = kFALSE;
+    else regSuccess = kTRUE;
+
     delete mgr;
+
   }
   else {
-    TString opts = "T";
-    if (overwrite) {
-      opts.Append("O");
+
+    //
+    // PROOF mode
+    //
+
+    if ((update) && (origFc = gProof->GetDataSet(dsUri))) {
+      _afUpdateDs(origFc, fc);
+      newFc = origFc;
     }
-    regSuccess = gProof->RegisterDataSet(dsUri.Data(), fc, opts.Data());
+    else newFc = fc;
+
+    regSuccess = gProof->RegisterDataSet(dsUri.Data(), newFc, opts.Data());
   }
+
+  if (origFc) delete origFc;
 
   if (regSuccess) {
     if (!quiet) {
@@ -1535,6 +1642,8 @@ void afFindUrl(const char *fileUrl, const char *dsMask = "/*/*") {
  *   - condunstage: same as unstage, but storage deletion is triggered only if
  *                  file is marked as staged
  *   - uncorrupt:   files are marked as unstaged/uncorrupted
+ *   - delendpurl:  removes endpoint URL from the corrupted file, leaving only
+ *                  originating and redirector's ones
  *
  *  Actions can be combined, separe them with colon ':'. Actions "unlist" and
  *  "uncorrupt" can not be combined.
@@ -1557,6 +1666,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
   Bool_t aUnstage = kFALSE;
   Bool_t aCondUnstage = kFALSE;
   Bool_t aUnlist = kFALSE;
+  Bool_t aDelEndpUrl = kFALSE;
 
   TObjArray *tokens = action.Tokenize(":");
 
@@ -1575,6 +1685,9 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
     }
     else if (tok->String() == "unlist") {
       aUnlist = kTRUE;
+    }
+    else if (tok->String() == "delendpurl") {
+      aDelEndpUrl = kTRUE;
     }
 
   }
@@ -1630,7 +1743,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
       fc = gProof->GetDataSet(dsUri.Data());
     }
 
-    if (aUncorrupt || aUnstage || aCondUnstage || aUnlist) {
+    if (aUncorrupt || aUnstage || aCondUnstage || aDelEndpUrl || aUnlist) {
       newFc = new TFileCollection();
       newFc->SetDefaultTreeName( fc->GetDefaultTreeName() );
     }
@@ -1654,7 +1767,7 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
           outList << url->GetUrl() << endl;
         }
 
-        if (aUncorrupt || aUnstage || aUnlist) {
+        if (aUncorrupt || aUnstage || aUnlist || aDelEndpUrl) {
 
           if (aUncorrupt) {
             fi->ResetBit(TFileInfo::kCorrupted);
@@ -1670,6 +1783,34 @@ void afRepairDs(const char *dsMask = "/*/*", const TString action = "",
               (_afUnstage(url, kTRUE, unstageRemotely))) {
               fi->ResetBit(TFileInfo::kStaged);
             }
+          }
+
+          if (aDelEndpUrl) {
+
+            Int_t nUrlsToDel = fi->GetNUrls() - 2;
+            if (nUrlsToDel > 0) {
+
+              TString **urlsToDel = new TString*[nUrlsToDel];
+              Int_t i;
+
+              // Collecting URLs to delete (all but last two)
+              fi->ResetUrl();
+              for (i=0; i<nUrlsToDel; i++) {
+                urlsToDel[i] = new TString(fi->NextUrl()->GetUrl());
+              }
+              fi->ResetUrl();
+
+              // Deleting URLs
+              for (i=0; i<nUrlsToDel; i++) {
+                fi->RemoveUrl(urlsToDel[i]->Data());
+                delete urlsToDel[i];
+              }
+
+              delete[] urlsToDel;
+
+           }
+           else nChanged--;  // Trick to avoid saving if not needed
+
           }
 
           if (!aUnlist) {
@@ -2023,6 +2164,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   Bool_t addRedir  = kFALSE;
   Bool_t verify    = kFALSE;
   Bool_t aliEnCmd  = kFALSE;
+  Bool_t updateDs  = kFALSE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -2045,6 +2187,9 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     }
     else if (sopt == "aliencmd") {
       aliEnCmd = kTRUE;
+    }
+    else if (sopt == "update") {
+      updateDs = kTRUE;
     }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
@@ -2080,7 +2225,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   vector<Int_t> &runNums = *runNumsPtr;
   UInt_t nRuns = runNums.size();
 
-  // For each run
+  // For each run (or only once if no runlist was given)
   for (UInt_t i=0; (i < nRuns) || (nRuns == 0) ; i++) {
 
     TString dsName, basePathRun, postFindFilterRun;
@@ -2137,9 +2282,14 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
       opStatus = "\033[33mno results, skipped\033[m";
     }
     else if (!dryRun) {
-      wasSaved = _afSaveDs(dsName, fc, kFALSE, kTRUE);
+
+      wasSaved = _afSaveDs(dsName, fc, kFALSE, kTRUE, updateDs);
+      //                               ^^^^^^  ^^^^^  ^^^^^^^^
+      //                               overwr  quiet  _update_
+
       if (wasSaved) {
-        opStatus = "\033[32msaved\033[m";
+        if (updateDs) opStatus = "\033[32mupdated\033[m";
+        else opStatus = "\033[32msaved\033[m";
       }
       else {
         opStatus = "\033[31merror saving\033[m";
