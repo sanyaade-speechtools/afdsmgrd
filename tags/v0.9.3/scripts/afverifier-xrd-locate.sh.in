@@ -1,0 +1,86 @@
+#!/bin/bash
+
+#
+# afverify-xrd-locate.sh -- by Dario Berzano <dario.berzano@cern.ch>
+#
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# Wrapper around xrd locateall command, see macros/Verify.C for info on output.
+#
+
+# Get the configuration variables from the first configuration file found
+declare -a CONF_FILES
+CONF_FILES=(
+  "@DIR_ETC@/sysconfig/afdsmgrd" \
+  "@DIR_ETC@/default/afdsmgrd" \
+  "/etc/sysconfig/afdsmgrd" \
+  "/etc/default/afdsmgrd" \
+  "$HOME/.afdsmgrd.cf"
+)
+
+for CF in "${CONF_FILES[@]}"; do
+  if [ -r "$CF" ]; then
+    source "$CF"
+    break
+  fi
+done
+
+# Classic xrootd (in EXTCMD_LIBS) and ROOT environment variables
+export ROOTSYS="@ROOTSYS@"
+export LD_LIBRARY_PATH="$AFDSMGRD_EXTCMD_LIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
+export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTCMD_PATH:$PATH"
+
+# Command goes here
+export URL="$1"
+
+# URL parts
+export HOSTPORT
+export FILENAME
+export REMAIN
+export CLEANURL
+
+# Split into host:port, filename and anchor; note that queries (?...) are not
+# supported!
+if [[ "$URL" =~ ^root://([^/]+)/([^\#\?]+)(.*)?$ ]]; then
+  HOSTPORT=${BASH_REMATCH[1]}
+  FILENAME=${BASH_REMATCH[2]}
+  REMAIN=${BASH_REMATCH[3]}
+  CLEANURL="root://$HOSTPORT/$FILENAME"
+else
+  echo "FAIL $URL Reason: cant_parse_url"
+  exit 0
+fi
+
+# Launch xrd
+export TMPOUT=$(mktemp /tmp/.afverifier-xrd-locate-XXXXX)
+xrd $HOSTPORT locateall $FILENAME > $TMPOUT 2>&1
+#echo $?
+
+if [ $? != 0 ]; then
+  rm $TMPOUT
+  echo "FAIL $CLEANURL Reason: xrd_error"
+  exit 0
+fi
+
+# Get Location: line
+export LOCATION=$(cat $TMPOUT | grep "Location: " | head -n1)
+
+# Parse location server
+export ENDP_URL
+if [[ $LOCATION =~ Location:\\s\'(.*)\' ]]; then
+  ENDP_URL="root://${BASH_REMATCH[1]}/${FILENAME}${REMAIN}"
+  echo "OK $CLEANURL EndpointUrl: $ENDP_URL"
+else
+
+  # File is not staged (empirically... bad xrd, bad...)
+  cat $TMPOUT | grep 'matching files' > /dev/null 2>&1
+  if [ $? == 0 ]; then
+    echo "FAIL $CLEANURL Reason: not_staged"
+  else
+    # No reason given, generic error (server down, etc.)
+    echo "FAIL $CLEANURL"
+  fi
+
+fi
+
+rm $TMPOUT
