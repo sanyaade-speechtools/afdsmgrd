@@ -37,7 +37,6 @@ for CF in "${CONF_FILES[@]}"; do
 done
 
 # Classic ROOT environment variables
-export ROOTSYS="@ROOTSYS@"
 export LD_LIBRARY_PATH="$AFDSMGRD_EXTCMD_LIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
 export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTCMD_PATH:$PATH"
 
@@ -62,8 +61,13 @@ xrdstagetool -d 0 $CLEANURL | grep '^OK[ \t]' > /dev/null 2>&1
 
 if [ $? == 0 ]; then
   # Status is OK: verify the file
-  exec root.exe -b -q \
-    "@DIR_LIBEXEC@"/afdsmgrd-macros/Verify.C'("'$URL'", "'$TREE'")'
+  if [ -e "@DIR_LIBEXEC@"/afdsmgrd-macros/Verify.C ]; then
+    exec root.exe -b -q \
+      "@DIR_LIBEXEC@"/afdsmgrd-macros/Verify.C'("'$URL'", "'$TREE'")'
+  else
+    exec root.exe -b -q \
+      $ROOTSYS/etc/proof/afdsmgrd-macros/Verify.C'("'$URL'", "'$TREE'")'
+  fi
 fi
 
 # Here, status is failed: report it

@@ -33,7 +33,6 @@ for CF in "${CONF_FILES[@]}"; do
 done
 
 # Classic ROOT environment variables
-export ROOTSYS="@ROOTSYS@"
 export LD_LIBRARY_PATH="$AFDSMGRD_EXTCMD_LIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
 export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTCMD_PATH:$PATH"
 
