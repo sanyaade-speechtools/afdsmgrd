@@ -1,0 +1,37 @@
+/**
+ * afOptions.h -- by Dario Berzano <dario.berzano@cern.ch>
+ *
+ * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+ *
+ * Compile and configure options to build afdsmgrd. Version number is defined
+ * here too.
+ */
+
+#ifndef AFOPTIONS_H
+#define AFOPTIONS_H
+
+/** Build options (unused).
+ */
+//#ifndef __CINT__
+//#cmakedefine WITH_APMON
+//#endif
+
+/** Version number is in the format MAJOR.MINOR.PATCHES (or "trunk").
+ *  See here for versioning information: http://apr.apache.org/versioning.html
+ */
+#define AF_VERSION_DEVEL "trunk"
+#define AF_VERSION "0.9.4"
+
+/** Version banner which includes the version number with build date and time.
+ */
+#ifdef AF_VERSION_DEVEL
+#define AF_VERSION_BANNER "*** " AF_PROG_NAME " " AF_VERSION_DEVEL \
+  " (towards v" AF_VERSION ") compiled " __DATE__ " " __TIME__ \
+  " -- by Dario Berzano <dario.berzano@cern.ch> ***"
+#else
+#define AF_VERSION_BANNER "*** " AF_PROG_NAME " v" AF_VERSION \
+  " compiled " __DATE__ " " __TIME__ \
+  " -- by Dario Berzano <dario.berzano@cern.ch> ***"
+#endif
+
+#endif
