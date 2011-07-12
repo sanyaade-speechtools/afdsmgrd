@@ -570,7 +570,7 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
 /** Obtains user's input without the final '\n'.
  */
 TString _afGetLine(const char *prompt) {
-  char *buf = Getline(prompt);
+  char *buf = (char *)Getline(prompt);
   Int_t l = strlen(buf);
   while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
     buf[l] = '\0';
