@@ -129,12 +129,14 @@ if (ROOT_MODE)
   set (DIR_LIB     "${ROOTSYS}/etc/proof/lib")
   set (DIR_LIBEXEC "${ROOTSYS}/etc/proof")
   set (DIR_VAR     "${ROOTSYS}/etc/proof/var")
+  set (DIR_SHARE   "${ROOTSYS}/etc/proof/utils/afdsmgrd")
 else ()
   set (DIR_ETC     "${CMAKE_INSTALL_PREFIX}/etc")
   set (DIR_BIN     "${CMAKE_INSTALL_PREFIX}/bin")
   set (DIR_LIB     "${CMAKE_INSTALL_PREFIX}/lib")
   set (DIR_LIBEXEC "${CMAKE_INSTALL_PREFIX}/libexec")
   set (DIR_VAR     "${CMAKE_INSTALL_PREFIX}/var")
+  set (DIR_SHARE   "${CMAKE_INSTALL_PREFIX}/share")
 endif ()
 
 message (STATUS "Directory \"etc\" is ${DIR_ETC}")
@@ -142,6 +144,7 @@ message (STATUS "Directory \"bin\" is ${DIR_BIN}")
 message (STATUS "Directory \"lib\" is ${DIR_LIB}")
 message (STATUS "Directory \"libexec\" is ${DIR_LIBEXEC}")
 message (STATUS "Directory \"var\" is ${DIR_VAR}")
+message (STATUS "Directory \"share\" is ${DIR_SHARE}")
 
 #
 # Imports subdirectories
@@ -178,6 +181,7 @@ install (FILES macros/LocateVerifyXrd.C DESTINATION ${DIR_LIBEXEC}/afdsmgrd-macr
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier-xrd-locate.sh DESTINATION ${DIR_LIBEXEC})
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier-xrd-rm.sh DESTINATION ${DIR_LIBEXEC})
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-xrd-stage-verify.sh DESTINATION ${DIR_LIBEXEC})
+install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/macros/par/afdsutil/afdsutil.C DESTINATION ${DIR_SHARE})
 
 #
 # Renew authentication daemon (optional, only in debug mode)
