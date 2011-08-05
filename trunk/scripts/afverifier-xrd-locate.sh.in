@@ -29,8 +29,10 @@ done
 export LD_LIBRARY_PATH="$AFDSMGRD_EXTCMD_LIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
 export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTCMD_PATH:$PATH"
 
-# Command goes here
 export URL="$1"
+
+export ZIPCHECK=1
+[ "$2" == "--nozipcheck" ] && ZIPCHECK=0
 
 # URL parts
 export HOSTPORT
@@ -67,7 +69,83 @@ export LOCATION=$(cat $TMPOUT | grep "Location: " | head -n1)
 # Parse location server
 export ENDP_URL
 if [[ $LOCATION =~ Location:\\s\'(.*)\' ]]; then
-  ENDP_URL="root://${BASH_REMATCH[1]}/${FILENAME}${REMAIN}"
+
+  ENDP_URL="root://${BASH_REMATCH[1]}/${FILENAME}"
+
+  # Get file extension to lowercase
+  EXT="${FILENAME##*.}"
+  EXT=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+
+  # With option --nozipcheck as second argument, zip check might be skipped
+  if [ "$EXT" == "zip" ] && [ $ZIPCHECK == 1 ]; then
+
+    #
+    # Additional zip integrity check if it is a zipfile
+    #
+
+    # Error values
+    ERR_ZIP=42
+    ERR_XRD=43
+
+    # Script to execute on the remote host, kept inside a variable
+    CHECKSCRIPT=$(cat <<EOF
+#!/bin/bash
+echo "Inside check script running on \$(hostname -f)"
+export PATH="$PATH"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+TMPXRD=\$(mktemp /tmp/afverifier-xrd-zip-test.XXXXX)
+RETVAL=0
+xrdcp -f "$ENDP_URL" "\$TMPXRD"
+if [ \$? == 0 ] && [ -s \$TMPXRD ]; then
+  zip -T "\$TMPXRD" || RETVAL=$ERR_ZIP
+else
+  RETVAL=$ERR_XRD
+fi
+rm -f "\$TMPXRD"
+exit \$RETVAL
+EOF
+)
+
+    # Get the remote host
+    REMOTE_HOST=$(echo ${BASH_REMATCH[1]}|cut -d: -f1)
+
+    # Do we have to perform SSH?
+    if [ $REMOTE_HOST == $(hostname -f) ] ||
+       [ $REMOTE_HOST == $(hostname -s) ] ||
+       [ $REMOTE_HOST == "localhost" ] ||
+       [ $REMOTE_HOST == "127.0.0.1" ]
+    then
+
+      # No SSH needed: same machine
+      echo "--> Running check locally"
+      echo "$CHECKSCRIPT" | bash
+      RETVAL=$?
+
+    else
+
+      # SSH needed
+      echo "--> Running check remotely"
+      echo "$CHECKSCRIPT" | ssh -oStrictHostKeyChecking=no $REMOTE_HOST
+      RETVAL=$?
+
+    fi
+
+    # Result of check
+    if [ $RETVAL == $ERR_XRD ]; then
+      echo "FAIL $CLEANURL Reason: xrdcp_error"
+      exit 0
+    elif [ $RETVAL == $ERR_ZIP ]; then
+      echo "FAIL $CLEANURL Reason: zip_error"
+      exit 0
+    elif [ $RETVAL != 0 ]; then
+      echo "FAIL $CLEANURL Reason: zipcheck_unknown_err_$RETVAL"
+      exit 0
+    fi
+
+  fi
+
+  # Append the rest of endpoint URL (queries, anchors...)
+  ENDP_URL="${ENDP_URL}${REMAIN}"
   echo "OK $CLEANURL EndpointUrl: $ENDP_URL"
 else
 
@@ -82,4 +160,4 @@ else
 
 fi
 
-rm $TMPOUT
+rm -f $TMPOUT

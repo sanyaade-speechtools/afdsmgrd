@@ -44,6 +44,7 @@
 #define AF_ERR_SUID_ROOT_GID 13
 #define AF_ERR_SUID_ROOT_UID 14
 #define AF_ERR_LIBEXEC 15
+#define AF_ERR_ARGS 16
 
 /** Program name that goes in version banner.
  */

@@ -57,16 +57,21 @@ add_executable (afdsmgrd afdsmgrd.cc)
 target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afNotify afResMon ${Root_LIBS} -ldl -pthread)
 
 # Verifier executable and its libraries
-add_executable (afverifier verifier.cc)
-target_link_libraries (afverifier afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afResMon ${Root_LIBS} -ldl -pthread)
+add_executable (afverifier.real verifier.cc)
+target_link_libraries (afverifier.real afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afResMon ${Root_LIBS} -ldl -pthread)
 
 #
 # Where to install the stuff
 #
 
+# Can't do rpath since relocation is performed on automatic builds...
+#set_target_properties(afverifier.real PROPERTIES
+#  INSTALL_RPATH "${Root_LIBDIR}"
+#  INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 install (TARGETS afdsmgrd RUNTIME DESTINATION ${DIR_BIN})
 install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION ${DIR_LIBEXEC})
-install (TARGETS afverifier RUNTIME DESTINATION ${DIR_BIN})
+install (TARGETS afverifier.real RUNTIME DESTINATION ${DIR_BIN})
 
 #
 # Test executable build and install directives (only in Debug build type)
