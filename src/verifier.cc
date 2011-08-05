@@ -32,6 +32,7 @@
 #define AF_ERR_CONFIG 2
 #define AF_ERR_LOGLEVEL 4
 #define AF_ERR_LIBEXEC 15
+#define AF_ERR_ARGS 16
 
 #define AF_YESNO(test) ((test) ? "Yes" : "No")
 
@@ -58,9 +59,10 @@ typedef struct {
  */
 typedef struct {
 
-  bool merge;
-  bool rm_corr;
-  const char *filter;
+  bool merge;               // -m
+  bool rm_corr;             // -x
+  bool trust_corr_shallow;  // -n
+  const char *filter;       // SsCc
 
 } verifier_options_t;
 
@@ -420,8 +422,8 @@ void process_opqueue(af::opQueue &opq, std::list<af::extCmd *> &cmdq,
             // verification, that either the file is not staged or another error
             // occured
             if (staged) { 
-              af::log::error(af::log_level_high, "Failed: %s",
-                qent->get_main_url());
+              af::log::error(af::log_level_high, "Failed: %s (reason: %s)",
+                qent->get_main_url(), (reason ? reason : "unknown"));
             }
             else {
               af::log::warning(af::log_level_normal, "Not staged: %s",
@@ -673,15 +675,19 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
           else {
 
             // CASE B: neither "deep" check nor removal occured: trust
-            // preexistent corrupted bit. This is "shallow" verification.
+            // preexistent corrupted bit (if told so). This is the "shallow"
+            // verification, identified by the presence of no metadata.
 
-            if (fi->TestBit(TFileInfo::kCorrupted)) {
-              // File is corrupted: mark it as not staged (even if it is!)
-              fi->ResetBit(TFileInfo::kStaged);
+            if ((fi->TestBit(TFileInfo::kCorrupted)) &&
+              (opts.trust_corr_shallow)) {
+              // File is originally corrupted: mark it as not staged, even if it
+              // is, but only if told to trust originally corrupted bit on (C)
+              fi->ResetBit(TFileInfo::kStaged);  // sC
             }
             else {
-              // File is not corrupted: mark it as staged
-              fi->SetBit(TFileInfo::kStaged);
+              // File is not corrupted: mark it as staged and uncorrupted
+              fi->SetBit(TFileInfo::kStaged);  // Sc
+              fi->ResetBit(TFileInfo::kCorrupted);
             }
 
           }
@@ -720,9 +726,16 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
 
           }
           else {
-            // File is not staged: mark as unstaged
-            af::log::error(af::log_level_normal, "File %s is not verifiable: "
-              "staged and corrupted bits not touched", out_url);
+
+            // File seems to be not staged and failed: mark as corrupted
+            fi->SetBit( TFileInfo::kStaged );
+            fi->SetBit( TFileInfo::kCorrupted );
+
+            af::log::error(af::log_level_normal, "File %s is staged, but "
+              "verification failed: marked as corrupted");
+
+            count_changes++;
+
           }
 
         }  // end if failed
@@ -999,6 +1012,38 @@ void main_loop(af::config &config, verifier_options_t &opts) {
 
 }
 
+/** Function that prints help.
+ */
+void print_help() {
+  af::log::info(af::log_level_urgent, "");
+  af::log::info(af::log_level_urgent, "Usage:");
+  af::log::info(af::log_level_urgent,
+    "  afverifier -c <cfg> -e <libexec> [-d <loglevel>] [-m] [-x]"
+    " [-w <SsCc>] [-n]");
+  af::log::info(af::log_level_urgent, "");
+  af::log::info(af::log_level_urgent, "Mandatory arguments:");
+  af::log::info(af::log_level_urgent,
+    "  -c <cfg> Use configuration file <cfg>");
+  af::log::info(af::log_level_urgent,
+    "  -e <libexec> Set path for auxiliary binaries to <libexec>");
+  af::log::info(af::log_level_urgent, "");
+  af::log::info(af::log_level_urgent, "Optional arguments:");
+  af::log::info(af::log_level_urgent,
+    "  -d <loglevel> : Set loglevel to one between "
+    "debug, low, normal, high, urgent");
+  af::log::info(af::log_level_urgent,
+    "  -m            : Create a merged dataset at the end");
+  af::log::info(af::log_level_urgent,
+    "  -x            : Delete corrupted files");
+  af::log::info(af::log_level_urgent,
+    "  -w <SsCc>     : Consider only files staged (S) OR not (s) AND"
+    " corrupted (C) OR not (c)");
+  af::log::info(af::log_level_urgent,
+    "  -n            : If verifying shallowly do not trust C (corrupted) bit"
+    " and reset it on success");
+  af::log::info(af::log_level_urgent, "");
+}
+
 /** Entry point of the verifier
  */
 int main(int argc, char *argv[]) {
@@ -1011,32 +1056,53 @@ int main(int argc, char *argv[]) {
   verifier_options_t opts;
   opts.merge = false;
   opts.rm_corr = false;
+  opts.trust_corr_shallow = true;
   opts.filter = NULL;
+
+  bool do_help = false;
 
   opterr = 0;
 
-  // c <config>
-  // e <libexec_path>
-  // l <log_level>
-  // m : merge datasets
-  // x : parallel xrd rm on corrupted files
-  // s : verify only staged files
-  while ((c = getopt(argc, argv, ":c:e:d:mxw:")) != -1) {
+  // Initialize log facility now; change parameters later
+  std::string banner = AF_VERSION_BANNER;
+  std::auto_ptr<af::log> global_log(
+    new af::log(std::cout, af::log_level_normal, banner) );
+
+  // Options with mandatory argument are followed by ':'. If an unknown option
+  // is detected, '?' is returned and optopt is set to that. If a known option
+  // is missing the mandatory argument, ':' is returned and optopt is set to the
+  // known option.
+  while ((c = getopt(argc, argv, ":c:e:d:mxw:hn")) != -1) {
 
     switch (c) {
+
+      // Known switches
       case 'c': config_file = optarg; break;
       case 'e': libexec_path = optarg; break;
       case 'd': log_level = optarg; break;
       case 'm': opts.merge = true; break;
       case 'x': opts.rm_corr = true; break;
       case 'w': opts.filter = optarg; break;
+      case 'n': opts.trust_corr_shallow = false; break;
+
+      // Print help instead of running
+      case 'h': do_help = true; break;
+
+      // Missing mandatory argument
+      case ':':
+        af::log::fatal(af::log_level_urgent,
+          "Missing mandatory argument after -%c", optopt);
+        return AF_ERR_ARGS;
+      break;
+
+      // Unknown switch
+      case '?':
+        af::log::fatal(af::log_level_urgent, "Unknown argument: -%c", optopt);
+        return AF_ERR_ARGS;
+      break;
     }
 
   }
-
-  std::string banner = AF_VERSION_BANNER;
-  std::auto_ptr<af::log> global_log(
-    new af::log(std::cout, af::log_level_normal, banner) );
 
   // Set the log level amongst low, normal, high and urgent
   if (log_level) {
@@ -1054,7 +1120,7 @@ int main(int argc, char *argv[]) {
       // Invalid log level is fatal for the daemon
       af::log::fatal(af::log_level_urgent,
         "Invalid log level \"%s\": specify with -d one amongst: "
-        "low, normal, high, urgent", log_level);
+        "debug, low, normal, high, urgent", log_level);
       return AF_ERR_LOGLEVEL;
     }
     af::log::ok(af::log_level_normal, "Log level set to %s", log_level);
@@ -1062,6 +1128,12 @@ int main(int argc, char *argv[]) {
   else {
     af::log::warning(af::log_level_normal, "No log level specified (with -d): "
       "defaulted to normal");
+  }
+
+  // Print help here, then exit
+  if (do_help) {
+    print_help();
+    return 0;
   }
 
   // Filter
@@ -1083,9 +1155,13 @@ int main(int argc, char *argv[]) {
     af::log::fatal(af::log_level_urgent, "No config file given (use -c)");
     return AF_ERR_CONFIG;
   }
+  else {
+    af::log::ok(af::log_level_normal, "Monitoring configuration file: %s",
+      config_file);
+  }
 
   // Warning if not running as root
-  else if (geteuid() != 0) {
+  if (geteuid() != 0) {
     struct passwd *pwd = getpwuid(geteuid());
     af::log::warning(af::log_level_urgent,
       "Running as unprivileged user \"%s\": this may prevent dataset writing",
@@ -1098,6 +1174,9 @@ int main(int argc, char *argv[]) {
   af::log::info(af::log_level_high, "Verify filter: %s", opts.filter);
   af::log::info(af::log_level_high, "Delete corrupted files: %s",
     AF_YESNO(opts.rm_corr));
+  af::log::info(af::log_level_high,
+    "Trust corrupted bit on shallow verification: %s",
+    AF_YESNO(opts.trust_corr_shallow));
 
   af::config config(config_file);
 
