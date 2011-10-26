@@ -41,6 +41,16 @@ export PIDFILE="/tmp/afrenewauth.pid"
 # Log file
 export LOGFILE=""
 
+# Retry on error after X sec: base value (may not be zero): it will be doubled
+# after each consecutive error, then reset on success
+export RETRY_MIN_SEC=2
+
+# Current value of sleep seconds before retry
+export RETRY_SEC=$RETRY_MIN_SEC
+
+# Maximum number of seconds to retry
+export RETRY_MAX_SEC=200
+
 # Terminating function
 function TermHandler() {
   prn -i "Termination signal caught"
@@ -90,12 +100,35 @@ function Main() {
   fi
 
   # Automatic authentication loop
+  local CONSEC_ERRS=0
+  local M
+
   while [ $TERM != 1 ]; do
     AutoAuth
     if [ $? == 0 ]; then
+      CONSEC_ERRS=0
       sleep $RENEW_SLEEP_SEC
     else
-      prn -e "Authentication failed, retrying immediately"
+      if [ $CONSEC_ERRS == 0 ]; then
+        # First time: reset sleep to initial value
+        RETRY_SEC=$RETRY_MIN_SEC
+      elif [ $RETRY_SEC != $RETRY_MAX_SEC ]; then
+        # Maximum not reached: double value
+        let RETRY_SEC=RETRY_SEC*2
+        if [ $RETRY_SEC -gt $RETRY_MAX_SEC ]; then
+          # Overpassed maximum: set to cap
+          RETRY_SEC=$RETRY_MAX_SEC
+        fi
+      fi
+      let CONSEC_ERRS++
+      if [ $CONSEC_ERRS == 1 ]; then
+        prn -e "Authentication failed, retrying after $RETRY_SEC seconds"
+      else
+        M="Authentication failed $CONSEC_ERRS times in a row,"
+        M="$M retrying in $RETRY_SEC seconds"
+        prn -e "$M"
+        sleep $RETRY_SEC
+      fi
     fi
   done
 
