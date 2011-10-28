@@ -2165,6 +2165,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   Bool_t verify    = kFALSE;
   Bool_t aliEnCmd  = kFALSE;
   Bool_t updateDs  = kFALSE;
+  Bool_t autoArch  = kTRUE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -2191,6 +2192,9 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     else if (sopt == "update") {
       updateDs = kTRUE;
     }
+    else if (sopt == "noautoarch") {
+      autoArch = kFALSE;
+    }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
     }
@@ -2210,12 +2214,14 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   Ssiz_t idx;
 
   if (_afProofMode()) {
-  
+
     // In PROOF mode, complete dataset name with group and user, if not given
     idx = dsPattern.Index("/");
     if (idx == -1) {
-      dsPattern.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
+      TString temp;
+      temp.Form("/%s/%s/%s", gProof->GetGroup(), gProof->GetUser(),
         dsPattern.Data());
+      dsPattern = temp;
     }
 
   }
