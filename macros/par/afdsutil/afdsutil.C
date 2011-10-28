@@ -515,7 +515,8 @@ Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
  *  collection can also be set.
  */
 TFileCollection *_afAliEnFind(TString basePath, TString fileName,
-  TString anchor, TString defaultTree, TString regExp = "") {
+  TString anchor, TString defaultTree, TString regExp = "",
+  Bool_t rootArchiveSubst = kFALSE) {
 
   if (!gGrid) {
     if (!TGrid::Connect("alien:")) {
@@ -530,6 +531,16 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
   Int_t nEntries = res->GetEntries();
 
   TPMERegexp *re = NULL;
+  TPMERegexp *archSubst = NULL;
+  TString substWith = "";
+
+  if (rootArchiveSubst) {
+    anchor = "";  // no anchor allowed if substituting
+
+    TString temp = Form("/%s$", fileName.Data());
+    archSubst = new TPMERegexp(temp.Data());
+    substWith = Form("/root_archive.zip#%s", fileName.Data());
+  }
 
   if ((nEntries > 0) && (!regExp.IsNull())) {
     re = new TPMERegexp(regExp);
@@ -548,6 +559,10 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
         tUrl.Append(anchor);
       }
 
+      if (archSubst) {
+        archSubst->Substitute(tUrl, substWith, kFALSE);
+      }
+
       //Printf("*** %s ***", tUrl.Data());
 
       fc->Add( new TFileInfo( tUrl, size, res->GetKey(i, "guid"),
@@ -556,7 +571,8 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
 
   }
 
-  delete re;
+  if (re) delete re;
+  if (archSubst) delete archSubst;
 
   if (defaultTree != "") {
     fc->SetDefaultTreeName(defaultTree.Data());
@@ -2267,7 +2283,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
 
     // Run AliEn find: output on a collection
     TFileCollection *fc = _afAliEnFind(basePathRun, fileName, anchor, treeName,
-      postFindFilterRun);
+      postFindFilterRun, autoArch);
     if (fc == NULL) {
       delete runNumsPtr;
       Printf("Creation of datasets from AliEn aborted.");
