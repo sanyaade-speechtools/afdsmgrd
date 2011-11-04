@@ -2502,8 +2502,7 @@ void afDataSetWizard() {
   }
 
   // Options?
-  options = _afGetLine("Comma-separated options (e.g., "
-    "dryrun to search without saving)?");
+  options = _afGetLine("Colon-separated options (e.g., dryrun:aliencmd)?");
 
   //
   // End of user input
