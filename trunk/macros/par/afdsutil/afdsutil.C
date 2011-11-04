@@ -586,7 +586,8 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
 /** Obtains user's input without the final '\n'.
  */
 TString _afGetLine(const char *prompt) {
-  char *buf = (char *)Getline(prompt);
+  cout << "\e[1m" << prompt << "\e[m" << endl;
+  char *buf = (char *)Getline("");
   Int_t l = strlen(buf);
   while ((--l >= 0) && ((buf[l] == '\n') || (buf[l] == '\r'))) {
     buf[l] = '\0';
@@ -2340,6 +2341,176 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
 
   // Delete list of runs
   delete runNumsPtr;
+}
+
+/** Function to quickly create datasets from official data stored on AliEn in
+ *  a "standard" path. Examples of what is considered "standard" follows.
+ *
+ *  ESDs from real data:
+ *    /alice/data/2010/LHC10h/000139104/ESDs/pass1/...
+ *
+ *  AODs from real data:
+ *    /alice/data/2010/LHC10h/000139104/ESDs/pass1/AOD040/...
+ *
+ *  ESDs from simulation:
+ *    /alice/sim/LHC10h1/137045/...
+ *
+ *  AODs from simulation:
+ *    /alice/sim/LHC11d5/118506/AOD063/...
+ *
+ * For the cases uncovered by this function, use afDataSetFromAliEn().
+ */
+void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
+  TString runRange = "139104-139107-139306", Bool_t esd = kTRUE,
+  Int_t pass = 1, Int_t aodNum = 40, TString options = "") {
+
+  TString basePath;
+  TString temp;
+  Int_t year = 0;
+
+  // Get year from LHC period
+  if (period.Length() >= 5) {
+    temp = period[3];
+    temp.Append(period[4]);
+    year = temp.Atoi();
+    if (year > 90) year += 1900;
+    else year += 2000;
+  }
+
+  // First part of the path
+  if (sim) {
+    // Sim
+    basePath = Form("/alice/sim/%s/<RUN6>", period.Data());
+    if (!esd) {
+      temp = Form("/AOD%03d", aodNum);
+      basePath.Append(temp);
+    }
+  }
+  else {
+    // Data
+    basePath = Form("/alice/data/%u/%s/<RUN9>/ESDs/pass%d", year, period.Data(),
+      pass);
+    if (esd) {
+      basePath.Append("/*.*");
+    }
+    else {
+      temp = Form("/AOD%03d", aodNum);
+      basePath.Append(temp);
+    }
+  }
+
+  // File name and tree name
+  TString fileName;
+  TString treeName;
+
+  if (esd) {
+    fileName = "AliESDs.root";
+    treeName = "/esdTree";
+  }
+  else {
+    fileName = "AliAOD.root";
+    treeName = "/aodTree";
+  }
+
+  // Dataset name
+  TString dsPattern;
+
+  if (_afProofMode()) {
+    // PROOF: normal user
+    dsPattern = Form("%s_%s_<RUN>_",
+      (sim) ? "sim" : "data",
+      period.Data());
+  }
+  else {
+    // Direct access: full dataset path
+    dsPattern = Form("/alice/%s/%s_<RUN>_",
+      (sim) ? "sim" : "data",
+      period.Data());
+  }
+
+  if (esd) {
+    dsPattern.Append("ESDs");
+  }
+  else {
+    temp = Form("AOD%03d", aodNum);
+    dsPattern.Append(temp);
+  }
+
+  // Invoke the complete function
+  afDataSetFromAliEn(basePath, fileName, "", "", treeName, runRange,
+    dsPattern, options);
+
+}
+
+/** Interactive interface to afDataSetQuick().
+ */
+void afDataSetWizard() {
+
+  Bool_t sim;
+  Bool_t esd;
+  TString period;
+  TString runRange;
+  TString options;
+  TString temp;
+  Int_t aodNum = -1;
+  Int_t pass = 0;
+
+  // Sim/data?
+  while (kTRUE) {
+    temp = _afGetLine("Simulation or data [s/d]?");
+    temp.ToLower();
+    if (temp == "s") {
+      sim = kTRUE;
+      break;
+    }
+    else if (temp == "d") {
+      sim = kFALSE;
+      break;
+    }
+  }
+
+  // LHC Period?
+  period = _afGetLine("LHC period (e.g.: LHC10h)?");
+
+  // Run range?
+  runRange = _afGetLine("Run range (e.g. 139104-139107,139306)?");
+
+  // ESDs/AOD?
+  while (kTRUE) {
+    temp = _afGetLine("ESDs or AODs [e/a]?");
+    temp.ToLower();
+    if (temp == "e") {
+      esd = kTRUE;
+      break;
+    }
+    else if (temp == "a") {
+      esd = kFALSE;
+
+      // AOD number?
+      temp = _afGetLine("AOD number (e.g, 040)?");
+      aodNum = temp.Atoi();
+      break;
+    }
+  }
+
+  // Pass?
+  if (!sim) {
+    while (pass == 0) {
+      temp = _afGetLine("Pass (e.g., 1 for pass1)?");
+      pass = temp.Atoi();
+    }
+  }
+
+  // Options?
+  options = _afGetLine("Comma-separated options (e.g., "
+    "dryrun to search without saving)?");
+
+  //
+  // End of user input
+  //
+
+  afDataSetQuick(sim, period, runRange, esd, pass, aodNum, options);
+
 }
 
 /** Writes the contents of the specified dataset (or pattern of datasets) on
