@@ -516,7 +516,7 @@ Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
  */
 TFileCollection *_afAliEnFind(TString basePath, TString fileName,
   TString anchor, TString defaultTree, TString regExp = "",
-  Bool_t rootArchiveSubst = kFALSE) {
+  Bool_t rootArchiveSubst = kFALSE, Bool_t printEntries = kFALSE) {
 
   if (!gGrid) {
     if (!TGrid::Connect("alien:")) {
@@ -563,7 +563,9 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
         archSubst->Substitute(tUrl, substWith, kFALSE);
       }
 
-      //Printf("*** %s ***", tUrl.Data());
+      if (printEntries) {
+        Printf(">> %s", tUrl.Data());
+      }
 
       fc->Add( new TFileInfo( tUrl, size, res->GetKey(i, "guid"),
         res->GetKey(i, "md5") ) );
@@ -2183,6 +2185,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   Bool_t aliEnCmd  = kFALSE;
   Bool_t updateDs  = kFALSE;
   Bool_t autoArch  = kTRUE;
+  Bool_t printEnts = kFALSE;
 
   options.ToLower();
   TObjArray *tokOpts = options.Tokenize(":");
@@ -2212,6 +2215,9 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
     else if (sopt == "noautoarch") {
       autoArch = kFALSE;
     }
+    else if (sopt == "print") {
+      printEnts = kTRUE; // for debug
+    }
     else {
       Printf("Warning: ignoring unknown option \"%s\"", sopt.Data());
     }
@@ -2226,6 +2232,15 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
       Printf("Warning: can't add redirector URL on dry run");
       addRedir = kFALSE;
     }
+  }
+
+  // Warning on changed behaviour
+  if (fileName.EndsWith(".zip") && autoArch) {
+    Printf("\nFatal: you specified an archive as fileName, but the option " \
+      "\"noautoarch\" is not set: from AFDSUtils v0.9.7 archive names are " \
+      "automatically added, and you are probably expecting the old behavior. " \
+      "Please refer to http://aaf.cern.ch/node/160 for up-to-date howtos.\n");
+    return;
   }
 
   Ssiz_t idx;
@@ -2284,7 +2299,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
 
     // Run AliEn find: output on a collection
     TFileCollection *fc = _afAliEnFind(basePathRun, fileName, anchor, treeName,
-      postFindFilterRun, autoArch);
+      postFindFilterRun, autoArch, printEnts);
     if (fc == NULL) {
       delete runNumsPtr;
       Printf("Creation of datasets from AliEn aborted.");
