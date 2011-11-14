@@ -65,11 +65,12 @@ void CreateDataSetFromAliEn(
   TString redirHost = "",
   //TString redirHost = "alice-caf.cern.ch",
  
-  // Possible options: setstaged, cache, verify, dryrun, aliencmd, update,
+  // Possible options: setstaged, cache, verify, commit, aliencmd, update,
   // noautoarch. By default each URL found is substituted with the URL of the
   // containing root_archive.zip pointing to the desired file: the "noautoarch"
-  // option inhibits this substitution
-  TString options   = "setstaged:dryrun:aliencmd"
+  // option inhibits this substitution. Note that by default datasets are NOT
+  // saved: you have to explicitly specify "commit"
+  TString options   = "setstaged:aliencmd"
 
   ) {
 
