@@ -2178,7 +2178,7 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   TString runList, TString dsPattern, TString options = "") {
 
   // Parse options
-  Bool_t dryRun    = kFALSE;
+  Bool_t dryRun    = kTRUE;
   Bool_t setStaged = kFALSE;
   Bool_t addRedir  = kFALSE;
   Bool_t verify    = kFALSE;
@@ -2194,8 +2194,8 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
 
   while (( oopt = dynamic_cast<TObjString *>(opt.Next()) )) {
     TString &sopt = oopt->String(); 
-    if (sopt == "dryrun") {
-      dryRun = kTRUE;
+    if (sopt == "commit") {
+      dryRun = kFALSE;
     }
     else if (sopt == "setstaged") {
       setStaged = kTRUE;
@@ -2224,6 +2224,10 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
   }
 
   if (dryRun) {
+
+    Printf("\nWarning: dry run is enabled by default. Use \"commit\" to save "
+      "changes if you are sure of what you are doing\n");
+
     if (verify) {
       Printf("Warning: can't verify dataset on dry run");
       verify = kFALSE;
@@ -2376,8 +2380,8 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
  * For the cases uncovered by this function, use afDataSetFromAliEn().
  */
 void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
-  TString runRange = "139104-139107-139306", Bool_t esd = kTRUE,
-  Int_t pass = 1, Int_t aodNum = 40, TString options = "") {
+  TString runRange = "139104-139107,139306", Bool_t esd = kTRUE,
+  TString pass = "pass1", Int_t aodNum = 40, TString options = "") {
 
   TString basePath;
   TString temp;
@@ -2402,9 +2406,12 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
     }
   }
   else {
+    // Parse the pass string
+    if (!pass.BeginsWith("pass")) pass = "pass" + pass;
+
     // Data
-    basePath = Form("/alice/data/%u/%s/<RUN9>/ESDs/pass%d", year, period.Data(),
-      pass);
+    basePath = Form("/alice/data/%u/%s/<RUN9>/ESDs/%s", year, period.Data(),
+      pass.Data());
     if (esd) {
       basePath.Append("/*.*");
     }
@@ -2451,6 +2458,12 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
     dsPattern.Append(temp);
   }
 
+  if (!sim) {
+    // Data has passes
+    dsPattern.Append("_p");
+    dsPattern.Append( pass(4, 999) );
+  }
+
   // Invoke the complete function
   afDataSetFromAliEn(basePath, fileName, "", "", treeName, runRange,
     dsPattern, options);
@@ -2466,9 +2479,9 @@ void afDataSetWizard() {
   TString period;
   TString runRange;
   TString options;
+  TString pass;
   TString temp;
   Int_t aodNum = -1;
-  Int_t pass = 0;
 
   // Sim/data?
   while (kTRUE) {
@@ -2510,14 +2523,11 @@ void afDataSetWizard() {
 
   // Pass?
   if (!sim) {
-    while (pass == 0) {
-      temp = _afGetLine("Pass (e.g., 1 for pass1)?");
-      pass = temp.Atoi();
-    }
+    pass = _afGetLine("Pass (e.g., 1, pass1, 1_HLT, pass1_HLT)?");
   }
 
   // Options?
-  options = _afGetLine("Colon-separated options (e.g., dryrun:aliencmd)?");
+  options = _afGetLine("Colon-separated options (e.g., commit:aliencmd)?");
 
   //
   // End of user input
