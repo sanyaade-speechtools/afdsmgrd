@@ -77,6 +77,18 @@ Bool_t _afProofMode() {
   return proofMode;
 }
 
+/** Connects to AliEn, returning kTRUE on success and kFALSE on failure.
+ */
+Bool_t _afAliEnConnect() {
+  if (!gGrid) {
+    if (!TGrid::Connect("alien:")) {
+      Printf("Error: can't connect to AliEn!");
+      return kFALSE;
+    }
+  }
+  return kTRUE;
+}
+
 /** A TDataSetManagerFile object is created using default parameters, if no
  *  parameters are given. If repoPath is not NULL (default), a temporary dataset
  *  repository is created in a temporary directory, and the path to repository
@@ -518,12 +530,7 @@ TFileCollection *_afAliEnFind(TString basePath, TString fileName,
   TString anchor, TString defaultTree, TString regExp = "",
   Bool_t rootArchiveSubst = kFALSE, Bool_t printEntries = kFALSE) {
 
-  if (!gGrid) {
-    if (!TGrid::Connect("alien:")) {
-      Printf("Can't connect to AliEn.");
-      return NULL;
-    }
-  }
+  if (!_afAliEnConnect()) return NULL;
 
   TFileCollection *fc = new TFileCollection();
 
@@ -2398,8 +2405,18 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
 
   // First part of the path
   if (sim) {
+    // Check whether this period is in /alice/sim/<period> or in
+    // /alice/sim/<year>/<period> and act properly, since naming convention is
+    // unclear!
+    if (!_afAliEnConnect()) return;
+
+    basePath = Form("/alice/sim/%s", period.Data());  // no year
+    if (!gGrid->Cd(basePath.Data())) {
+      basePath = Form("/alice/sim/%d/%s", year, period.Data());
+    }
+    basePath.Append("/<RUN6>");
+
     // Sim
-    basePath = Form("/alice/sim/%s/<RUN6>", period.Data());
     if (!esd) {
       temp = Form("/AOD%03d", aodNum);
       basePath.Append(temp);
@@ -2410,7 +2427,7 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
     if (!pass.BeginsWith("pass")) pass = "pass" + pass;
 
     // Data
-    basePath = Form("/alice/data/%u/%s/<RUN9>/ESDs/%s", year, period.Data(),
+    basePath = Form("/alice/data/%d/%s/<RUN9>/ESDs/%s", year, period.Data(),
       pass.Data());
     if (esd) {
       basePath.Append("/*.*");
