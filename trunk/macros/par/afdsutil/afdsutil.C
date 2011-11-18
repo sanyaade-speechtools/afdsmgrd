@@ -1,5 +1,5 @@
 /**
- * afdsutils.C -- by Dario Berzano <dario.berzano@cern.ch>
+ * afdsutil.C -- by Dario Berzano <dario.berzano@cern.ch>
  *
  * This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
  *
@@ -39,6 +39,7 @@
 #include <TKey.h>
 #include <TFileStager.h>
 #include <TRandom.h>
+#include <TROOT.h>
 
 #endif
 
@@ -64,6 +65,43 @@ void _afRootQuietOff() {
     _afOldErrorIgnoreLevel = -1;
   }
 }
+
+/** Gets an environment variable either locally or on the environment of the
+ *  PROOF cluster. The assumption is that all PROOF workers share the same
+ *  environment. The TString returned must be disposed properly by the user.
+ */
+TString *_afGetEnvVar(TString name, Bool_t local = kTRUE) {
+  TString *val = NULL;
+  if (local) {
+    const char *valChr = gSystem->Getenv(name.Data());
+    if (valChr) val = new TString(valChr);
+  }
+  else {
+    if (gProof) {
+      TString tfn;
+      while (kTRUE) {
+        tfn = Form("/tmp/proof-remote-envvar-%05.0lf", gRandom->Rndm()*10000);
+        if (gSystem->AccessPathName(tfn.Data())) break;  // bizarre retval
+      }
+      gROOT->ProcessLine(
+        Form("gProof->Exec(\".!env|grep '^%s'|cut -b%d-\"); > %s",
+        name.Data(), name.Length()+2, tfn.Data()) );
+      ifstream fp(tfn.Data());
+      if (fp) {
+        val = new TString();
+        fp >> *val;
+        fp.close();
+        if (val->IsNull()) {
+          delete val;
+          val = NULL;
+        }
+      }
+      gSystem->Unlink(tfn.Data());
+    }
+  }
+  return val;
+}
+
 
 /** Return kTRUE if PROOF mode is active, and connects to PROOF (masteronly) if
  *  no PROOF connection is active.
@@ -891,7 +929,7 @@ void afPrintSettings() {
     "\033[35m%s\033[m - change it with afSetProofUserHost()", 
     gEnv->GetValue("af.userhost", "alice-caf.cern.ch"));
 
-  Printf("\033[34mPROOF mode is active?\033[m "
+  Printf("\033[34mUsing PROOF connection?\033[m "
     "\033[35m%s\033[m - toggle it with afSetProofMode()",
     (gEnv->GetValue("af.proofmode", 1) ? "YES" : "NO"));
 
@@ -2676,6 +2714,44 @@ void afDsToPlainText(TString dsMask, TString outDir = "/tmp", UInt_t nUrl = 999,
   delete listOfDs;
 }
 
+/** Performs auto-detection of AFDSUtils settings, also by using environment
+ *  variables of AAFs.
+ */
+void afAutoSettings() {
+  Bool_t local = kTRUE;
+  if (gProof) {
+    local = kFALSE;
+
+    // PROOF connection already opened
+    afSetProofMode(kTRUE);
+    TString temp = Form("%s:%s@%s", gProof->GetUser(), gProof->GetGroup(),
+      gProof->GetMaster());
+    afSetProofUserHost(temp.Data());
+
+  }
+  else {
+    // Assume local processing
+    afSetProofMode(kFALSE);
+  }
+
+  // Path of datasets
+  TString *dsPath = _afGetEnvVar("ALICE_PROOF_AAF_PROOF_DIR", local);
+  if (dsPath) {
+    dsPath->Append("/dataset");
+    afSetDsPath(dsPath->Data());
+    delete dsPath;
+  }
+
+  // Hostname of redirector
+  TString *redir = _afGetEnvVar("ALICE_PROOF_AAF_XROOTD_REDIRECTOR", local);
+  if (redir) {
+    redir->Prepend("root://");
+    redir->Append("/$1");
+    afSetRedirUrl(*redir);
+    delete redir;
+  }
+}
+
 /* ========================================================================== *
  *                                ENTRY POINT                                 *
  * ========================================================================== */
@@ -2689,6 +2765,11 @@ void afdsutil() {
   Printf("Bugs: https://savannah.cern.ch/projects/aaf/");
   Printf("Available functions start with \"af\", use autocompletion to list.");
   cout << endl;
+
+  Bool_t autoSettings = gEnv->GetValue("af.autosettings", 1);
+  if (autoSettings) afAutoSettings();
+  else Printf("Warning: auto-detection of settings disabled by user\n");
+
   afPrintSettings();
   cout << endl;
 }
