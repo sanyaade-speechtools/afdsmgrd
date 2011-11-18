@@ -1210,6 +1210,11 @@ void afDataSetInfo(const char *dsUri, Bool_t checkStaged = kFALSE) {
  *  A value of "M" refreshes current metadata (i.e. file is "verified"), while
  *  a value of "m" deletes the metadata from the object.
  *
+ *  The filterBits option tells the function which files to consider: by
+ *  default consider all files, but you can decide to modify only (un)staged or
+ *  (un)corrupted files, with one or more of the following: "SsCc". For
+ *  instance, to consider only staged files use "S".
+ *
  *  EXAMPLE: to remove metadata and mark as corrupted, use "Cm"; instead, to
  *  uncorrupt, mark as staged and fill metadata, use "cSm".
  *
@@ -1234,7 +1239,8 @@ void afDataSetInfo(const char *dsUri, Bool_t checkStaged = kFALSE) {
  *
  */
 void afMarkUrlAs(const char *fileUrl, TString bits = "",
-  const char *dsMask = "/*/*", TString options = "") {
+  const char *dsMask = "/*/*", TString filterBits = "SsCc",
+  TString options = "") {
 
   // Parse options
   Bool_t keepOnlyLastUrl = kFALSE;
@@ -1272,6 +1278,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     allFiles = kTRUE;
   }
 
+  // How to mark URLs: parse string and check for incongruences
   Bool_t bS = kFALSE;
   Bool_t bs = kFALSE;
   Bool_t bC = kFALSE;
@@ -1309,9 +1316,23 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     err = kTRUE;
   }
 
-  if (err) {
-    return;
-  }
+  if (err) return;
+
+  // Which files to consider (SsCc)
+  Bool_t filterc = kFALSE;
+  Bool_t filterC = kFALSE;
+  Bool_t filters = kFALSE;
+  Bool_t filterS = kFALSE;
+
+  if (filterBits == "") filterS = filters = filterC = filterc = kTRUE;
+
+  if (filterBits.Index('S') >= 0) filterS = kTRUE;
+  if (filterBits.Index('s') >= 0) filters = kTRUE;
+  if (filterBits.Index('C') >= 0) filterC = kTRUE;
+  if (filterBits.Index('c') >= 0) filterc = kTRUE;
+
+  if ((!filterS) && (!filters)) filterS = filters = kTRUE;
+  if ((!filterC) && (!filterc)) filterC = filterc = kTRUE;
 
   TDataSetManagerFile *mgr = NULL;
 
@@ -1343,6 +1364,16 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
 
       if ((allFiles) || (fi->FindByUrl(fileUrl))) {
+
+        Bool_t isC = fi->TestBit(TFileInfo::kCorrupted);
+        Bool_t isS = fi->TestBit(TFileInfo::kStaged);
+
+
+        if (((isC && !filterC) || (!isC && !filterc) ||
+             (isS && !filterS) || (!isS && !filters))) {
+          Printf(">> File skipped");
+          continue;
+        }
 
         if (!allFiles) {
           Printf(">> Found in dataset %s", dsUri.Data());
@@ -1973,14 +2004,14 @@ void afResetDs(const char *dsMask = "/*/*", Bool_t recoverAliEnUrl = kFALSE) {
   if (recoverAliEnUrl) {
     opts.Append("alien");
   }
-  afMarkUrlAs("*", "scm", dsMask, opts);
+  afMarkUrlAs("*", "scm", dsMask, "", opts);
 }
 
 /** A shortcut to prepend the redirector path of the file (read from the gEnv)
  *  to every file in the given dataset(s). No further processing is done.
  */
 void afPrependRedirUrl(const char *dsMask = "/*/*") {
-  afMarkUrlAs("*", "", dsMask, "redir");
+  afMarkUrlAs("*", "", dsMask, "", "redir");
 }
 
 /** Removes a dataset from the disk. Files associated to the dataset are not
