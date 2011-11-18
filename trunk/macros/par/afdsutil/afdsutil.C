@@ -2484,6 +2484,7 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
 
   // Dataset name
   TString dsPattern;
+  TString filter;
 
   if (_afProofMode()) {
     // PROOF: normal user
@@ -2504,6 +2505,7 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
   else {
     temp = Form("AOD%03d", aodNum);
     dsPattern.Append(temp);
+    filter = "AOD[0-9]{3}/[0-9]{3,4}";  // only AODnnn/(m)mmm: skip StageX dirs
   }
 
   if (!sim) {
@@ -2513,7 +2515,7 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
   }
 
   // Invoke the complete function
-  afDataSetFromAliEn(basePath, fileName, "", "", treeName, runRange,
+  afDataSetFromAliEn(basePath, fileName, filter, "", treeName, runRange,
     dsPattern, options);
 
 }
