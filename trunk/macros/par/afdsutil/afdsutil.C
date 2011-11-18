@@ -925,13 +925,14 @@ void afPrintSettings() {
     "\033[35m%s\033[m - change it with afSetDsPath()",
     gEnv->GetValue("af.dspath", "/tmp"));
 
-  Printf("\033[34mPROOF connect string:\033[m "
+  Printf("\033[34mPROOF connection string:\033[m "
     "\033[35m%s\033[m - change it with afSetProofUserHost()", 
     gEnv->GetValue("af.userhost", "alice-caf.cern.ch"));
 
   Printf("\033[34mUsing PROOF connection?\033[m "
     "\033[35m%s\033[m - toggle it with afSetProofMode()",
-    (gEnv->GetValue("af.proofmode", 1) ? "YES" : "NO"));
+    (gEnv->GetValue("af.proofmode", 1) ? \
+      "Yes, working on the remote PROOF cluster" : "No, working locally"));
 
   Printf("\033[34mFiles path with redirector ($1 is the file path):\033[m "
     "\033[35m%s\033[m - change it with afSetRedirUrl()",
@@ -2434,6 +2435,10 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
 
   }
 
+  Printf("\nPay attention: revise the settings you are using:\n");
+  afPrintSettings();
+  cout << endl;
+
   // Delete list of runs
   delete runNumsPtr;
 }
@@ -2450,8 +2455,9 @@ void afDataSetFromAliEn(TString basePath, TString fileName,
  *  ESDs from simulation:
  *    /alice/sim/LHC10h1/137045/...
  *
- *  AODs from simulation:
+ *  AODs from simulation (with or without year, autodetected):
  *    /alice/sim/LHC11d5/118506/AOD063/...
+ *    /alice/sim/2011/LHC11f5/139517/AOD081/...
  *
  * For the cases uncovered by this function, use afDataSetFromAliEn().
  */
