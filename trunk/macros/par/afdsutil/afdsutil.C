@@ -509,7 +509,7 @@ Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
   if (!_afProofMode()) {
 
     //
-    // Local mode (TODO: implement NO OVERWRITE)
+    // Local mode (overwrite manually implemented)
     //
 
     TString group, user, name;
