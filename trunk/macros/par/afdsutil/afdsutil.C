@@ -120,7 +120,7 @@ Bool_t _afProofMode() {
  */
 Bool_t _afAliEnConnect() {
   if (!gGrid) {
-    if (!TGrid::Connect("alien:")) {
+    if (!TGrid::Connect("alien:", 0, 0, "-debug 0")) {
       Printf("Error: can't connect to AliEn!");
       return kFALSE;
     }
@@ -516,22 +516,32 @@ Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
     TString dsRepoPath;
     TDataSetManagerFile *mgr = _afCreateDsMgr(&dsRepoPath);
 
+    // If dsUri is not full (i.e. only dsname without path), group and user are
+    // filled accordingly
+    mgr->ParseUri(dsUri, &group, &user, &name);
+    dsUri.Form("/%s/%s/%s", group.Data(), user.Data(), name.Data());
+
+    TString dsFullDir;
+    TString dsFullPath;
+    dsFullDir.Form("%s/%s/%s", dsRepoPath.Data(), group.Data(), user.Data());
+    dsFullPath.Form("%s/%s.root", dsFullDir.Data(), name.Data());
+
+    // Check if file exists (no ovw)
+    if ((!overwrite) && (!gSystem->AccessPathName(dsFullPath.Data()))) {
+      if (!quiet) Printf(">> I won't overwrite dataset %s", dsUri.Data());
+      delete mgr;
+      return kFALSE;
+    }
+
     if ((update) && (origFc = mgr->GetDataSet(dsUri))) {
       _afUpdateDs(origFc, fc);
       newFc = origFc;
     }
     else newFc = fc;
 
-    // If dsUri is not full (i.e. only dsname without path), group and user are
-    // filled accordingly
-    mgr->ParseUri(dsUri, &group, &user, &name);
-
-    TString dsFullPath;
-    dsFullPath.Form("%s/%s/%s", dsRepoPath.Data(), group.Data(), user.Data());
-
     // Workaround: if path does not exist, attempt to create it
-    if (gSystem->AccessPathName(dsFullPath.Data())) {
-      gSystem->mkdir(dsFullPath.Data(), kTRUE);  // kTRUE == recursive ('-p')
+    if (gSystem->AccessPathName(dsFullDir.Data())) {
+      gSystem->mkdir(dsFullDir.Data(), kTRUE);  // kTRUE == recursive ('-p')
     }
 
     if (mgr->WriteDataSet(group, user, name, newFc) == 0) regSuccess = kFALSE;
@@ -559,7 +569,8 @@ Bool_t _afSaveDs(TString dsUri, TFileCollection *fc, Bool_t overwrite,
 
   if (regSuccess) {
     if (!quiet) {
-      Printf(">> Dataset %s written with success", dsUri.Data());
+      Printf(">> Dataset %s %s with success", dsUri.Data(),
+        (update ? "updated" : "written"));
     }
     return kTRUE;
   }
@@ -2787,12 +2798,15 @@ void afAutoSettings() {
   }
 }
 
-/** This function clones a dataset to the user's datasets directory on AliEn. By
- *  default, files on AliEn won't be overwritten. All datasets pushed to AliEn
- *  are cleaned up first: every URL is removed (except the originating one) and
- *  files are marked as Staged (Corrupted bit is not touched).
+/** This function clones a list of datasets, specified with the usual mask, to
+ *  the user's datasets directory on AliEn, defined by a gEnv variable. By
+ *  default, files on AliEn won't be overwritten.
+ *
+ *  All datasets pushed to AliEn are cleaned up first: every URL is removed
+ *  (except the originating one) and files are marked as Staged (Corrupted bit
+ *  is not touched).
  */
-void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
+void afCloneDataSetsToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
 
   // Open connection to AliEn
   if (!_afAliEnConnect()) return;
@@ -2814,7 +2828,7 @@ void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
   // Point default settings to the temporary repository
   afSetDsPath(tmpDsRepoPath.Data());
   afSetProofMode(kFALSE);
-  afPrintSettings();
+  //afPrintSettings();
 
   // This list was obtained with "old" settings
   Int_t nLocalProc = 0;
@@ -2836,7 +2850,7 @@ void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
     }
 
     // Dataset is modified in memory
-    Int_t nChanged = _afSingleMarkUrlAs("*", "S", fc, "", "keeplast:redir");
+    Int_t nChanged = _afSingleMarkUrlAs("*", "S", fc, "", "keeplast");
     if (nChanged < 0) {
       delete fc;
       continue;
@@ -2857,10 +2871,6 @@ void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
   delete listOfDs;
   if (mgr) delete mgr;
 
-  // Restore old settings
-  afSetDsPath(oldDsPath.Data());
-  afSetProofMode(oldProofMode);
-
   // AliEn repository
   TString aliEnBase = gEnv->GetValue("af.aliendsrepo", "/alice/cern.ch/tmp");
 
@@ -2869,6 +2879,7 @@ void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
   Int_t nAliEnSucc = 0;
   listOfDs = _afGetListOfDs("/*/*");
   TIter j(listOfDs);
+
   while ( (dsUriObj = dynamic_cast<TObjString *>(j.Next())) ) {
 
     nAliEnProc++;
@@ -2899,6 +2910,12 @@ void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
 
   }
 
+  delete listOfDs;
+
+  // Restore old settings
+  afSetDsPath(oldDsPath.Data());
+  afSetProofMode(oldProofMode);
+
   // Print information on screen
   Printf("Transfers to local repo: %d OK / %d total", nLocalSucc, nLocalProc);
   Printf("Transfers to AliEn repo: %d OK / %d total", nAliEnSucc, nAliEnProc);
@@ -2909,218 +2926,150 @@ void afCloneDataSetToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
 
 }
 
-/**
+/** This function clones some datasets specified with the usual mask from the
+ *  default dataset repository for the current AliEn user (a gEnv variable) to
+ *  the currently active dataset settings.
+ *
+ *  Datasets are reset before being written to the local destination. In
+ *  particular, corrupted bit will not touched, the redirector is appended and
+ *  they are marked as Staged in order to prevent staging without manual
+ *  "unlocking".
+ *
+ *  Options might be, as a string: "overwrite", to overwrite existing datasets
+ *  in the destination repository, and "update" to update, if needed, existing
+ *  datasets with new information from AliEn datasets.
+ *
+ *  By default, destination datasets are neither updated not overwritten.
  */
-void afCloneDataSetFromAliEn() {
-}
+void afCloneDataSetsFromAliEn(TString dsMask, TString options = "") {
 
-/**
- */
-void afCloneDsToAaf(TString dsMask, TString destAafConnStr) {
+  // Check parameters
+  Bool_t overwrite = kFALSE;
+  Bool_t update = kFALSE;
 
-  TString newRedirUrl;
+  if (options == "update") {
+    overwrite = kTRUE;
+    update = kTRUE;
+  }
+  else if (options == "overwrite") {
+    overwrite = kTRUE;
+  }
+
+  // Open connection to AliEn
+  if (!_afAliEnConnect()) return;
 
   TDataSetManagerFile *mgr = NULL;
-  if (_afProofMode()) {
+  if (!_afProofMode()) mgr = _afCreateDsMgr();
 
-    // Reformat destAafConnStr
-    TUrl *destAaf = new TUrl(destAafConnStr.Data());
+  // Warning: from this point on, we back up current settings and restore them
+  // at the end. New settings will be on a temporary local repository.
+  Bool_t  oldProofMode = gEnv->GetValue("af.proofmode", 1);
+  TString oldDsPath    = gEnv->GetValue("af.dspath", "/pool/dataset");
 
-    if ( *(destAaf->GetUser()) == '\0' )
-      destAaf->SetUser(gProof->GetUser());
-    if ( *(destAaf->GetPasswd()) == '\0' )
-      destAaf->SetPasswd(gProof->GetGroup());
+  // A new, temporary repository is created
+  TString tmpDsRepoPath;
+  TDataSetManagerFile *tmpMgr = _afCreateDsMgr(&tmpDsRepoPath, kTRUE);
 
-    destAafConnStr.Form("%s:%s@%s",
-      destAaf->GetUser(), destAaf->GetPasswd(), destAaf->GetHost());
-    newRedirUrl = Form("root://%s/$1", destAaf->GetHost());
+  // Point default settings to the temporary repository
+  afSetDsPath(tmpDsRepoPath.Data());
+  afSetProofMode(kFALSE);
+  //afPrintSettings();
 
-    delete destAaf;
+  // Emulate match pattern of TDataSetManager
+  TString dsMatchPtn = dsMask(0, dsMask.Index("*"));
+
+  // Obtain a list of datasets from AliEn, in a TFileCollection
+  TString aliEnBase = gEnv->GetValue("af.aliendsrepo", "/alice/cern.ch/tmp");
+  TFileCollection *aliEnDsFc = _afAliEnFind(aliEnBase, "*.root", "", "", "");
+
+  TIter dsi(aliEnDsFc->GetList());
+  TFileInfo *fi;
+
+  Int_t nAliEnProc = 0;
+  Int_t nAliEnSucc = 0;
+
+  while ( (fi = dynamic_cast<TFileInfo *>(dsi.Next())) ) {
+
+    TString aliEnFullPath = fi->GetCurrentUrl()->GetUrl();
+    Int_t beginIdx = aliEnFullPath.Index(aliEnBase.Data())+aliEnBase.Length();
+    TString dsUri = aliEnFullPath(beginIdx, aliEnFullPath.Length()-beginIdx-5);
+    TString localFullPath;
+    TString localFullDir;
+    localFullPath.Form("%s/%s.root", tmpDsRepoPath.Data(), dsUri.Data());
+    localFullDir = gSystem->DirName(localFullPath.Data());
+
+    if (dsUri.BeginsWith(dsMatchPtn)) {
+      nAliEnProc++;
+      Printf("Fetching dataset %s from AliEn...", dsUri.Data());
+      gSystem->mkdir(localFullDir.Data(), kTRUE);
+      Bool_t ok = TFile::Cp(aliEnFullPath.Data(), localFullPath.Data());
+      if (ok) nAliEnSucc++;
+    }
+    else {
+      //Printf(">> %s: skip", dsUri.Data());
+      continue;
+    }
 
   }
-  else mgr = _afCreateDsMgr();
 
-  // Save current settings in old* variables
-  TProof *oldProof = gProof;
-  Bool_t oldProofMode = gEnv->GetValue("af.proofmode", 1);
-  TString oldDsPath = gEnv->GetValue("af.dspath", "/pool/dataset");
-  TString oldConnStr = gEnv->GetValue("af.userhost", "alice-caf.cern.ch");
-  TString oldRedirUrl = gEnv->GetValue("af.redirurl",
-    "root://localhost:1234/$1");
+  delete aliEnDsFc;
+  aliEnDsFc = NULL;
 
-  // Open connection to remote AAF, abort on error
-  TProof *newProof = TProof::Open(destAafConnStr.Data(), "masteronly");
-  if ((!newProof) || (!newProof->IsValid())) {
-    Printf("Fatal: cannot open PROOF connection %s", destAafConnStr.Data());
-    gProof = oldProof;
-    if (mgr) delete mgr;
-    return;
-  }
-
-  // Currently, gProof is the new connection: get redirector URL as a remote AAF
-  // environment variable
-  TString *temp = _afGetEnvVar("ALICE_PROOF_AAF_XROOTD_REDIRECTOR", kFALSE);
-  if (temp) {
-    // If temp is NULL, leave newRedirUrl set as at the beginning of this func
-    newRedirUrl.Form("root://%s/$1", temp->Data());
-    delete temp;
-    temp = NULL;
-  }
-  gProof = oldProof;  // first PROOF connection is reverted back
-
-  // Create a temporary local dataset repository
-  TString newDsPath;
-  TDataSetManagerFile *auxMgr = _afCreateDsMgr(&newDsPath, kTRUE);
-
-  // Gets list of datasets from current connection (PROOF or local)
+  // Get list of datasets matching the mask in the local temporary repository
+  Int_t nLocalProc = 0;
+  Int_t nLocalSucc = 0;
   TList *listOfDs = _afGetListOfDs(dsMask);
-
-  // Iterate over the list of datasets
-  Printf("\n=== Step One: Copying and Resetting Datasets Locally ===\n");
-
   TIter i(listOfDs);
   TObjString *dsUriObj;
+
+  // Restore old settings
+  afSetDsPath(oldDsPath.Data());
+  afSetProofMode(oldProofMode);
+  //afPrintSettings();
+
   while ( (dsUriObj = dynamic_cast<TObjString *>(i.Next())) ) {
 
-    TString dsUri = dsUriObj->String();
-    TFileCollection *fc = NULL;
-
-    //
-    // Default connection settings (either PROOF or local)
-    //
-
-    Printf("\n[1/3] %s: Fetching", dsUri.Data());
-    afPrintSettings();
-
-    if (mgr) fc = mgr->GetDataSet(dsUri.Data());
-    else fc = gProof->GetDataSet(dsUri.Data());
-
-    if (!fc) {
-      Printf("Can't obtain dataset %s, skipping", dsUri.Data());
-      continue;
-    }
-
-    //
-    // Temporary local directory settings
-    //
-
-    // Switching settings to the "temp dir" ones
-    afSetProofMode(0);
-    afSetDsPath(newDsPath.Data());
-    afSetRedirUrl(newRedirUrl);
-
-    // Saving DS to temporary dir
-    Printf("\n[2/3] %s: Saving dataset to temporary dir", dsUri.Data());
-    afPrintSettings();
-
-    if (!_afSaveDs(dsUri, fc, kTRUE, kTRUE)) {
-      Printf("Can't save dataset %s, skipping", dsUri.Data());
-      delete fc;
-      continue;
-    }
-
-    // All files are Staged and Uncorrupted, and with redirector URLs only
-    afMarkUrlAs("*", "S", dsUri.Data(), "", "redir:keeplast:quiet");
-    //afShowDsContent(dsUri.Data());
-
-    //
-    // Revert back to original settings
-    //
-
-    // Reverting back to old settings
-    afSetProofMode(oldProofMode);
-    afSetDsPath(oldDsPath.Data());
-    afSetRedirUrl(oldRedirUrl);
-    afSetProofUserHost(oldConnStr);
-
-    Printf("\n[3/3] Settings reverted");
-    afPrintSettings();
-
-    delete fc;
-
-    break;
-  }
-
-  delete listOfDs;
-
-  // Push datasets to remote repository, *without overwriting*
-  Printf("\n=== Step Two: Copying and Resetting Datasets Locally ===\n");
-
-  //
-  // Local temporary repository
-  //
-
-  afSetProofMode(kFALSE);
-  afSetDsPath(newDsPath.Data());
-  gProof = newProof;
-  afPrintSettings();
-
-  // Gets list of *all* datasets from temporary repo (so, skip the non-saved
-  // ones)
-  listOfDs = _afGetListOfDs("/*/*");
-  TIter j(listOfDs);
-  while ( (dsUriObj = dynamic_cast<TObjString *>(j.Next())) ) {
+    nLocalProc++;
 
     TString dsUri = dsUriObj->String();
-    TFileCollection *fc = NULL;
+    TFileCollection *fc = tmpMgr->GetDataSet(dsUri.Data());
 
-    //
-    // Read from local repo 
-    //
-
-    Printf("[1/3] %s: reading from local repo", dsUri.Data());
-    afPrintSettings();
-    fc = auxMgr->GetDataSet(dsUri.Data());
     if (!fc) {
-      Printf("Can't obtain dataset %s from temporary repository, skipping",
+      Printf("Warning: can't read dataset %s from temp repository: skipped",
         dsUri.Data());
       continue;
     }
 
-    //
-    // Push to remote repo
-    //
-
-    afSetProofMode(kTRUE);
-    afSetProofUserHost(destAafConnStr);
-
-    Printf("[2/3] %s: pushing to remote repo", dsUri.Data());
-    afPrintSettings();
-
-    if (!_afSaveDs(dsUri, fc, kFALSE, kTRUE)) {
-      //                      overwr
-      Printf("Can't save dataset %s on remote AAF, skipping", dsUri.Data());
+    // Mark all files as Staged, do not touch Corrupted bit, keep only last URL
+    // and add redirector's URL as per current settings
+    Int_t nChanged = _afSingleMarkUrlAs("*", "S", fc, "", "keeplast:redir");
+    if (nChanged < 0) {
       delete fc;
       continue;
     }
 
-    //
-    // Revert to temporary repo
-    //
+    // Save file to the final repository (quiet: false)
+    if (!_afSaveDs(dsUri, fc, overwrite, kFALSE, update)) {
+      delete fc;
+      continue;
+    }
 
-    afSetProofMode(kFALSE);
-    afSetDsPath(newDsPath.Data());
-    Printf("[3/3] %s: reverting to temporary repo", dsUri.Data());
-    afPrintSettings();
+    // Arrived at this point, we have a success
+    nLocalSucc++;
+    delete fc;
 
   }
 
-  // Clean up auxiliary dataset repository
-  delete auxMgr;
-  gSystem->Exec(Form("rm -rf -- '%s'", newDsPath.Data()));
+  delete listOfDs;
 
+  // Cleanup of all dataset repositories
   if (mgr) delete mgr;
+  delete tmpMgr;
+  gSystem->Exec(Form("rm -rf -- '%s'", tmpDsRepoPath.Data()));
 
-  // Close remote PROOF connection
-  gProof->Close();
-  delete newProof;
-  gProof = oldProof;
-
-  // Revert back settings
-  afSetProofMode(oldProofMode);
-  afSetDsPath(oldDsPath.Data());
-  afSetRedirUrl(oldRedirUrl);
-  afSetProofUserHost(oldConnStr);
+  // Print information on screen
+  Printf("Transfers from AliEn repo: %d OK / %d total", nAliEnSucc, nAliEnProc);
+  Printf("Transfers from local repo: %d OK / %d total", nLocalSucc, nLocalProc);
 
 }
 
