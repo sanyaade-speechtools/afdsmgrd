@@ -20,7 +20,7 @@
  *  See here for versioning information: http://apr.apache.org/versioning.html
  */
 #define AF_VERSION_DEVEL "trunk"
-#define AF_VERSION "0.9.9"
+#define AF_VERSION "0.9.10"
 
 /** Version banner which includes the version number with build date and time.
  */
