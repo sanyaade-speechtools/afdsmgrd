@@ -222,7 +222,7 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
   else {
     TDataSetManagerFile *root_dsm = new TDataSetManagerFile(NULL, NULL,
       Form("dir:%s opt:%s", dsm_url->c_str(), dsm_opt->c_str()));
-    dsm->set_dataset_mgr(root_dsm);
+    dsm->set_dataset_mgr(root_dsm, dsm_url->c_str());
     af::log::ok(af::log_level_urgent, "ROOT dataset manager reinitialized");
     af::log::ok(af::log_level_normal, ">> Local path: %s", dsm_url->c_str());
     af::log::ok(af::log_level_normal, ">> MSS: %s", dsm_mss->c_str());
@@ -291,7 +291,7 @@ void config_callback_notify(const char *name, const char *val, void *args) {
  *
  *  [1] http://stackoverflow.com/questions/3357737/dropping-root-privileges
  */
-void toggle_suid(bool enable = false) {
+/*void toggle_suid(bool enable = false) {
 
   static bool enabled = false;
   static uid_t unp_uid = 0;
@@ -345,7 +345,7 @@ void toggle_suid(bool enable = false) {
 
   }
 
-}
+}*/
 
 /** Transfer queue is processed: check if slots are freed, then insert elements
  *  from opq in free slots of cmdq. Handle successes and failures by syncing
@@ -748,9 +748,9 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
 
     if (count_changes > 0) {
 
-      toggle_suid();
+      //toggle_suid();
       bool save_ok = dsm.save_dataset();
-      toggle_suid();
+      //toggle_suid();
 
       if (save_ok) {
         af::log::ok(af::log_level_high, "Dataset %s saved: %d entries", ds,
@@ -1095,7 +1095,7 @@ int main(int argc, char *argv[]) {
         af::log::ok(af::log_level_urgent,
           "Dropped privileges to user \"%s\" (%d), group \"%s\" (%d)",
           drop_user, pwd->pw_uid, grp->gr_name, pwd->pw_gid);
-        toggle_suid(true);  // makes toggle_suid() calls effective
+        //toggle_suid(true);  // makes toggle_suid() calls effective
       }
       else {
         af::log::fatal(af::log_level_urgent,
@@ -1118,7 +1118,7 @@ int main(int argc, char *argv[]) {
     // Running as unprivileged, privileges undropped
     struct passwd *pwd = getpwuid(geteuid());
     af::log::warning(af::log_level_urgent,
-      "Running as unprivileged user \"%s\": this may prevent dataset writing",
+      "Running as unprivileged user \"%s\": this may impair dataset writing",
       pwd->pw_name);
   }
 
@@ -1134,6 +1134,10 @@ int main(int argc, char *argv[]) {
     std::string exec_wrapper_path = libexec_path;
     exec_wrapper_path += "/afdsmgrd-exec-wrapper";
     af::extCmd::set_helper_path(exec_wrapper_path.c_str());
+
+    std::string chdsacl_path = libexec_path;
+    chdsacl_path += "/afchdsacl";
+    af::dataSetList::set_chdsacl_path(chdsacl_path.c_str());
 
     char extcmd_temp_path[100];
     snprintf(extcmd_temp_path, 100, "/tmp/afdsmgrd-%d", pid);
