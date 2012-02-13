@@ -1135,9 +1135,9 @@ int main(int argc, char *argv[]) {
     exec_wrapper_path += "/afdsmgrd-exec-wrapper";
     af::extCmd::set_helper_path(exec_wrapper_path.c_str());
 
-    //std::string extcmd_temp_path = "/tmp/afdsmgrd-" + pid;
-    //af::extCmd::set_temp_path(extcmd_temp_path.c_str());
-    af::extCmd::set_temp_path("/tmp/afdsmgrd");
+    char extcmd_temp_path[100];
+    snprintf(extcmd_temp_path, 100, "/tmp/afdsmgrd-%d", pid);
+    af::extCmd::set_temp_path(extcmd_temp_path);
   }
 
   // Trap some signals to terminate gently
