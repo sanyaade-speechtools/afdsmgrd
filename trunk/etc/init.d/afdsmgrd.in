@@ -99,11 +99,8 @@ export SUSER="$AFDSMGRD_USER"
 # Log level
 export LOG_LEVEL="$AFDSMGRD_LOGLEVEL"
 
-# Temporary directory (hardcoded)
-export TEMPDIR="/tmp/afdsmgrd"
-
 # Grace time before "kill -9", in seconds
-export GRACEKILL_SEC=10
+export GRACEKILL_SEC=20
 
 #
 # Functions
@@ -155,21 +152,32 @@ function StopKill() {
 }
 
 # Cleanup of daemon's temporary directory: called on startup and shutdown. This
-# is the first function to customize
+# is the first function to customize. This function cleans *every* afdsmgrd temp
+# directory associated to an instance that is no longer running
 function Cleanup() {
-  rm -rf "$TEMPDIR"
-  return $?
+
+  local Pid
+
+  ls -1d /tmp/afdsmgrd-* 2> /dev/null | \
+  perl -ne '/\/afdsmgrd-([0-9]+)/ and print "$1\n"' | \
+  while read Pid ; do
+
+    # Check if Pid is running
+    ps -e -o pid,command | grep -q "^$Pid"
+    if [ $? != 0 ] ; then
+      rm -rf "/tmp/afdsmgrd-$Pid"
+    fi
+
+  done
+
 }
 
 # This is the second function to edit: it contains the custom commands to
 # effectively launch the daemon
 function LaunchDaemon() {
 
-  # Creates temporary directory
+  # Cleanup on startup and exit
   Cleanup
-  mkdir -p "$TEMPDIR"
-  chmod -R u=rwX,g=rX,o=rX "$TEMPDIR" > /dev/null 2>&1
-  chown -R "$SUSER" "$TEMPDIR" > /dev/null 2>&1
 
   # Change permissions of log directory
   mkdir -p "$LOGDIR" > /dev/null 2>&1
@@ -208,7 +216,7 @@ function Start() {
 # Stops the daemon
 function Stop() {
   local PID RETVAL
-  MsgBegin "Stopping $BASEPROG"
+  MsgBegin "Stopping $BASEPROG (waiting max ${GRACEKILL_SEC}s)..."
   PID=`GetPid`
   if [ "$PID" == "" ]; then
     MsgEnd 0 "not running"

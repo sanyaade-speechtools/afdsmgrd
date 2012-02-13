@@ -10,7 +10,12 @@
 # Search for the ApMon_PREFIX variable
 #
 
-set (ALIEN_DIR $ENV{ALIEN_DIR})
+# Read ALIEN_DIR envvar; if not found, read GSHELL_ROOT envvar instead
+if (DEFINED ENV{ALIEN_DIR})
+  set (ALIEN_DIR $ENV{ALIEN_DIR})
+else ()
+  set (ALIEN_DIR $ENV{GSHELL_ROOT}/..)
+endif ()
 
 find_path (ApMon_INCDIR
   ApMon.h
