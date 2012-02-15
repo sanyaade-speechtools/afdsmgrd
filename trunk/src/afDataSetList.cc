@@ -10,11 +10,6 @@
 
 using namespace af;
 
-/** Path to the external facility to change dataset permissions prior to
- *  writing.
- */
-std::string dataSetList::chdsacl_path;
-
 /** The only constructor for the class. It takes as an argument a pointer to the
  *  dataset manager used for the datasets requests.
  *
@@ -24,11 +19,8 @@ std::string dataSetList::chdsacl_path;
  *
  *  Beware! This class owns the instance of TDataSetManagerFile!
  */
-dataSetList::dataSetList(TDataSetManagerFile *_ds_mgr, const char *_ds_repo) :
-  ds_mgr(_ds_mgr), ds_inited(false), fi_inited(false) {
-  if (!_ds_repo) ds_repo = "";
-  else ds_repo = _ds_repo;
-}
+dataSetList::dataSetList(TDataSetManagerFile *_ds_mgr) :
+  ds_mgr(_ds_mgr), ds_inited(false), fi_inited(false) {}
 
 /** The destructor. It frees the memory taken by requests.
  */
@@ -44,14 +36,11 @@ dataSetList::~dataSetList() {
  *  Since the TDataSetManagerFile is owned by this class' instance, the former
  *  dataset manager, if not NULL, will be deleted first.
  */
-void dataSetList::set_dataset_mgr(TDataSetManagerFile *_ds_mgr,
-  const char *_ds_repo) {
+void dataSetList::set_dataset_mgr(TDataSetManagerFile *_ds_mgr) {
   free_datasets();
   free_files();
-  if (ds_mgr) delete ds_mgr;  // attention!
+  if (ds_mgr) delete ds_mgr;  // achtung!
   ds_mgr = _ds_mgr;
-  if (_ds_repo) ds_repo = _ds_repo;
-  else ds_repo = "";
 }
 
 /** Initializes the list: this is the first function to call if you want to
@@ -386,23 +375,9 @@ bool dataSetList::save_dataset(TFileCollection *fc, const char *ds_uri) {
   TString group;
   TString user;
   TString name;
-
   ds_mgr->ParseUri( ds_uri, &group, &user, &name);
 
-  fc->Update();  // important
-
-  // Fix permissions before writing by calling the external fixer
-  if (!ds_repo.empty()) {
-    snprintf(chdsacl_cmd_buf, AF_CMDLINE_BUFSIZE,
-      "sudo \"%s\" -U noop -G noop -r \"%s\" -g %s -u %s -n \"%s\"",
-      chdsacl_path.c_str(), ds_repo.c_str(),
-      group.Data(), user.Data(), name.Data()
-    );
-    int r = system(chdsacl_cmd_buf);
-    af::log::info(af::log_level_debug, "External command %s returned %d",
-      chdsacl_cmd_buf, r);
-  }
-
+  fc->Update();
   int r = ds_mgr->WriteDataSet(group, user, name, fc);
 
   af::log::info(af::log_level_debug,
@@ -415,11 +390,4 @@ bool dataSetList::save_dataset(TFileCollection *fc, const char *ds_uri) {
   //  return true;
 
   return false;
-}
-
-/** Sets the external executable path. The given string is copied in an internal
- *  buffer.
- */
-void dataSetList::set_chdsacl_path(const char *path) {
-  chdsacl_path = path;
 }
