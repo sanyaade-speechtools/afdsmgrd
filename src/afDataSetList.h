@@ -11,7 +11,6 @@
 #define AFDATASETLIST_H
 
 #define AF_DATASETLIST_BUFSIZE 400
-#define AF_CMDLINE_BUFSIZE 500
 
 #include "afLog.h"
 
@@ -46,8 +45,7 @@ namespace af {
 
     public:
 
-      dataSetList(TDataSetManagerFile *_ds_mgr = NULL,
-        const char *_ds_repo = NULL);
+      dataSetList(TDataSetManagerFile *_ds_mgr = NULL);
       virtual ~dataSetList();
 
       // Browse dataset names
@@ -71,18 +69,12 @@ namespace af {
       TUrl *get_url(int idx);
       ds_manip_err_t del_urls_but_last(unsigned int howmany = 1);
 
-      void set_dataset_mgr(TDataSetManagerFile *_ds_mgr,
-        const char *_ds_repo = NULL);
+      void set_dataset_mgr(TDataSetManagerFile *_ds_mgr);
       inline TDataSetManagerFile *get_dataset_mgr() const { return ds_mgr; };
-      inline const char *get_dataset_uri() const { return ds_repo.c_str(); };
-
-      static void set_chdsacl_path(const char *path);
-      static const char *get_chdsacl_path() { return chdsacl_path.c_str(); };
 
     private:
 
       TDataSetManagerFile        *ds_mgr;
-      std::string                 ds_repo;
       std::vector<std::string *>  ds_list;
       int                         ds_cur_idx;
       std::string                 ds_cur_name;
@@ -96,9 +88,6 @@ namespace af {
       std::bitset<6>              fi_filter;
 
       std::vector<std::string *>  urls_to_remove;
-
-      static std::string chdsacl_path;
-      char chdsacl_cmd_buf[AF_CMDLINE_BUFSIZE];
 
   };
 

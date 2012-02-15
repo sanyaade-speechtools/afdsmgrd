@@ -52,9 +52,6 @@ endif ()
 # Executable wrapper for af::extCmd class
 add_executable (afdsmgrd-exec-wrapper execwrapper.cc)
 
-# Executable to change dataset permissions
-add_executable (afchdsacl chdsacl.cc)
-
 # Daemon executable and its libraries
 add_executable (afdsmgrd afdsmgrd.cc)
 target_link_libraries (afdsmgrd afLog afConfig afDataSetList afRegex afExtCmd afOpQueue afNotify afResMon ${Root_LIBS} -ldl -pthread)
@@ -75,7 +72,6 @@ target_link_libraries (afverifier.real afLog afConfig afDataSetList afRegex afEx
 install (TARGETS afdsmgrd RUNTIME DESTINATION ${DIR_BIN})
 install (TARGETS afdsmgrd-exec-wrapper RUNTIME DESTINATION ${DIR_LIBEXEC})
 install (TARGETS afverifier.real RUNTIME DESTINATION ${DIR_BIN})
-install (TARGETS afchdsacl RUNTIME DESTINATION ${DIR_LIBEXEC})
 
 #
 # Test executable build and install directives (only in Debug build type)

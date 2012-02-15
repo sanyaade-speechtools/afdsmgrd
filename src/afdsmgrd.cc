@@ -222,7 +222,7 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
   else {
     TDataSetManagerFile *root_dsm = new TDataSetManagerFile(NULL, NULL,
       Form("dir:%s opt:%s", dsm_url->c_str(), dsm_opt->c_str()));
-    dsm->set_dataset_mgr(root_dsm, dsm_url->c_str());
+    dsm->set_dataset_mgr(root_dsm);
     af::log::ok(af::log_level_urgent, "ROOT dataset manager reinitialized");
     af::log::ok(af::log_level_normal, ">> Local path: %s", dsm_url->c_str());
     af::log::ok(af::log_level_normal, ">> MSS: %s", dsm_mss->c_str());
@@ -1118,7 +1118,7 @@ int main(int argc, char *argv[]) {
     // Running as unprivileged, privileges undropped
     struct passwd *pwd = getpwuid(geteuid());
     af::log::warning(af::log_level_urgent,
-      "Running as unprivileged user \"%s\": this may impair dataset writing",
+      "Running as unprivileged user \"%s\": this may prevent dataset writing",
       pwd->pw_name);
   }
 
@@ -1134,10 +1134,6 @@ int main(int argc, char *argv[]) {
     std::string exec_wrapper_path = libexec_path;
     exec_wrapper_path += "/afdsmgrd-exec-wrapper";
     af::extCmd::set_helper_path(exec_wrapper_path.c_str());
-
-    std::string chdsacl_path = libexec_path;
-    chdsacl_path += "/afchdsacl";
-    af::dataSetList::set_chdsacl_path(chdsacl_path.c_str());
 
     char extcmd_temp_path[100];
     snprintf(extcmd_temp_path, 100, "/tmp/afdsmgrd-%d", pid);
