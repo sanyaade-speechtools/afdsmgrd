@@ -44,6 +44,9 @@
 # Basename of the script, wrt invoking command (i.e. no symlinks resolved)
 BASENAME=`basename "$0"`
 
+# Path: we *must* set it because it might be invoked by a non-root user...
+PATH="/sbin:/usr/sbin:$PATH"
+
 # Get the configuration variables from the first configuration file found
 declare -a CONF_FILES
 CONF_FILES=(
