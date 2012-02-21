@@ -36,6 +36,12 @@ add_library (afNotify afNotify.cc)
 add_library (afResMon afResMon.cc)
 
 #
+# Link-time dependencies for libraries
+#
+
+target_link_libraries(afOpQueue afLog)
+
+#
 # Plugins (as shared libraries) and where to install them
 #
 
