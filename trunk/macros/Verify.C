@@ -13,7 +13,7 @@
  *  - def_tree : the tree name to search for (either with or without leading /).
  *
  * If the default tree is not given, the first valid tree found in the file is
- * read.
+ * read. Trees stored in subdirectories are supported too.
  *
  * This macro works also as a non-compiled macro: just call it via:
  *
@@ -56,7 +56,9 @@
  */
 
 /** Auxiliary function that finds a tree name given the specified TFile. If no
- *  default tree is found, an empty string is saved in def_tree.
+ *  default tree is found, an empty string is saved in def_tree. TTrees, or
+ *  objects that inherit from TTree, are looked for only in the root TDirectory
+ *  of the TFile.
  */
 void DefaultTree(TFile *file, TString &def_tree) {
 
@@ -66,7 +68,7 @@ void DefaultTree(TFile *file, TString &def_tree) {
 
   while (( key = dynamic_cast<TKey *>(it.Next()) )) {
     if (TClass::GetClass(key->GetClassName())->InheritsFrom("TTree")) {
-      def_tree = key->GetName();  // without initial slash
+      def_tree = key->GetName();  // without trailing slash
       found = kTRUE;
       break;
     }
@@ -100,38 +102,50 @@ void Verify(const char *url, TString def_tree = "") {
     endp_url = endp_url_obj->GetUrl();
   }
 
-  // Remove initial slash
-  if (def_tree.BeginsWith("/")) def_tree = def_tree(1,1e9);
-
-  // No default tree specified? Search for one
-  if (def_tree == "") DefaultTree(file, def_tree);
+  if (def_tree == "") {
+    // No default tree specified? Search for one in the root directory of TFile
+    DefaultTree(file, def_tree);
+  }
+  else {
+    // Normalize object path by removing double slashes and removint the
+    // trailing one too
+    Ssiz_t def_tree_prev_len;
+    do {
+      def_tree_prev_len = def_tree.Length();
+      def_tree.ReplaceAll("//", "/");
+    }
+    while (def_tree_prev_len != def_tree.Length());
+    if (def_tree.BeginsWith("/")) def_tree = def_tree(1,1e9);
+  }
 
   // Search for the specified default tree
   if (def_tree != "") {
 
-    TKey *key = file->FindKey(def_tree.Data());
-    if (key && TClass::GetClass(key->GetClassName())->InheritsFrom("TTree")) {
+    TObject *obj;
+    TTree   *tree;
 
-      TTree *tree = dynamic_cast<TTree *>(key->ReadObj());
-      if (tree) {
+    obj = file->Get(def_tree.Data());
 
-        // All OK
+    if (obj) {
+
+      if (TClass::GetClass(obj->ClassName())->InheritsFrom("TTree")) {
+
+        // All OK: object exists and it is a TTree (or inherits from it)
+        tree = (TTree *)obj;
         Printf("OK %s Size: %lld EndpointUrl: %s Tree: /%s Events: %lld",
-          turl.GetUrl(),      // without anchor (mimic xrdstagetool)
+          turl.GetUrl(),      // without anchor (to mimic xrdstagetool)
           file->GetSize(),    // in bytes
           endp_url,           // with anchor
-          def_tree.Data(),    // tree name (initial slash is added in fmt str)
-          tree->GetEntries()  // events in tree
+          def_tree.Data(),    // full path to TTree (/ prepended in fmt string)
+          tree->GetEntries()  // number of events in tree
         );
 
       }
       else {
 
-        // FAIL because the specified tree disappeared from key: do not report
-        // tree name and events. This should not happen and it is a strong
-        // indicator of file corruption. Since file has been staged, Staged=1
+        // FAIL because object exists but it is not a TTree
         Printf("FAIL %s Size: %lld EndpointUrl: %s Staged: 1 "
-          "Reason: tree_disappeared", turl.GetUrl(), file->GetSize(), endp_url);
+          "Reason: not_a_tree", turl.GetUrl(), file->GetSize(), endp_url);
 
       }
 
@@ -140,8 +154,8 @@ void Verify(const char *url, TString def_tree = "") {
 
       // FAIL because the specified tree does not exist: this is a weak
       // indicator of file corruption. Since file has been staged, Staged=1
-      Printf("FAIL %s Size: %lld EndpointUrl: %s Staged: 1 Reason: no_such_tree",
-        turl.GetUrl(), file->GetSize(), endp_url);
+      Printf("FAIL %s Size: %lld EndpointUrl: %s Staged: 1 "
+        "Reason: no_such_tree", turl.GetUrl(), file->GetSize(), endp_url);
 
     }
 
