@@ -12,8 +12,8 @@
 #include <unistd.h>
 #include <libgen.h>
 #include <signal.h>
-#include <pwd.h>
-#include <grp.h>
+//#include <pwd.h>
+//#include <grp.h>
 
 #include <fstream>
 #include <memory>
@@ -36,13 +36,13 @@
 #define AF_ERR_FORK 5
 #define AF_ERR_CWD 6
 #define AF_ERR_SETSID 7
-#define AF_ERR_DROP_IMPOSSIBLE 8
-#define AF_ERR_DROP_FAILED 9
-#define AF_ERR_DROP_INVALID 10
-#define AF_ERR_SUID_NORMAL_GID 11
-#define AF_ERR_SUID_NORMAL_UID 12
-#define AF_ERR_SUID_ROOT_GID 13
-#define AF_ERR_SUID_ROOT_UID 14
+//#define AF_ERR_DROP_IMPOSSIBLE 8
+//#define AF_ERR_DROP_FAILED 9
+//#define AF_ERR_DROP_INVALID 10
+//#define AF_ERR_SUID_NORMAL_GID 11
+//#define AF_ERR_SUID_NORMAL_UID 12
+//#define AF_ERR_SUID_ROOT_GID 13
+//#define AF_ERR_SUID_ROOT_UID 14
 #define AF_ERR_LIBEXEC 15
 #define AF_ERR_ARGS 16
 
@@ -990,7 +990,6 @@ int main(int argc, char *argv[]) {
   const char *log_file = NULL;
   const char *pid_file = NULL;
   const char *log_level = NULL;
-  const char *drop_user = NULL;
   const char *libexec_path = NULL;
   bool daemonize = false;
 
@@ -998,10 +997,11 @@ int main(int argc, char *argv[]) {
 
   // c <config>
   // l <logfile>
-  // b fork to background
-  // p <pidfile>
+  // b --> fork to background
   // d <debug|low|normal|high|urgent> --> log level
-  while ((c = getopt(argc, argv, ":c:l:p:bu:d:e:")) != -1) {
+  // p <pidfile>
+  // e <libexec_path>
+  while ((c = getopt(argc, argv, ":c:l:p:bd:e:")) != -1) {
 
     switch (c) {
       case 'c': config_file = optarg; break;
@@ -1009,7 +1009,6 @@ int main(int argc, char *argv[]) {
       case 'p': pid_file = optarg; break;
       case 'd': log_level = optarg; break;
       case 'b': daemonize = true; break;
-      case 'u': drop_user = optarg; break;
       case 'e': libexec_path = optarg; break;
     }
 
@@ -1077,51 +1076,7 @@ int main(int argc, char *argv[]) {
   write_pidfile(pid, pid_file);
   af::log::ok(af::log_level_normal, "afdsmgrd started with pid=%d", pid);
 
-  // Drop current effective user to an unprivileged one
-  if (drop_user) {
-
-    if (geteuid() != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "You cannot drop privileges to user \"%s\" if you are not root",
-        drop_user);
-      return AF_ERR_DROP_IMPOSSIBLE;
-    }
-
-    struct passwd *pwd = getpwnam(drop_user);
-    if (pwd) {
-      // See http://stackoverflow.com/questions/3357737/dropping-root-privileges
-      if ((setegid(pwd->pw_gid) == 0) && (seteuid(pwd->pw_uid) == 0)) {
-        struct group *grp = getgrgid(pwd->pw_gid);
-        af::log::ok(af::log_level_urgent,
-          "Dropped privileges to user \"%s\" (%d), group \"%s\" (%d)",
-          drop_user, pwd->pw_uid, grp->gr_name, pwd->pw_gid);
-        //toggle_suid(true);  // makes toggle_suid() calls effective
-      }
-      else {
-        af::log::fatal(af::log_level_urgent,
-          "Failed to drop privileges to user \"%s\"", drop_user);
-        return AF_ERR_DROP_FAILED;
-      }
-    }
-    else {
-      af::log::fatal(af::log_level_urgent,
-        "Can't become user \"%s\" because it appears to not exist", drop_user);
-      return AF_ERR_DROP_INVALID;
-    }
-  }
-  else if (geteuid() == 0) {
-    // Running as root, privileges undropped
-    af::log::warning(af::log_level_urgent,
-      "Running as user root: this is potentially dangerous");
-  }
-  else {
-    // Running as unprivileged, privileges undropped
-    struct passwd *pwd = getpwuid(geteuid());
-    af::log::warning(af::log_level_urgent,
-      "Running as unprivileged user \"%s\": this may prevent dataset writing",
-      pwd->pw_name);
-  }
-
+  // Configuration file is mandatory
   if (!config_file) {
     af::log::fatal(af::log_level_urgent, "No config file given (use -c)");
     return AF_ERR_CONFIG;
@@ -1144,6 +1099,7 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_quit_callback);
   signal(SIGINT, signal_quit_callback);
 
+  // All the processing goes here
   main_loop(config);
 
   return 0;
