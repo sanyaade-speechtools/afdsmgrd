@@ -2533,8 +2533,8 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
     }
   }
   else {
-    // Parse the pass string: if it is a number, prepend "pass"
-    if (pass.IsDigit()) pass.Prepend("pass");
+    // Parse the pass string: if it starts with a number, prepend "pass"
+    if ((pass[0] >= '0') && (pass[0] <= '9')) pass.Prepend("pass");
 
     // Data
     basePath = Form("/alice/data/%d/%s/<RUN9>/ESDs/%s", year, period.Data(),
@@ -2590,7 +2590,7 @@ void afDataSetQuick(Bool_t sim = kFALSE, TString period = "LHC10h",
   if (!sim) {
 
     // Data has passes: append pass number to the end of dataset name
-    TPMERegexp passRe("^([a-zA-Z]*)pass([0-9]+)$");
+    TPMERegexp passRe("^([a-zA-Z]*)pass([0-9]+.*)$");
     if (passRe.Match(pass) == 3) {
       TString passAppended;
       passAppended.Form("_%sp%s", passRe[1].Data(), passRe[2].Data());
@@ -2662,7 +2662,7 @@ void afDataSetWizard() {
 
   // Pass?
   if (!sim) {
-    pass = _afGetLine("Pass (e.g., 1, pass1, 1_HLT, pass1_HLT)?");
+    pass = _afGetLine("Pass (e.g., 1, pass1, 1_HLT, pass1_HLT, cpass1...)?");
   }
 
   // Options?
