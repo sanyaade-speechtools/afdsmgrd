@@ -12,8 +12,12 @@ set PMASTER=pmaster.to.infn.it
 # Standard PROOF dataset source
 xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw=1
 
-# Originating URL will be converted to redirector's according to this scheme
+# Originating URL will be converted to a destination URL (e.g, a redirector
+# URL) according to the following regular expressions: the first one that
+# matches is used. Regexs are tested in the same order they appear here.
+# Apart from the first one, additional regexs are numbered from 2 to 4
 verifier.urlregex alien://(.*)$ root://$PMASTER/$1
+#dsmgrd.urlregex2 root://myserver.cern.ch/(.*)$ root://$PMASTER/$1
 
 # Sleep between each queue check
 verifier.sleepsecs 6
