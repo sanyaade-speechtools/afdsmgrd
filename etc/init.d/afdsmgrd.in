@@ -75,6 +75,34 @@ if [ "$CF_FOUND" == 0 ]; then
   exit 1
 fi
 
+# Check for screen and inotifywait (required!)
+Utils=( screen inotifywait )
+for U in "${Utils[@]}" ; do
+  which "$U" &> /dev/null
+  if [ $? != 0 ] ; then
+    echo "Required program $U not found in \$PATH!" >&2
+    CmdNotFound=1
+  fi
+done
+if [ "$CmdNotFound" == 1 ] ; then
+  echo "PATH in this context: $PATH" >&2
+  echo 'Cannot start afdsmgrd.'
+  exit 1
+fi
+
+# Check if user and group exist
+id "$AFDSMGRD_USER" &> /dev/null
+if [ $? != 0 ] ; then
+  echo "User $AFDSMGRD_USER does not exist, check $CF" >&2
+  exit 2
+fi
+
+getent group 2> /dev/null | grep -q "^${AFDSMGRD_GROUP}:"
+if [ $? != 0 ] ; then
+  echo "Group $AFDSMGRD_GROUP does not exist, check $CF" >&2
+  exit 2
+fi
+
 # Full path of program
 export PROG="$AFDSMGRD_PROG"
 
@@ -85,7 +113,7 @@ export PROG="$AFDSMGRD_PROG"
 export BASEPROG=`basename "$PROG"`
 
 # Grace time before "kill -9", in seconds
-export GRACEKILL_SEC=20
+export GRACEKILL_SEC=45
 
 #
 # Functions
@@ -178,7 +206,8 @@ function LaunchDaemon() {
   cat > $Tmp <<EOF
 #!/bin/sh
 export LD_LIBRARY_PATH="$ROOTSYS/lib:$AFDSMGRD_LIBS:$LD_LIBRARY_PATH"
-"$AFDSMGRD_PROG" -b -p "$AFDSMGRD_PIDFILE" -c "$AFDSMGRD_CONF" \\
+"$AFDSMGRD_PROG" \\
+  -p "$AFDSMGRD_PIDFILE" -c "$AFDSMGRD_CONF" \\
   -d "$AFDSMGRD_LOGLEVEL" \\
   -l "$AFDSMGRD_LOGFILE" -e "$AFDSMGRD_LIBEXEC"
 EOF
@@ -190,18 +219,20 @@ EOF
 
   if [ "$Whoami" == "$AFDSMGRD_USER" ]; then
     # We are the daemon's user
-    $Tmp
+    screen -dmS afdsmgrd $Tmp
     RetVal=$?
   elif [ "$Whoami" == 'root' ]; then
     # We are root: daemon starts and stays unprivileged
     chown $AFDSMGRD_USER $Tmp
-    su $AFDSMGRD_USER -c $Tmp
+    su $AFDSMGRD_USER -c "screen -dmS afdsmgrd $Tmp"
     RetVal=$?
   else
     # User not eligible to run daemon!
     RetVal=1
   fi
 
+  # The sleep is for the "screen" workaround
+  sleep 1
   rm -f $Tmp
 
   return $RetVal
