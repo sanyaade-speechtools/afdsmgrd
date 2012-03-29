@@ -13,6 +13,7 @@
 #include <pwd.h>
 #include <grp.h>
 
+#include <sstream>
 #include <fstream>
 #include <memory>
 #include <list>
@@ -50,7 +51,8 @@ typedef struct {
   long max_failures;         // verifier.maxfailures
   std::string verify_cmd;    // verifier.verifycmd
   std::string erase_cmd;     // verifier.erasecmd
-  af::regex url_regex;       // verifier.urlregex
+  af::regex **url_regexs;    // verifier.urlregex[n]
+  unsigned int n_url_regexs;
   std::string *ds_path;
 
 } verifier_vars_t;
@@ -95,8 +97,9 @@ void config_callback_urlregex(const char *name, const char *val, void *args) {
     else {
       *subst = '\0';
       subst++;
-      af::log::info(af::log_level_low, "Regex to match: <%s>", ptn);
-      af::log::info(af::log_level_low, "Substitute pattern: <%s>", subst);
+      af::log::info(af::log_level_low, "Directive %s:", name);
+      af::log::info(af::log_level_low, ">> Match regex: <%s>", ptn);
+      af::log::info(af::log_level_low, ">> Substitute pattern: <%s>", subst);
       url_regex->set_regex_subst(ptn, subst);
     }
     free(ptn);
@@ -220,10 +223,16 @@ void process_datasets_enqueue(af::opQueue &opq, af::dataSetList &dsm,
       if (!orig_url) continue;  // no URLs in entry (should not happen)
 
       const char *inp_url = orig_url->GetUrl();
-      const char *out_url = vars.url_regex.subst(inp_url);
+      const char *out_url = NULL;
 
+      // Find the first matching regex for URL substitution
+      for (unsigned int i=0; i<vars.n_url_regexs; i++) {
+        out_url = vars.url_regexs[i]->subst(inp_url);
+        if (out_url) break;
+      }
+
+      // If no regex is found, orig URL is unsupported: skip it
       if (!out_url) continue;
-      // orig_url not matched regex (i.e., originating URL is unsupported)
 
       //
       // Redirector's URL is re-added
@@ -587,10 +596,16 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
       if (!orig_url) continue;  // no URLs in entry (should not happen)
 
       const char *inp_url = orig_url->GetUrl();
-      const char *out_url = vars.url_regex.subst(inp_url);
+      const char *out_url = NULL;
 
+      // Find the first matching regex for URL substitution
+      for (unsigned int i=0; i<vars.n_url_regexs; i++) {
+        out_url = vars.url_regexs[i]->subst(inp_url);
+        if (out_url) break;
+      }
+
+      // If no regex is found, orig URL is unsupported: skip it
       if (!out_url) continue;
-      // orig_url not matched regex (i.e., originating URL is unsupported)
 
       //
       // At this point, we have redir URL on out_url
@@ -859,8 +874,6 @@ void main_loop(af::config &config, verifier_options_t &opts) {
   // Bind directives to either variables or special callbacks
   config.bind_callback("xpd.datasetsrc", &config_callback_datasetsrc,
     dsm_cbk_args);
-  config.bind_callback("verifier.urlregex", &config_callback_urlregex,
-    &vars.url_regex);
   config.bind_int("verifier.sleepsecs", &vars.sleep_secs, 30, 2, AF_INT_MAX);
   config.bind_int("verifier.scandseveryloops", &vars.scan_ds_every_loops, 10, 1,
     AF_INT_MAX);
@@ -870,6 +883,29 @@ void main_loop(af::config &config, verifier_options_t &opts) {
   config.bind_text("verifier.erasecmd", &vars.erase_cmd, "/bin/false");
   config.bind_int("verifier.maxfailures", &vars.max_failures, 0, 0,
     1000);
+
+  // Initializes regular expression objects for URL substitutions and their
+  // respective callbacks
+  vars.n_url_regexs = AF_NUM_EXTRA_REGEX + 1;
+  vars.url_regexs = new af::regex*[vars.n_url_regexs];
+  std::stringstream direc_name;
+  af::log::info(af::log_level_debug, "Supporting maximum %u URL regexs",
+    vars.n_url_regexs);
+  for (unsigned int i=0; i<vars.n_url_regexs; i++) {
+    vars.url_regexs[i] = new af::regex();
+
+    direc_name.clear();
+    direc_name.str("");
+    direc_name << "verifier.urlregex";
+
+    if (i > 0) direc_name << (i+1);
+
+    config.bind_callback(direc_name.str().c_str(), &config_callback_urlregex,
+      vars.url_regexs[i]);
+
+    af::log::ok(af::log_level_debug, "URL regex #%u bound to directive %s",
+      i, direc_name.str().c_str());
+  }
 
   //
   // Put files in queue, reading them from the datasets
@@ -990,6 +1026,10 @@ void main_loop(af::config &config, verifier_options_t &opts) {
 
   // Merge datasets
   if (opts.merge) merge_datasets(dsm, vars);
+
+  // Delete URL regexs
+  for (unsigned int i=0; i<vars.n_url_regexs; i++) delete vars.url_regexs[i];
+  delete [] vars.url_regexs;
 
   // Unbind directives to avoid disasters for memory destructed past the end of
   // this function

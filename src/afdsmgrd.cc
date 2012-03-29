@@ -47,12 +47,6 @@
 #define AF_ERR_LIBEXEC 15
 #define AF_ERR_ARGS 16
 
-/** Number of extra regular expressions supported in configuration file, in
- *  addition to the first one (dsmgrd.urlregex). Extra regular expressions are
- *  named from 2 on (dsmgrd.urlregex.2, dsmgrd.urlregex.3...)
- */
-#define AF_NUM_EXTRA_REGEX 4
-
 /** Program name that goes in version banner.
  */
 #define AF_PROG_NAME "afdsmgrd"

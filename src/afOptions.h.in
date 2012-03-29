@@ -34,4 +34,10 @@
   " -- by Dario Berzano <dario.berzano@cern.ch> ***"
 #endif
 
+/** Number of extra regular expressions supported in configuration file, in
+ *  addition to the first one (dsmgrd.urlregex). Extra regular expressions are
+ *  named from 2 on (dsmgrd.urlregex.2, dsmgrd.urlregex.3...)
+ */
+#define AF_NUM_EXTRA_REGEX 4
+
 #endif

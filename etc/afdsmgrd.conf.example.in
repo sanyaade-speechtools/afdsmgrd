@@ -29,6 +29,13 @@ xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw
 # submatch did not match anything, it will be just an empty string
 dsmgrd.urlregex alien://(.*)$ root://$PMASTER/$1
 
+# Additional matching regular expressions (up to 4) can be specified using the
+# same syntax; numbering of additional regexs starts from 2. Regexs are used
+# in the same order they appear here: if a regex does not match (or is not set)
+# the next one is tested
+#dsmgrd.urlregex2 root://myserver.cern.ch/(.*)$ root://$PMASTER/$1
+# ...up to dsmgrd.urlregex4
+
 # At each loop the transfer queue is checked: sleep time between each loop, in
 # seconds
 dsmgrd.sleepsecs 30
