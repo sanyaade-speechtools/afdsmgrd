@@ -16,6 +16,7 @@
 //#include <grp.h>
 
 #include <fstream>
+#include <sstream>
 #include <memory>
 #include <list>
 
@@ -46,6 +47,12 @@
 #define AF_ERR_LIBEXEC 15
 #define AF_ERR_ARGS 16
 
+/** Number of extra regular expressions supported in configuration file, in
+ *  addition to the first one (dsmgrd.urlregex). Extra regular expressions are
+ *  named from 2 on (dsmgrd.urlregex.2, dsmgrd.urlregex.3...)
+ */
+#define AF_NUM_EXTRA_REGEX 4
+
 /** Program name that goes in version banner.
  */
 #define AF_PROG_NAME "afdsmgrd"
@@ -60,7 +67,8 @@ typedef struct {
   long max_stage_retries;    // dsmgrd.corruptafterfails
   long cmd_timeout_secs;     // dsmgrd.cmdtimeoutsecs
   std::string stage_cmd;     // dsmgrd.stagecmd
-  af::regex url_regex;       // dsmgrd.urlregex
+  af::regex **url_regexs;    // dsmgrd.urlregex[n]
+  unsigned int n_url_regexs;
   af::notify *notif;
 
 } afdsmgrd_vars_t;
@@ -146,8 +154,9 @@ void config_callback_urlregex(const char *name, const char *val, void *args) {
     else {
       *subst = '\0';
       subst++;
-      af::log::info(af::log_level_low, "Regex to match: <%s>", ptn);
-      af::log::info(af::log_level_low, "Substitute pattern: <%s>", subst);
+      af::log::info(af::log_level_low, "Directive %s:", name);
+      af::log::info(af::log_level_low, ">> Match regex: <%s>", ptn);
+      af::log::info(af::log_level_low, ">> Substitute pattern: <%s>", subst);
       url_regex->set_regex_subst(ptn, subst);
     }
     free(ptn);
@@ -264,88 +273,6 @@ void config_callback_notify(const char *name, const char *val, void *args) {
   }
 
 }
-
-/** Callback called when directive dsmgrd.cmdtimeoutsecs changes. Remember that
- *  val is NULL if no value was specified (i.e., directive is missing).
- */
-/*void config_callback_timeout(const char *name, const char *val, void *args) {
-
-  cmdq_t *cmdq = (cmdq_t *)args;
-
-  af::log::info(af::log_level_urgent, "CALLBACK val=<%lx> args=<%lx>",
-    val, args);
-
-  for (cmdq_t::iterator it=cmdq->begin(); it!=cmdq->end(); it++) {
-    af::log::info(af::log_level_urgent, "CALLBACK -- element");
-  }
-
-}*/
-
-/** Toggles between unprivileged user and super user. Saves the unprivileged UID
- *  and GID inside static variables.
- *
- *  By default, calls to toggle_suid() are ineffective. To enable suid toggling
- *  one must first call toggle_suid(true).
- *
- *  Group must be changed before user! See [1] for further details.
- *
- *  [1] http://stackoverflow.com/questions/3357737/dropping-root-privileges
- */
-/*void toggle_suid(bool enable = false) {
-
-  static bool enabled = false;
-  static uid_t unp_uid = 0;
-  static gid_t unp_gid = 0;
-
-  if (enable) {
-    enabled = true;
-    return;
-  }
-
-  if (!enabled) return;
-
-  if (geteuid() == 0) {
-
-    // Revert to normal user
-    if (setegid(unp_gid) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to revert to unprivileged gid %d", unp_gid);
-      exit(AF_ERR_SUID_NORMAL_GID);
-    }
-    else if (seteuid(unp_uid) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to revert to unprivileged uid %d", unp_uid);
-      exit(AF_ERR_SUID_NORMAL_UID);
-    }
-    else {
-      af::log::ok(af::log_level_low, "Reverted to unprivileged uid=%d gid=%d",
-        unp_uid, unp_gid);
-    }
-
-  }
-  else {
-
-    // Try to become root
-    unp_uid = geteuid();
-    unp_gid = getegid();
-
-    if (setegid(0) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to escalate to privileged gid");
-      exit(AF_ERR_SUID_ROOT_GID);
-    }
-    else if (seteuid(0) != 0) {
-      af::log::fatal(af::log_level_urgent,
-        "Failed to escalate to privileged uid");
-      exit(AF_ERR_SUID_ROOT_UID);
-    }
-    else {
-      af::log::ok(af::log_level_low, "Superuser privileges obtained");
-    }
-
-  }
-
-}*/
 
 /** Transfer queue is processed: check if slots are freed, then insert elements
  *  from opq in free slots of cmdq. Handle successes and failures by syncing
@@ -564,10 +491,16 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
       if (!orig_url) continue;  // no URLs in entry (should not happen)
 
       const char *inp_url = orig_url->GetUrl();
-      const char *out_url = vars.url_regex.subst(inp_url);
+      const char *out_url = NULL;
 
+      // Find the first matching regex for URL substitution
+      for (unsigned int i=0; i<vars.n_url_regexs; i++) {
+        out_url = vars.url_regexs[i]->subst(inp_url);
+        if (out_url) break;
+      }
+
+      // If no regex is found, orig URL is unsupported: skip it
       if (!out_url) continue;
-      // orig_url not matched regex (i.e., originating URL is unsupported)
 
       if ((redir_url) && (strcmp(out_url, redir_url->GetUrl()) == 0)) {
 
@@ -859,10 +792,31 @@ void main_loop(af::config &config) {
     1000);
   config.bind_int("dsmgrd.cmdtimeoutsecs", &vars.cmd_timeout_secs, 0, 1,
     AF_INT_MAX);  // 0 == timeout off
-  config.bind_callback("dsmgrd.urlregex", &config_callback_urlregex,
-    &vars.url_regex);
   config.bind_callback("dsmgrd.notifyplugin", &config_callback_notify,
     notif_cbk_args);
+
+  // Initializes regular expression objects for URL substitutions and their
+  // respective callbacks
+  vars.n_url_regexs = AF_NUM_EXTRA_REGEX + 1;
+  vars.url_regexs = new af::regex*[vars.n_url_regexs];
+  std::stringstream direc_name;
+  af::log::info(af::log_level_debug, "Supporting maximum %u URL regexs",
+    vars.n_url_regexs);
+  for (unsigned int i=0; i<vars.n_url_regexs; i++) {
+    vars.url_regexs[i] = new af::regex();
+
+    direc_name.clear();
+    direc_name.str("");
+    direc_name << "dsmgrd.urlregex";
+
+    if (i > 0) direc_name << (i+1);
+
+    config.bind_callback(direc_name.str().c_str(), &config_callback_urlregex,
+      vars.url_regexs[i]);
+
+    af::log::ok(af::log_level_debug, "URL regex #%u bound to directive %s",
+      i, direc_name.str().c_str());
+  }
 
   // Initial value for timeout ("manual" callback, see later on)
   vars.cmd_timeout_secs = 0;
@@ -968,6 +922,10 @@ void main_loop(af::config &config) {
     }
 
   }
+
+  // Delete URL regexs
+  for (unsigned int i=0; i<vars.n_url_regexs; i++) delete vars.url_regexs[i];
+  delete [] vars.url_regexs;
 
   // Delete elements still in command queue
   for (cmdq_t::iterator it=cmdq.begin(); it!=cmdq.end(); it++) delete *it;
