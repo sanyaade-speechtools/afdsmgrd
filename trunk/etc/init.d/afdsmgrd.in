@@ -76,7 +76,12 @@ if [ "$CF_FOUND" == 0 ]; then
 fi
 
 # Check for screen and inotifywait (required!)
-Utils=( screen inotifywait )
+if [ `whoami` == 'root' ] ; then
+  # inotifywait required only if using afdsiperm, which can be run by root only
+  Utils=( screen inotifywait )
+else
+  Utils=( screen )
+fi
 for U in "${Utils[@]}" ; do
   which "$U" &> /dev/null
   if [ $? != 0 ] ; then
