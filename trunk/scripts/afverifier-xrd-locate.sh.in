@@ -29,16 +29,10 @@ done
 export LD_LIBRARY_PATH="$AFDSMGRD_EXTCMD_LIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
 export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTCMD_PATH:$PATH"
 
-export URL="$1"
-
-export ZIPCHECK=1
+# Parameters: URL and "nozipcheck"
+URL="$1"
+ZIPCHECK=1
 [ "$2" == "--nozipcheck" ] && ZIPCHECK=0
-
-# URL parts
-export HOSTPORT
-export FILENAME
-export REMAIN
-export CLEANURL
 
 # Split into host:port, filename and anchor; note that queries (?...) are not
 # supported!
@@ -53,7 +47,7 @@ else
 fi
 
 # Launch xrd
-export TMPOUT=$(mktemp /tmp/.afverifier-xrd-locate-XXXXX)
+TMPOUT=$(mktemp /tmp/.afverifier-xrd-locate-XXXXX)
 xrd $HOSTPORT locateall $FILENAME > $TMPOUT 2>&1
 #echo $?
 
@@ -64,10 +58,9 @@ if [ $? != 0 ]; then
 fi
 
 # Get Location: line
-export LOCATION=$(cat $TMPOUT | grep "Location: " | head -n1)
+LOCATION=$(cat $TMPOUT | grep "Location: " | head -n1)
 
 # Parse location server
-export ENDP_URL
 if [[ $LOCATION =~ Location:\\s\'(.*)\' ]]; then
 
   ENDP_URL="root://${BASH_REMATCH[1]}/${FILENAME}"
