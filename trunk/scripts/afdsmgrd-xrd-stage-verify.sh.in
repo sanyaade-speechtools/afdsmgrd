@@ -40,9 +40,12 @@ done
 export LD_LIBRARY_PATH="$AFDSMGRD_EXTCMD_LIBS:$ROOTSYS/lib:$LD_LIBRARY_PATH"
 export PATH="$ROOTSYS/bin:$AFDSMGRD_EXTCMD_PATH:$PATH"
 
-# Arguments: first one is the url to stage, second is the tree name (opt.)
-export URL="$1"
-export TREE="$2"
+# Arguments: first one is the URL to stage, second is the tree name (opt.)
+URL="$1"
+TREE="$2"
+
+# Disable ROOT history (http://root.cern.ch/download/doc/2GettingStarted.pdf)
+export ROOT_HIST=0
 
 # Split URL into host:port, filename and anchor; note that queries (?...) aren't
 # supported!
