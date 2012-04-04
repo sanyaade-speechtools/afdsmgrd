@@ -897,13 +897,36 @@ vector<Int_t> *_afExpandRunList(TString runList) {
   return runNumsPtr;
 }
 
+/** Tells whether the given TFileInfo matches at least one of the URLs stored
+ *  in the given TList of files (which is a TList of TObjString). Function is
+ *  protected against misuse of NULL pointers.
+ */
+Bool_t _afFileInfoMatchList(TFileInfo *fi, TList *listOfFiles) {
+  if ((fi == NULL) || (listOfFiles == NULL)) return kFALSE;
+
+  TIter i(listOfFiles);
+  TObjString *os;
+  TString *url;
+
+  while ( (os = dynamic_cast<TObjString *>(i.Next())) != NULL ) {
+    url = &(os->String());
+    if ( fi->FindByUrl(url->Data()) ) return kTRUE;
+  }
+
+  return kFALSE;
+} 
+
 /** See function afMarkUrlAs() for synopsis. This function processes a single
  *  TFileCollection in memory, while afMarkUrlAs() processes a dataset or a list
- *  of datasets by invoking this function.
+ *  of datasets by invoking this function. The first parameter might be "*" for
+ *  all files, or a single file name; if NULL, each TFileInfo is matched against
+ *  each file in the listOfFiles TList.
  */
-Int_t _afSingleMarkUrlAs(const char *fileUrl, TString bits,
+Int_t _afMarkUrlOfCollectionAs(const char *fileUrl, TString bits,
   TFileCollection *fc, TString filterBits = "SsCc",
-  TString options = "") {
+  TString options = "", TList *listOfFiles = NULL) {
+
+  if ((fileUrl == NULL) && (listOfFiles == NULL)) return 0;
 
   // Parse options
   Bool_t keepOnlyLastUrl = kFALSE;
@@ -940,8 +963,7 @@ Int_t _afSingleMarkUrlAs(const char *fileUrl, TString bits,
   }
 
   Bool_t allFiles = kFALSE;
-
-  if (strcmp(fileUrl, "*") == 0) allFiles = kTRUE;
+  if ((fileUrl) && strcmp(fileUrl, "*") == 0) allFiles = kTRUE;
 
   // How to mark URLs: parse string and check for incongruences
   Bool_t bS = kFALSE;
@@ -1005,7 +1027,10 @@ Int_t _afSingleMarkUrlAs(const char *fileUrl, TString bits,
 
   while ( (fi = dynamic_cast<TFileInfo *>(j.Next())) ) {
 
-    if ((allFiles) || (fi->FindByUrl(fileUrl))) {
+    if ( allFiles ||
+         ( fileUrl && fi->FindByUrl(fileUrl) ) ||
+         ( listOfFiles && _afFileInfoMatchList(fi, listOfFiles) )
+       ) {
 
       Bool_t isC = fi->TestBit(TFileInfo::kCorrupted);
       Bool_t isS = fi->TestBit(TFileInfo::kStaged);
@@ -1453,6 +1478,10 @@ void afDataSetInfo(const char *dsUri, Bool_t checkStaged = kFALSE) {
  *
  *  If "*" is used as URL, it applies to every entry in the dataset.
  *
+ *  It is possible to pass a list of URLs written one by line in a text file, by
+ *  passing as URL the string ">/path/to/list_of_urls.txt". The file name after
+ *  the major (">") sign will be used as list of URLs.
+ *
  *  Available options may be separated by colons:
  *
  *   - keeplast : every URL in each TFileInfo is removed, but the last one
@@ -1477,6 +1506,33 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
   if (!_afProofMode()) mgr = _afCreateDsMgr();
 
+  // List of files in a text file
+  TList *listOfFiles = NULL;
+  if (fileUrl[0] == '>') {
+    Printf("Reading list of files %s...", &fileUrl[1]);
+    ifstream ifs(&fileUrl[1]);
+    if (!ifs) {
+      Printf("Can't read list of files, aborting");
+      return;
+    }
+
+    TString buf;
+    listOfFiles = new TList();
+    listOfFiles->SetOwner(kTRUE);
+    while (ifs >> buf) listOfFiles->Add( new TObjString(buf.Data()) );
+
+/*
+    Printf("Test with something non-existing? 0x%08x",
+      listOfFiles->FindObject(""));
+
+    Printf("Test with something plausible? 0x%08x",
+      listOfFiles->FindObject("alien:///alice/cern.ch/user/g/ginnocen/PhiNoPID_LHC10b_CutK0_Final/output/000/226/AnalysisResults.root"));
+
+    Printf("EXITING FOR DBG");
+    return;
+*/
+  }
+
   TList *listOfDs = _afGetListOfDs(dsMask);
   Int_t regErrors = 0;
   TIter i(listOfDs);
@@ -1491,7 +1547,16 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     if (mgr) fc = mgr->GetDataSet(dsUri.Data());
     else fc = gProof->GetDataSet(dsUri.Data());
 
-    nChanged = _afSingleMarkUrlAs(fileUrl, bits, fc, filterBits, options);
+    if (listOfFiles) {
+      // Passing TList of files
+      nChanged = _afMarkUrlOfCollectionAs(NULL, bits, fc, filterBits, options,
+        listOfFiles);
+    }
+    else {
+      // Passing fileUrl
+      nChanged = _afMarkUrlOfCollectionAs(fileUrl, bits, fc, filterBits,
+        options);
+    }
 
     if (nChanged < 0) break;
     else if (nChanged > 0) {
@@ -1503,6 +1568,8 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
 
   if (mgr) delete mgr;
   delete listOfDs;
+
+  if (listOfFiles) delete listOfFiles;  // owner of contents
 
   if (regErrors > 0) {
     Printf("%d error(s) writing back datasets encountered, check permissions",
@@ -2860,7 +2927,7 @@ void afCloneDataSetsToAliEn(TString dsMask, Bool_t overwrite = kFALSE) {
     }
 
     // Dataset is modified in memory
-    Int_t nChanged = _afSingleMarkUrlAs("*", "S", fc, "", "keeplast");
+    Int_t nChanged = _afMarkUrlOfCollectionAs("*", "S", fc, "", "keeplast");
     if (nChanged < 0) {
       delete fc;
       continue;
@@ -3052,7 +3119,8 @@ void afCloneDataSetsFromAliEn(TString dsMask, TString options = "") {
 
     // Mark all files as Staged, do not touch Corrupted bit, keep only last URL
     // and add redirector's URL as per current settings
-    Int_t nChanged = _afSingleMarkUrlAs("*", "S", fc, "", "keeplast:redir");
+    Int_t nChanged = _afMarkUrlOfCollectionAs("*", "S", fc, "",
+      "keeplast:redir");
     if (nChanged < 0) {
       delete fc;
       continue;
