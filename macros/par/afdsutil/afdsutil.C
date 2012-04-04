@@ -1521,16 +1521,7 @@ void afMarkUrlAs(const char *fileUrl, TString bits = "",
     listOfFiles->SetOwner(kTRUE);
     while (ifs >> buf) listOfFiles->Add( new TObjString(buf.Data()) );
 
-/*
-    Printf("Test with something non-existing? 0x%08x",
-      listOfFiles->FindObject(""));
-
-    Printf("Test with something plausible? 0x%08x",
-      listOfFiles->FindObject("alien:///alice/cern.ch/user/g/ginnocen/PhiNoPID_LHC10b_CutK0_Final/output/000/226/AnalysisResults.root"));
-
-    Printf("EXITING FOR DBG");
-    return;
-*/
+    ifs.close();
   }
 
   TList *listOfDs = _afGetListOfDs(dsMask);
