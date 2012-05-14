@@ -85,6 +85,7 @@ namespace af {
 
       struct timeval start_tv;
       struct timeval now_tv;
+      struct stat    buf_stat;
 
       unsigned long timeout_secs;
       unsigned long stop_grace_secs;
@@ -95,6 +96,8 @@ namespace af {
       static const char *errf_pref;
       static const char *outf_pref;
       static const char *pidf_pref;
+
+      static bool make_temp_path();
 
   };
 
