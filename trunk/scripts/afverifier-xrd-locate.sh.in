@@ -80,27 +80,64 @@ if [[ $LOCATION =~ Location:\\s\'(.*)\' ]]; then
     ERR_ZIP=42
     ERR_XRD=43
 
+    # ROOT script to retrieve the local path (if file is available locally)
+    ROOTLOCATE=$(cat <<EOF
+{
+  TUrl *src = new TUrl(\"$ENDP_URL$REMAIN\");
+  TString a = src->GetAnchor();
+  TString o = src->GetOptions();
+  if (!a.IsNull()) {
+    o.Prepend(Form(\"ZIP=%s&\", a.Data()));
+    src->SetOptions(o.Data());
+    src->SetAnchor(\"\");
+  }
+  TFile *f = TFile::Open( src->GetUrl() );
+  TUrl *u = f->GetEndpointUrl();
+  if (strcmp(u->GetProtocol(), \"file\") == 0)
+    Printf(\"LocalPath: %s\", u->GetFile());
+}
+EOF)
+
     # Script to execute on the remote host, kept inside a variable
     CHECKSCRIPT=$(cat <<EOF
 #!/bin/bash
-echo "Inside check script running on \$(hostname -f)"
+echo "Check script running on \$(hostname -f)"
+
 export PATH="$PATH"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
-TMPXRD=\$(mktemp /tmp/afverifier-xrd-zip-test.XXXXX)
+
+TMPRLOC=\$(mktemp /tmp/afverifier-xrd-rloc.C)
+echo "$ROOTLOCATE" > \$TMPRLOC
+LOCALPATH=\$(root -l -b -q \$TMPRLOC | grep LocalPath: | awk '{ print \$2 }')
+rm -f \$TMPRLOC
+
+# Temporary zipfile
+TMPXRD=\$(mktemp /var/tmp/afverifier-xrd-zip-test.XXXXX)
 RETVAL=0
-xrdcp -f "$ENDP_URL" "\$TMPXRD"
-if [ \$? == 0 ] && [ -s \$TMPXRD ]; then
-  zip -T "\$TMPXRD" || RETVAL=$ERR_ZIP
+
+if [ \"$LOCALPATH\" != '' ]; then
+  # Check zip on local filesystem
+  ln -nfs "\$LOCALPATH" \$TMPXRD
 else
-  RETVAL=$ERR_XRD
+  # Transfer locally with xrdcp then check
+  xrdcp -f "$ENDP_URL" "\$TMPXRD" || RETVAL=$ERR_XRD
 fi
-rm -f "\$TMPXRD"
+
+if [ \$RETVAL == 0 ]; then
+  ls -l \$TMPXRD
+  zip -T \$TMPXRD || RETVAL=$ERR_ZIP
+fi
+rm -f \$TMPXRD
+
 exit \$RETVAL
 EOF
 )
 
     # Get the remote host
-    REMOTE_HOST=$(echo ${BASH_REMATCH[1]}|cut -d: -f1)
+    REMOTE_HOST=$(echo ${BASH_REMATCH[1]} | cut -d: -f1)
+
+    # If it is an IP, convert it to hostname
+    REMOTE_HOST=$(getent hosts $REMOTE_HOST | awk '{print $2}')
 
     # Do we have to perform SSH?
     if [ $REMOTE_HOST == $(hostname -f) ] ||
@@ -110,14 +147,14 @@ EOF
     then
 
       # No SSH needed: same machine
-      echo "--> Running check locally"
+      echo "--> Running check on this machine"
       echo "$CHECKSCRIPT" | bash
       RETVAL=$?
 
     else
 
       # SSH needed
-      echo "--> Running check remotely"
+      echo "--> Running check remotely via SSH on $REMOTE_HOST"
       echo "$CHECKSCRIPT" | ssh -oStrictHostKeyChecking=no $REMOTE_HOST
       RETVAL=$?
 
