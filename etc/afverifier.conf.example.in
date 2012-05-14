@@ -39,12 +39,14 @@ verifier.parallelverifies 800
 # 2) External script that wraps "xrd locateall" (way faster and lighter): it
 #    also performs a zipfile check directly on the server that has the file,
 #    avoiding useless network transfers, but SSH without password must be
-#    allowed
-verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL"
+#    allowed. Pass the xrootd namespace or prefix (oss.localroot) with option
+#    --xrd-prefix
+verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL" --xrd-prefix /pool/my/namespace
 #
-# 3) Same thing as 2) but without zip check. Note that --nozipcheck is the
-#    second argument and cannot be swapped with the first one
-#verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL" --nozipcheck
+# 3) Same thing as 2) but without zip check. Note that --no-zipcheck is the
+#    second argument and cannot be swapped with the first one. Namespace is not
+#    passed, so the default (/) will be used
+#verifier.verifycmd @DIR_LIBEXEC@/afverifier-xrd-locate.sh "$REDIRURL" --no-zipcheck
 
 # Command that performs the file removal on corrupted files, if requested by
 # the user on command line (-x)
