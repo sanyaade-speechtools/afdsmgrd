@@ -20,7 +20,8 @@ const char *extCmd::pidf_pref = "pid";
 
 /** Constructor. The instance_id is chosen automatically if not given or if
  *  equal to zero. An exception is thrown if helper path or temporary path are
- *  not set: the exception is fatal if not caught.
+ *  not set, or if temporary path cannot be created: the exception is fatal if
+ *  not caught.
  */
 extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   cmd(exec_cmd), id(instance_id), ok(false), already_started(false), pid(-1),
@@ -29,14 +30,17 @@ extCmd::extCmd(const char *exec_cmd, unsigned int instance_id) :
   if ((helper_path.empty()) || (temp_path.empty()))
     throw std::runtime_error("Helper path and temp path must be defined");
 
+  // Create temp path each time: it might have been deleted by tmpwatch...
+  if (!make_temp_path())
+    throw std::runtime_error("ctor(): impossible to create temporary path");
+
   // Choose a random id (avoiding collisions)
   if (id == 0) {
-    struct stat file_info;
     while (true) {
       if ((id = rand()) == 0) continue;
       snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u", temp_path.c_str(),
         pidf_pref, id);
-      if (stat(strbuf, &file_info) != 0) break;
+      if (stat(strbuf, &buf_stat) != 0) break;
     }
   }
 
@@ -77,6 +81,10 @@ int extCmd::run() {
     temp_path.c_str(), errf_pref, id,
     cmd.c_str());
 
+  // Create temp path each time: it might have been deleted by tmpwatch...
+  if (!make_temp_path())
+    throw std::runtime_error("run(): impossible to create temporary path");
+
   // Runs the program
   af::log::info(af::log_level_debug, "Wrapped external comand: %s", strbuf);
   gettimeofday(&start_tv, 0);
@@ -86,10 +94,9 @@ int extCmd::run() {
   // Gets the pid
   snprintf(strbuf, AF_EXTCMD_BUFSIZE, "%s/%s-%u",
     temp_path.c_str(), pidf_pref, id);
-  struct stat pidfile_info;
   while (true) {
     usleep(1000);  // sleeps 1/1000 of a second
-    if ((stat(strbuf, &pidfile_info) == 0) && (pidfile_info.st_size != 0))
+    if ((stat(strbuf, &buf_stat) == 0) && (buf_stat.st_size != 0))
       break;
   }
   std::ifstream pidfile(strbuf);  // TODO: throw except if pidf not readable
@@ -326,5 +333,20 @@ void extCmd::set_helper_path(const char *path) {
  */
 void extCmd::set_temp_path(const char *path) {
   temp_path = path;
-  mkdir(path, S_IRWXU|S_IRGRP|S_IXGRP);
+  if (!make_temp_path()) {
+    throw std::runtime_error("set_temp_path(): " \
+      "impossible to create temporary path");
+  }
+}
+
+/** Makes the temporary path: returns true on success (also if path exists),
+ *  false otherwise. If path is not set, it is considered as an error.
+ */
+bool extCmd::make_temp_path() {
+  static struct stat temp_stat;
+  if (temp_path.empty()) return false;
+  if (stat(temp_path.c_str(), &temp_stat) == 0) return true;
+  int r = mkdir (temp_path.c_str(), S_IRWXU|S_IRGRP|S_IXGRP);
+  if ((r == 0) || ((r != 0) && (errno == EEXIST))) return true;
+  return false;
 }
