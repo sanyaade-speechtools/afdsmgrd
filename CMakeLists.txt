@@ -117,6 +117,17 @@ if (NOT ApMon_DISABLED)
 
 endif ()
 
+# Extra include paths to add: useful when building from within ROOT with CMake,
+# in case `root-config --incdir` is not yet created
+if (DEFINED EXTRA_INCDIR)
+  string(REPLACE ":" ";" EXTRA_INCDIR_List ${EXTRA_INCDIR})
+  message (STATUS "Extra include paths appended:")
+  foreach (An_EXTRA_INCDIR ${EXTRA_INCDIR_List})
+    message (STATUS " * ${An_EXTRA_INCDIR}")
+    include_directories (${An_EXTRA_INCDIR})
+  endforeach ()
+endif ()
+
 #
 # Variables for the main destinations of "install" target, and for substitutions
 # in configuration files. Typical directories are: etc, bin, libexec and var.
