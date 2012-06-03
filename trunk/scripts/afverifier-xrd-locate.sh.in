@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# afverify-xrd-locate.sh -- by Dario Berzano <dario.berzano@cern.ch>
+# afverifier-xrd-locate.sh -- by Dario Berzano <dario.berzano@cern.ch>
 #
 # This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
 #
@@ -161,9 +161,11 @@ exit \$RETVAL
 EOF
 )
 
-    echo "---$CHECKSCRIPT---"
+    #echo "--- Generated check script follows ---"
+    #echo "$CHECKSCRIPT"
+    #echo "--- End of generated check script ---"
 
-    # Get the remote host
+    # Get remote host
     REMOTE_HOST=$(echo ${BASH_REMATCH[1]} | cut -d: -f1)
 
     # If it is an IP, convert it to hostname
