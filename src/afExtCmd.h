@@ -29,6 +29,7 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 
