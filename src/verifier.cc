@@ -747,7 +747,7 @@ void process_datasets_save(af::opQueue &opq, af::dataSetList &dsm,
             fi->SetBit( TFileInfo::kCorrupted );
 
             af::log::error(af::log_level_normal, "File %s is staged, but "
-              "verification failed: marked as corrupted");
+              "verification failed: marked as corrupted", out_url);
 
             count_changes++;
 
