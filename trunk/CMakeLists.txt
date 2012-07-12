@@ -196,6 +196,7 @@ install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afdsmgrd-xrd-stage-verify.
 install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/macros/par/afdsutil/afdsutil.C DESTINATION ${DIR_SHARE})
 install (PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/scripts/afverifier DESTINATION ${DIR_BIN})
 install (PROGRAMS scripts/afdsiperm.sh DESTINATION ${DIR_LIBEXEC})
+install (PROGRAMS scripts/afdsmgr DESTINATION ${DIR_BIN})
 
 #
 # Renew authentication daemon (optional, only in debug mode)
