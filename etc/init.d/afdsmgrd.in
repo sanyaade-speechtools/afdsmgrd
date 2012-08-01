@@ -183,7 +183,7 @@ function Cleanup() {
     # Check if Pid is running
     ps -e -o pid,command | grep -q "^$Pid"
     if [ $? != 0 ] ; then
-      rm -rf "/tmp/afdsmgrd-$Pid"
+      rm -rf "/tmp/afdsmgrd-$Pid" 2> /dev/null
     fi
 
   done
