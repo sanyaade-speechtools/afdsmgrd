@@ -33,10 +33,24 @@ find_program(Root_CONFIG
 if (NOT Root_CONFIG)
   set (Root_FOUND FALSE)
   if (Root_FIND_REQUIRED)
-    message (FATAL_ERROR "root-config not found, is ROOT installed in ${ROOTSYS}?")
+    message (FATAL_ERROR "root-config not found, is ROOT installed under ${ROOTSYS}?")
   endif ()
 else ()
   message (STATUS "[ROOT] root-config path: ${Root_CONFIG}")
+endif ()
+
+#
+# Some ROOT build options
+#
+
+execute_process(COMMAND ${Root_CONFIG} --libs OUTPUT_VARIABLE Root_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${Root_CONFIG} --libdir OUTPUT_VARIABLE Root_LIBDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${Root_CONFIG} --incdir OUTPUT_VARIABLE Root_INCDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${Root_CONFIG} --cflags OUTPUT_VARIABLE Root_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${Root_CONFIG} --version OUTPUT_VARIABLE Root_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+if ("${Root_VERSION}" MATCHES "cannot")
+  unset (Root_VERSION)
 endif ()
 
 #
@@ -58,37 +72,40 @@ endif ()
 #endif ()
 
 #
-# Search for ROOT's libCore
+# Search for ROOT's libCore: its directory will be used as ROOT's libdir
 #
 
-find_library (Root_ROOTCORE
-  Core
-  PATHS ${ROOTSYS}/lib
-  NO_DEFAULT_PATH
-)
+# Search for libCore under Root_LIBDIR. If not found, will be searched under
+# ROOTSYS later
+find_library (Root_ROOTCORE Core PATHS ${Root_LIBDIR} NO_DEFAULT_PATH)
 
 if (NOT Root_ROOTCORE)
-  set (Root_FOUND FALSE)
-  if (Root_FIND_REQUIRED)
-    message (FATAL_ERROR "ROOT's libCore not found, is ROOT installation OK?")
+
+  # ROOT is probably not installed yet! Look for libCore under ROOTSYS to be
+  # sure...
+  find_library (Root_ROOTCORE Core PATHS ${ROOTSYS}/lib NO_DEFAULT_PATH)
+
+  if (NOT Root_ROOTCORE)
+    set (Root_FOUND FALSE)
+    if (Root_FIND_REQUIRED)
+      message (FATAL_ERROR "ROOT's libCore not found, is ROOT installation OK?")
+    endif ()
   endif ()
-else ()
-  message (STATUS "[ROOT] libCore path: ${Root_ROOTCORE}")
+
+  # If we are here, look for libraries and headers under ROOTSYS instead of
+  # considering the output of root-config --[lib|inc]dir
+  set (Root_LIBDIR ${ROOTSYS}/lib)
+  set (Root_INCDIR ${ROOTSYS}/include)
+
 endif ()
 
 #
-# Some ROOT build options
+# Output gathered information
 #
 
-#message(STATUS "Looking for ROOT build options...")
-
-execute_process(COMMAND ${Root_CONFIG} --libs OUTPUT_VARIABLE Root_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND ${Root_CONFIG} --libdir OUTPUT_VARIABLE Root_LIBDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND ${Root_CONFIG} --incdir OUTPUT_VARIABLE Root_INCDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND ${Root_CONFIG} --cflags OUTPUT_VARIABLE Root_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND ${Root_CONFIG} --version OUTPUT_VARIABLE Root_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-message (STATUS "[ROOT] Version: ${Root_VERSION}")
+if (Root_VERSION)
+  message (STATUS "[ROOT] Version: ${Root_VERSION}")
+endif ()
 message (STATUS "[ROOT] Include path: ${Root_INCDIR}")
 message (STATUS "[ROOT] Library path: ${Root_LIBDIR}")
 
@@ -98,7 +115,7 @@ message (STATUS "[ROOT] Library path: ${Root_LIBDIR}")
 set (Root_LIBS ${Root_LIBS} -lProof)
 
 #
-# In the end, was ROOT found?
+# Was ROOT eventually found? If we are here, yes
 #
 
 if (NOT Root_FOUND)
