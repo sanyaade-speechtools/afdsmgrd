@@ -341,7 +341,28 @@ function ShowLog() {
   Status
   if [ $? == 0 ]; then
     echo "Showing last lines of $AFDSMGRD_LOGFILE (abort with Ctrl+C):"
-    tail -f "$AFDSMGRD_LOGFILE"
+    if [ "$1" == 'bw' ]; then
+      # Uncolored output 
+      tail -f "$AFDSMGRD_LOGFILE"
+    else
+
+      #
+      # Colored output
+      #
+
+      local SedTmpl='s#^\(!LETTER!-\(.*\)\)$#\x1b[!COLOR!m\1\x1b[m#'
+      local Subst=( 'O=32' 'W=33' 'F=35' 'E=31' ) # <MsgType>=<AsciiColorCode>
+      local SedCmd ThisSed S Letter Color
+      for S in "${Subst[@]}" ; do
+        Letter=${S%%=*}
+        Color=${S#*=}
+        ThisSed=$( echo "$SedTmpl" | sed -e "s/!LETTER!/$Letter/ ; s/!COLOR!/$Color/" )
+        SedCmd="$SedCmd ; $ThisSed"
+      done
+
+      tail -f "$AFDSMGRD_LOGFILE" | sed -e "$SedCmd"
+
+    fi
   fi
 }
 
@@ -360,6 +381,10 @@ case "$1" in
   ;;
   status)
     Status
+    exit 0
+  ;;
+  bwlog)
+    ShowLog bw
     exit 0
   ;;
   log)
