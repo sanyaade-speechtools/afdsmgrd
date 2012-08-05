@@ -104,6 +104,7 @@ endmacro ()
 # ROOT
 find_package (Root REQUIRED)
 include_directories (${Root_INCDIR})
+link_directories (${Root_LIBDIR})
 
 # ApMon
 if (NOT ApMon_DISABLED)
@@ -112,6 +113,7 @@ if (NOT ApMon_DISABLED)
 
   if (ApMon_FOUND)
     include_directories (${ApMon_INCDIR})
+    link_directories (${ApMon_LIBDIR})
     set (WITH_APMON TRUE)
   endif ()
 
