@@ -261,7 +261,7 @@ function DsPerm() {
 
     ( cd /tmp ; \
       nohup "$AFDSMGRD_LIBEXEC"/afdsiperm.sh \
-        "$DsPath" "$AFDSMGRD_USER" > /dev/null 2>&1 & )
+        "$DsPath" "$AFDSMGRD_GROUP" > /dev/null 2>&1 & )
 
     # Are we running?
     sleep 1
