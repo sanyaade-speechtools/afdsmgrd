@@ -163,13 +163,8 @@ void config_callback_urlregex(const char *name, const char *val, void *args) {
  */
 void config_callback_datasetsrc(const char *name, const char *val, void *args) {
 
-  void **args_array = (void **)args;
-
-  //TDataSetManagerFile **root_dsm = (TDataSetManagerFile **)args_array[0];
-  af::dataSetList *dsm = (af::dataSetList *)args_array[0];
-  std::string *dsm_url = (std::string *)args_array[1];
-  std::string *dsm_mss = (std::string *)args_array[2];
-  std::string *dsm_opt = (std::string *)args_array[3];
+  std::string *dsm_url = (std::string *)args;
+  dsm_url->clear();
 
   af::log::info(af::log_level_debug, "Full dataset source directive: "
     "name=%s value=%s", name, val);
@@ -179,11 +174,7 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
   bool rw = false;
   bool invalid = false;
 
-  // If val == NULL, directive is invalid
-  if (!val) {
-    invalid = true;
-  }
-  else {
+  if (val) {
 
     cfgline = strdup(val);
     tok = strtok(cfgline, " \t");
@@ -192,44 +183,22 @@ void config_callback_datasetsrc(const char *name, const char *val, void *args) {
     else {
       while (tok != NULL) {
         if (strncmp(tok, "url:", 4) == 0) *dsm_url = &tok[4];
-        else if (strncmp(tok, "mss:", 4) == 0) *dsm_mss = &tok[4];
-        else if (strncmp(tok, "opt:", 4) == 0) *dsm_opt = &tok[4];
-        else if (strncmp(tok, "rw=1", 4) == 0) rw = true;
         tok = strtok(NULL, " \t");
       }
     }
 
-    if (dsm_opt->empty()) *dsm_opt = (rw ? "Av:Ar" : "-Av:-Ar");
-    if (dsm_mss->empty() || dsm_url->empty()) invalid = true;
+    if (dsm_url->empty()) invalid = true;
 
     free(cfgline);
 
-  }
-
-  if (invalid) {
-
-    // Error message for the masses
-    if (!val) {
-      af::log::error(af::log_level_urgent,
-        "Mandatory directive %s is missing", name);
-    }
-    else {
-      af::log::error(af::log_level_urgent,
-        "Invalid directive \"%s\" value: %s", name, val);
+    if (invalid) {
+      // Just a warning
+      af::log::warning(af::log_level_high,
+        "Directive \"%s\" with value \"%s\" unsupported: "
+        "source must be of type \"file\" and it must contain \"url:\"",
+        name, val);
     }
 
-    // Unset TDataSetManagerFile (owned by instance of af::dataSetList)
-    dsm->set_dataset_mgr(NULL);
-
-  }
-  else {
-    TDataSetManagerFile *root_dsm = new TDataSetManagerFile(NULL, NULL,
-      Form("dir:%s opt:%s", dsm_url->c_str(), dsm_opt->c_str()));
-    dsm->set_dataset_mgr(root_dsm);
-    af::log::ok(af::log_level_urgent, "ROOT dataset manager reinitialized");
-    af::log::ok(af::log_level_normal, ">> Local path: %s", dsm_url->c_str());
-    af::log::ok(af::log_level_normal, ">> MSS: %s", dsm_mss->c_str());
-    af::log::ok(af::log_level_normal, ">> Options: %s", dsm_opt->c_str());
   }
 
 }
@@ -751,10 +720,11 @@ void main_loop(af::config &config) {
 
   // The dataset manager wrapper, used by process_datasets()
   af::dataSetList dsm;
-  std::string dsm_url;
-  std::string dsm_mss;
-  std::string dsm_opt;
-  void *dsm_cbk_args[] = { &dsm, &dsm_url, &dsm_mss, &dsm_opt };
+  std::string dsm_path;  // its path, not tied to any callback
+
+  // Dataset manager path can have two forms
+  std::string dsm_dssrc_path;  // from xpd.datasetsrc url:<path>
+  std::string dsm_stgreq_path; // from xpd.stagereqrepo <path> -- has precedence
 
   // The operations queue, used by process_transfer_queue() and
   // process_datasets()
@@ -776,7 +746,8 @@ void main_loop(af::config &config) {
 
   // Bind directives to either variables or special callbacks
   config.bind_callback("xpd.datasetsrc", &config_callback_datasetsrc,
-    dsm_cbk_args);
+    &dsm_dssrc_path);
+  config.bind_text("xpd.stagereqrepo", &dsm_stgreq_path, "");
   config.bind_int("dsmgrd.sleepsecs", &vars.sleep_secs, 30, 5, AF_INT_MAX);
   config.bind_int("dsmgrd.scandseveryloops", &vars.scan_ds_every_loops, 10, 1,
     AF_INT_MAX);
@@ -837,6 +808,41 @@ void main_loop(af::config &config) {
         for (cmdq_t::iterator it=cmdq.begin(); it!=cmdq.end(); it++) {
           (*it)->set_timeout_secs( (unsigned long)vars.cmd_timeout_secs );
         }
+      }
+
+      // Manual callback for dataset repository
+      std::string *dsm_new_path;
+      bool dsm_from_stgreq = false;
+
+      // Select the one to consider: stgreq has priority
+      if (!dsm_stgreq_path.empty()) {
+        dsm_new_path = &dsm_stgreq_path;
+        dsm_from_stgreq = true;
+      }
+      else dsm_new_path = &dsm_dssrc_path;
+
+      if (*dsm_new_path != dsm_path) {
+        dsm_path = *dsm_new_path;
+
+        if (dsm_path.empty()) {
+          af::log::error(af::log_level_urgent,
+            "None of xpd.datasetsrc or xpd.stagereqrepo contain a "
+            "valid dataset repository path!");
+          dsm.set_dataset_mgr(NULL);
+        }
+        else {
+          std::string root_dsm_opts = "dir:";
+          root_dsm_opts += dsm_path.c_str();
+          if (dsm_from_stgreq) root_dsm_opts += " perms:open";
+
+          TDataSetManagerFile *root_dsm = new TDataSetManagerFile(NULL, NULL,
+            root_dsm_opts.c_str());
+          dsm.set_dataset_mgr(root_dsm);  // has ownership
+          af::log::ok(af::log_level_urgent,
+            "New ROOT dataset manager initialized with options: %s",
+            root_dsm_opts.c_str());
+        }
+
       }
 
     }
