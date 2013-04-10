@@ -76,12 +76,13 @@ if [ "$CF_FOUND" == 0 ]; then
 fi
 
 # Check for screen and inotifywait (required!)
-if [ `whoami` == 'root' ] ; then
-  # inotifywait required only if using afdsiperm, which can be run by root only
-  Utils=( screen inotifywait )
-else
-  Utils=( screen )
-fi
+#if [ `whoami` == 'root' ] ; then
+#  # inotifywait required only if using afdsiperm, which can be run by root only
+#  Utils=( screen inotifywait )
+#else
+#  Utils=( screen )
+#fi
+Utils=( screen )
 for U in "${Utils[@]}" ; do
   which "$U" &> /dev/null
   if [ $? != 0 ] ; then
@@ -244,46 +245,46 @@ EOF
 }
 
 # Start/stop permission fixer
-function DsPerm() {
-
-  local DsPath RetVal Action
-  Action="$1"
-
-  if [ "$Action" == 'start' ]; then
-    MsgBegin 'Starting afdsiperm'
-    DsPath=`cat "$AFDSMGRD_CONF" | grep -v '^[ \t]*#' | \
-      grep 'xpd.datasetsrc' | \
-      perl -ne '/[ \t]url:([^ \t]*)/ and print "$1\n"'`
-    if [ "$DsPath" == '' ]; then
-      MsgEnd 1 'cannot find dataset path'
-      return 1
-    fi
-
-    ( cd /tmp ; \
-      nohup "$AFDSMGRD_LIBEXEC"/afdsiperm.sh \
-        "$DsPath" "$AFDSMGRD_GROUP" > /dev/null 2>&1 & )
-
-    # Are we running?
-    sleep 1
-    pgrep afdsiperm.sh > /dev/null
-    RetVal=$?
-
-    MsgEnd $RetVal
-    return $RetVal
-  elif [ "$Action" == 'stop' ]; then
-    MsgBegin 'Stopping afdsiperm'
-    "$AFDSMGRD_LIBEXEC"/afdsiperm.sh --kill > /dev/null 2>&1
-    MsgEnd $?
-  fi
-
-}
+#function DsPerm() {
+#
+#  local DsPath RetVal Action
+#  Action="$1"
+#
+#  if [ "$Action" == 'start' ]; then
+#    MsgBegin 'Starting afdsiperm'
+#    DsPath=`cat "$AFDSMGRD_CONF" | grep -v '^[ \t]*#' | \
+#      grep 'xpd.datasetsrc' | \
+#      perl -ne '/[ \t]url:([^ \t]*)/ and print "$1\n"'`
+#    if [ "$DsPath" == '' ]; then
+#      MsgEnd 1 'cannot find dataset path'
+#      return 1
+#    fi
+#
+#    ( cd /tmp ; \
+#      nohup "$AFDSMGRD_LIBEXEC"/afdsiperm.sh \
+#        "$DsPath" "$AFDSMGRD_GROUP" > /dev/null 2>&1 & )
+#
+#    # Are we running?
+#    sleep 1
+#    pgrep afdsiperm.sh > /dev/null
+#    RetVal=$?
+#
+#    MsgEnd $RetVal
+#    return $RetVal
+#  elif [ "$Action" == 'stop' ]; then
+#    MsgBegin 'Stopping afdsiperm'
+#    "$AFDSMGRD_LIBEXEC"/afdsiperm.sh --kill > /dev/null 2>&1
+#    MsgEnd $?
+#  fi
+#
+#}
 
 # Starts the daemon (if not running)
 function Start() {
   local PID RETVAL
 
   # Failure in afdsiperm does not inhibit afdsmgrd (for now)
-  [ `whoami` == 'root' ] && DsPerm start
+  #[ `whoami` == 'root' ] && DsPerm start
 
   MsgBegin "Starting $BASEPROG"
   PID=`GetPid`
@@ -317,7 +318,7 @@ function Stop() {
     MsgEnd $RETVAL
   fi
 
-  [ `whoami` == 'root' ] && DsPerm stop
+  #[ `whoami` == 'root' ] && DsPerm stop
 
   return $RETVAL
 }
