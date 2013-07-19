@@ -60,6 +60,7 @@ typedef struct {
   long max_concurrent_xfrs;  // dsmgrd.parallelxfrs
   long max_stage_retries;    // dsmgrd.corruptafterfails
   long cmd_timeout_secs;     // dsmgrd.cmdtimeoutsecs
+  bool purge_noop_ds;        // dsmgrd.purgenoopds
   std::string stage_cmd;     // dsmgrd.stagecmd
   af::regex **url_regexs;    // dsmgrd.urlregex[n]
   unsigned int n_url_regexs;
@@ -644,21 +645,30 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
 
     if (count_changes > 0) {
 
-      //toggle_suid();
       bool save_ok = dsm.save_dataset();
-      //toggle_suid();
 
       if (save_ok) {
-        af::log::ok(af::log_level_high, "Dataset %s saved: %d entries", ds,
-          count_files);
+        af::log::ok(af::log_level_high,
+          "Dataset %s saved: %d entries considered", ds, count_files);
       }
       else {
         af::log::error(af::log_level_high,
           "Dataset %s not saved: check permissions", ds);
       }
     }
+    else if ((vars.purge_noop_ds) && (count_files == 0)) {
+      af::log::info(af::log_level_debug, "Dataset %s is condemned", ds);
+      if (dsm.remove_dataset(ds)) {
+        af::log::ok(af::log_level_low, "Dataset %s deleted", ds);
+      }
+      else {
+        af::log::error(af::log_level_high, "Failed to delete dataset %s", ds);
+      }
+    }
     else {
-      af::log::info(af::log_level_low, "Dataset %s not modified", ds);
+      af::log::info(af::log_level_low,
+        "Dataset %s not modified: %d entries were considered",
+        ds, count_files);
     }
 
     if (vars.notif) {
@@ -759,6 +769,7 @@ void main_loop(af::config &config) {
     AF_INT_MAX);  // 0 == timeout off
   config.bind_callback("dsmgrd.notifyplugin", &config_callback_notify,
     notif_cbk_args);
+  config.bind_bool("dsmgrd.purgenoopds", &vars.purge_noop_ds, false);
 
   // Initializes regular expression objects for URL substitutions and their
   // respective callbacks
@@ -826,7 +837,7 @@ void main_loop(af::config &config) {
 
         if (dsm_path.empty()) {
           af::log::error(af::log_level_urgent,
-            "None of xpd.datasetsrc or xpd.stagereqrepo contain a "
+            "None of xpd.datasetsrc or xpd.stagereqrepo contains a "
             "valid dataset repository path!");
           dsm.set_dataset_mgr(NULL);
         }
@@ -837,7 +848,7 @@ void main_loop(af::config &config) {
 
           TDataSetManagerFile *root_dsm = new TDataSetManagerFile(NULL, NULL,
             root_dsm_opts.c_str());
-          dsm.set_dataset_mgr(root_dsm);  // has ownership
+          dsm.set_dataset_mgr(root_dsm, dsm_path.c_str());  // has ownership
           af::log::ok(af::log_level_urgent,
             "New ROOT dataset manager initialized with options: %s",
             root_dsm_opts.c_str());
