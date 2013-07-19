@@ -29,10 +29,10 @@ set PMASTER=pmaster.to.infn.it
 xpd.stagereqrepo /pool/datasets
 
 # Set it to true (default is false) to remove a dataset when no file to stage
-# is present, i.e. when all listed files are either staged or corrupted. Used
-# in combination with xpd.stagereqrepo makes it "disposable": only the datasets
-# effectively needed for signaling the staging status will be kept, improving
-# scalability and stability.
+# is found. If no file to stage is found, but corrupted files exist, the
+# dataset is kept to signal failures. Used in combination with xpd.stagereqrepo
+# makes it "disposable": only the datasets effectively needed for signaling
+# the staging status will be kept, improving scalability and stability.
 #dsmgrd.purgenoopds true
 
 # Regex and substitution pattern that will be used to translate the URLs. The
