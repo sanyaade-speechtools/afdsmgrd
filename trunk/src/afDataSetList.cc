@@ -15,12 +15,14 @@ using namespace af;
  *
  *  The dataset manager is allowed to be NULL: in this case the member functions
  *  of this class will behave just like a dataset manager with no datasets
- *  inside.
+ *  inside. Dataset path may be null as well.
  *
  *  Beware! This class owns the instance of TDataSetManagerFile!
  */
-dataSetList::dataSetList(TDataSetManagerFile *_ds_mgr) :
-  ds_mgr(_ds_mgr), ds_inited(false), fi_inited(false) {}
+dataSetList::dataSetList(TDataSetManagerFile *_ds_mgr, const char *_ds_path) :
+  ds_mgr(_ds_mgr), ds_inited(false), fi_inited(false) {
+  if (_ds_path) ds_path = _ds_path;
+}
 
 /** The destructor. It frees the memory taken by requests.
  */
@@ -31,16 +33,26 @@ dataSetList::~dataSetList() {
 /** Frees the resources used by the former dataset manager and sets the new one.
  *
  *  The dataset manager is allowed to be NULL: see ctor's description for
- *  details.
+ *  details. Dataset path may also be NULL.
  *
  *  Since the TDataSetManagerFile is owned by this class' instance, the former
  *  dataset manager, if not NULL, will be deleted first.
  */
-void dataSetList::set_dataset_mgr(TDataSetManagerFile *_ds_mgr) {
+void dataSetList::set_dataset_mgr(TDataSetManagerFile *_ds_mgr,
+  const char *_ds_path) {
   free_datasets();
   free_files();
-  if (ds_mgr) delete ds_mgr;  // achtung!
+  if (ds_mgr) delete ds_mgr;  // beware!
+  ds_path.clear();
   ds_mgr = _ds_mgr;
+  if (_ds_path) ds_path = _ds_path;
+}
+
+/** Gets the current dataset path, or NULL if not set.
+ */
+const char *dataSetList::get_datasets_path() const {
+  if (ds_path.empty()) return NULL;
+  else return ds_path.c_str();
 }
 
 /** Initializes the list: this is the first function to call if you want to
@@ -390,4 +402,51 @@ bool dataSetList::save_dataset(TFileCollection *fc, const char *ds_uri) {
   //  return true;
 
   return false;
+}
+
+/** Removes the given dataset from the dataset repository. Returns true on
+ *  success and false on failure.
+ */
+bool dataSetList::remove_dataset(const char *ds_uri) {
+
+  af::log::info(af::log_level_debug, "Deletion of dataset %s requested",
+    ds_uri);
+
+  if ((!ds_uri) || (ds_path.empty())) return false;
+
+  std::string fn_ds  = ds_path + ds_uri + ".root";
+  std::string fn_md5 = ds_path + ds_uri + ".md5sum";
+  std::string fn_ls  = ds_path + ds_uri;
+
+  // For ls.txt
+  size_t spos = fn_ls.rfind('/');
+  if (spos != std::string::npos) {
+    fn_ls.replace(spos+1, std::string::npos, "ls.txt");
+  }
+  else fn_ls.clear();
+
+  af::log::info(log_level_debug, "Full path to delete: %s", fn_ls.c_str());
+
+  if (unlink(fn_ds.c_str()) == -1) {
+    af::log::error(af::log_level_normal,
+      "Deletion of dataset %s has failed: %s",
+      fn_ds.c_str(), strerror(errno));
+    return false;
+  }
+
+  // Remove ancillary files
+
+  if (unlink(fn_md5.c_str()) == -1) {
+    af::log::warning(af::log_level_normal,
+      "Deletion of MD5SUM %s failed: %s",
+      fn_md5.c_str(), strerror(errno));
+  }
+
+  if (unlink(fn_ls.c_str()) == -1) {
+    af::log::warning(af::log_level_normal,
+      "Deletion of dataset list cache %s failed: %s",
+      fn_ls.c_str(), strerror(errno));
+  }
+
+  return true;
 }
