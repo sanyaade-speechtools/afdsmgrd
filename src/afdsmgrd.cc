@@ -433,6 +433,7 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
   const char *ds;
   dsm.fetch_datasets();
   unsigned int count_ds = 0;
+  unsigned int deleted_ds = 0;
 
   while (ds = dsm.next_dataset()) {
 
@@ -643,6 +644,8 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
     // Save only if needed
     //
 
+    bool nothing_done = true;
+
     if (count_changes > 0) {
 
       bool save_ok = dsm.save_dataset();
@@ -655,17 +658,35 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
         af::log::error(af::log_level_high,
           "Dataset %s not saved: check permissions", ds);
       }
+
+      nothing_done = false;
     }
     else if ((vars.purge_noop_ds) && (count_files == 0)) {
-      af::log::info(af::log_level_debug, "Dataset %s is condemned", ds);
-      if (dsm.remove_dataset(ds)) {
-        af::log::ok(af::log_level_low, "Dataset %s deleted", ds);
+
+      // If there's at least one corrupted file, don't delete dataset
+      dsm.free_files();  // free prev resources: we allocate new ones
+      dsm.fetch_files(NULL, "C");
+      if (dsm.next_file() == NULL) {
+        // No corrupted files
+        af::log::info(af::log_level_debug, "Dataset %s is condemned", ds);
+        if (dsm.remove_dataset(ds)) {
+          af::log::ok(af::log_level_low, "Dataset %s deleted", ds);
+          deleted_ds++;
+        }
+        else {
+          af::log::error(af::log_level_high, "Failed to delete dataset %s", ds);
+        }
+        nothing_done = false;
       }
       else {
-        af::log::error(af::log_level_high, "Failed to delete dataset %s", ds);
+        af::log::info(af::log_level_debug,
+          "Dataset %s has corrupted files: not deleted", ds);
       }
     }
-    else {
+
+    dsm.free_files();
+
+    if (nothing_done) {
       af::log::info(af::log_level_low,
         "Dataset %s not modified: %d entries were considered",
         ds, count_files);
@@ -707,8 +728,9 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
 
   dsm.free_datasets();
 
-  af::log::info(af::log_level_low, "Number of datasets processed: %u",
-    count_ds);
+  af::log::info(af::log_level_low,
+    "Number of datasets processed: %u (deleted: %u)",
+    count_ds, deleted_ds);
 
   //
   // Clean up transfer queue
