@@ -14,8 +14,10 @@
 
 #include "afLog.h"
 
+#include <cerrno>
 #include <stdexcept>
 #include <bitset>
+#include <string>
 
 #include <TDataSetManagerFile.h>
 #include <TFileCollection.h>
@@ -35,7 +37,8 @@ namespace af {
 
   class dataSetList {
 
-    /**
+    /** Constants for a dataset entry status (staged, corrupted, has number of
+     *  events defined).
      */
     typedef enum {
       idx_S = 0, idx_s = 1,
@@ -45,7 +48,8 @@ namespace af {
 
     public:
 
-      dataSetList(TDataSetManagerFile *_ds_mgr = NULL);
+      dataSetList(TDataSetManagerFile *_ds_mgr = NULL,
+        const char *_ds_path = NULL);
       virtual ~dataSetList();
 
       // Browse dataset names
@@ -55,6 +59,7 @@ namespace af {
       void free_datasets();
       bool save_dataset(TFileCollection *new_fc = NULL,
         const char *new_name = NULL);
+      bool remove_dataset(const char *ds_uri);
       const char *get_default_tree();
       const TFileCollection *get_fc() const { return fi_coll; };
       bool set_default_tree(const char *treename);
@@ -69,7 +74,9 @@ namespace af {
       TUrl *get_url(int idx);
       ds_manip_err_t del_urls_but_last(unsigned int howmany = 1);
 
-      void set_dataset_mgr(TDataSetManagerFile *_ds_mgr);
+      void set_dataset_mgr(TDataSetManagerFile *_ds_mgr,
+        const char *_ds_path = NULL);
+      const char *get_datasets_path() const;
       inline TDataSetManagerFile *get_dataset_mgr() const { return ds_mgr; };
 
     private:
@@ -78,6 +85,7 @@ namespace af {
       std::vector<std::string *>  ds_list;
       int                         ds_cur_idx;
       std::string                 ds_cur_name;
+      std::string                 ds_path;
       bool                        ds_inited;
 
       TFileCollection            *fi_coll;
