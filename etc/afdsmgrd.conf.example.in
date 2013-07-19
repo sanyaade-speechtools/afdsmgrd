@@ -20,7 +20,20 @@ set PMASTER=pmaster.to.infn.it
 #
 # where some opts are: Cq (check quota), Av (allow verify), Ar (allow register).
 # Options can be prefixed with a minus to exclude them.
-xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw=1
+#xpd.datasetsrc file url:/pool/datasets mss:root://$PMASTER:1094 opt:Cq:Av:Ar: rw=1
+
+# This directive is alternative to xpd.datasetsrc. It is shared with PROOF. It
+# points to an ordinary data repository with open permissions to the world,
+# which is supposed to be used as a temporary place where to store staging
+# requests.
+xpd.stagereqrepo /pool/datasets
+
+# Set it to true (default is false) to remove a dataset when no file to stage
+# is present, i.e. when all listed files are either staged or corrupted. Used
+# in combination with xpd.stagereqrepo makes it "disposable": only the datasets
+# effectively needed for signaling the staging status will be kept, improving
+# scalability and stability.
+#dsmgrd.purgenoopds true
 
 # Regex and substitution pattern that will be used to translate the URLs. The
 # regex is interpreted as extended, and substitution pattern interprets
@@ -91,7 +104,7 @@ dsmgrd.notifyplugin @DIR_LIB@/libafdsmgrd_notify_apmon.so
 # or directly a single server.
 #
 # If the variable is not set, yet the plugin is loaded, MonALISA monitoring is
-# inhibited until a valid configuration variable is set.
+# inhibited until a valid configuration variable is provided.
 #dsmgrd.apmonurl apmon://alibox.to.infn.it
 
 # Since MonALISA organizes information in "clusters" and "hosts", here you can
