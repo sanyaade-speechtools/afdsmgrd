@@ -1,0 +1,419 @@
+#!/bin/bash
+
+#
+# init.d/afdsmgrd -- by Dario Berzano <dario.berzano@cern.ch>
+#
+# This file is part of afdsmgrd -- see http://code.google.com/p/afdsmgrd
+#
+# This script is conform to the LSB specifications and it is compatible with
+# the chkconfig custom header format. It can also be run by an unprivileged
+# user and without being installed system-wide.
+#
+
+#
+# chkconfig header
+#
+
+# chkconfig: 2345 99 0
+# description: afdsmgrd, which stands for Analysis Facility Dataset Manager
+#              Daemon, is a ROOT-based daemon that scans the stored datasets in
+#              order to issue the actual data staging
+# processname: afdsmgrd
+# pidfile: /var/run/afdsmgrd.pid
+
+#
+# LSB header
+#
+
+### BEGIN INIT INFO
+# Provides: afdsmgrd
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Required-Start: $local_fs $network
+# Required-Stop: $local_fs $network
+# Short-Description: Dataset manager for PROOF-based AFs
+# Description: afdsmgrd, which stands for Analysis Facility Dataset Manager
+#              Daemon, is a ROOT-based daemon that scans the stored datasets in
+#              order to issue the actual data staging
+### END INIT INFO
+
+#
+# External libraries and global variables
+#
+
+# Basename of the script, wrt invoking command (i.e. no symlinks resolved)
+BASENAME=`basename "$0"`
+
+# Path: we *must* set it because it might be invoked by a non-root user...
+PATH="/sbin:/usr/sbin:$PATH"
+
+# Get the configuration variables from the first configuration file found
+declare -a CONF_FILES
+CONF_FILES=(
+  "@DIR_ETC@/sysconfig/$BASENAME" \
+  "@DIR_ETC@/default/$BASENAME" \
+  "/etc/sysconfig/$BASENAME" \
+  "/etc/default/$BASENAME" \
+  "$HOME/.$BASENAME.cf"
+)
+
+CF_FOUND=0
+for CF in "${CONF_FILES[@]}"; do
+  if [ -r "$CF" ]; then
+    CF_FOUND=1
+    source "$CF"
+    break
+  fi
+done
+
+# No configuration file found?
+if [ "$CF_FOUND" == 0 ]; then
+  echo "No configuration file found for $BASENAME amongst (in order):"
+  for CF in "${CONF_FILES[@]}"; do
+    echo " * $CF"
+  done
+  exit 1
+fi
+
+# Check for screen and inotifywait (required!)
+#if [ `whoami` == 'root' ] ; then
+#  # inotifywait required only if using afdsiperm, which can be run by root only
+#  Utils=( screen inotifywait )
+#else
+#  Utils=( screen )
+#fi
+Utils=( screen )
+for U in "${Utils[@]}" ; do
+  which "$U" &> /dev/null
+  if [ $? != 0 ] ; then
+    echo "Required program $U not found in \$PATH!" >&2
+    CmdNotFound=1
+  fi
+done
+if [ "$CmdNotFound" == 1 ] ; then
+  echo "PATH in this context: $PATH" >&2
+  echo 'Cannot start afdsmgrd.'
+  exit 1
+fi
+
+# Check if user and group exist
+id "$AFDSMGRD_USER" &> /dev/null
+if [ $? != 0 ] ; then
+  echo "User $AFDSMGRD_USER does not exist, check $CF" >&2
+  exit 2
+fi
+
+getent group 2> /dev/null | grep -q "^${AFDSMGRD_GROUP}:"
+if [ $? != 0 ] ; then
+  echo "Group $AFDSMGRD_GROUP does not exist, check $CF" >&2
+  exit 2
+fi
+
+# Full path of program
+export PROG="$AFDSMGRD_PROG"
+
+# Silently fails if program is missing (for spurious init.d scripts)
+[ -x "$PROG" ] || exit 0
+
+# Basename of program
+export BASEPROG=`basename "$PROG"`
+
+# Grace time before "kill -9", in seconds
+export GRACEKILL_SEC=45
+
+#
+# Functions
+#
+
+# Auxiliary messaging function: normal echo
+function Msg() {
+  echo "$@"
+}
+
+# Auxiliary messaging function: begin of operation
+function MsgBegin() {
+  echo -n "$@: "
+}
+
+# Auxiliary messaging function: end of operation
+function MsgEnd() {
+  local STATUS
+  [ "$1" == 0 ] && \
+    STATUS="\033[1;32mOK\033[m" || \
+    STATUS="\033[1;31mfailed\033[m"
+  shift
+  if [ "$*" != "" ]; then
+    echo -e "$STATUS ($@)"
+  else
+    echo -e "$STATUS"
+  fi
+}
+
+# Echoes the PID of the program if running; empty string otherwise
+function GetPid() {
+  local PID=`cat "$AFDSMGRD_PIDFILE" 2> /dev/null`
+  kill -0 "$PID" 2> /dev/null && echo $PID
+}
+
+# Tries to stop, then kills the specified PID
+function StopKill() {
+  local PID="$1"
+  local I
+  kill -15 "$PID" 2> /dev/null
+  for ((I=0; $I<$GRACEKILL_SEC; I++)); do
+    sleep 1
+    kill -0 "$PID" 2> /dev/null
+    [ $? != 0 ] && return 0
+  done
+  kill -9 "$PID" 2> /dev/null
+  sleep 1
+  kill -0 "$PID" 2> /dev/null && return 1 || return 0
+}
+
+# Cleanup of daemon's temporary directory: called on startup and shutdown. This
+# function cleans *every* afdsmgrd temp directory associated to an instance that
+# is no longer running
+function Cleanup() {
+
+  local Pid
+
+  ls -1d /tmp/afdsmgrd-* 2> /dev/null | \
+  perl -ne '/\/afdsmgrd-([0-9]+)/ and print "$1\n"' | \
+  while read Pid ; do
+
+    # Check if Pid is running
+    ps -e -o pid,command | grep -q "^$Pid"
+    if [ $? != 0 ] ; then
+      rm -rf "/tmp/afdsmgrd-$Pid" 2> /dev/null
+    fi
+
+  done
+
+}
+
+# This is the second function to edit: it contains the custom commands to
+# effectively launch the daemon
+function LaunchDaemon() {
+
+  # Cleanup on startup and exit
+  Cleanup
+
+  # Change permissions of log directory
+  mkdir -p "$AFDSMGRD_LOGDIR" > /dev/null 2>&1
+  touch "$AFDSMGRD_LOGFILE" > /dev/null 2>&1
+  chmod -R u=rwX,g=rX,o=rX "$AFDSMGRD_LOGDIR" > /dev/null 2>&1
+  chown -R "$AFDSMGRD_USER:$AFDSMGRD_GROUP" "$AFDSMGRD_LOGDIR" > /dev/null 2>&1
+
+  # Creates directory for pidfile (if not exists)
+  mkdir -p $(dirname "$AFDSMGRD_PIDFILE")
+
+  # LD_LIBRARY_PATH is not inherited in the environment inside the daemon
+  local Tmp=`mktemp /tmp/start-afdsmgrd-XXXXX`
+  cat > $Tmp <<EOF
+#!/bin/sh
+export LD_LIBRARY_PATH="$ROOTSYS/lib:$AFDSMGRD_LIBS:$LD_LIBRARY_PATH"
+"$AFDSMGRD_PROG" \\
+  -p "$AFDSMGRD_PIDFILE" -c "$AFDSMGRD_CONF" \\
+  -d "$AFDSMGRD_LOGLEVEL" \\
+  -l "$AFDSMGRD_LOGFILE" -e "$AFDSMGRD_LIBEXEC"
+EOF
+
+  local RetVal Whoami DsPath
+  Whoami=`whoami`
+
+  chmod 0700 $Tmp
+
+  if [ "$Whoami" == "$AFDSMGRD_USER" ]; then
+    # We are the daemon's user
+    screen -dmS afdsmgrd $Tmp
+    RetVal=$?
+  elif [ "$Whoami" == 'root' ]; then
+    # We are root: daemon starts and stays unprivileged
+    chown $AFDSMGRD_USER $Tmp
+    su $AFDSMGRD_USER -c "screen -dmS afdsmgrd $Tmp"
+    RetVal=$?
+  else
+    # User not eligible to run daemon!
+    RetVal=1
+  fi
+
+  # The sleep is for the "screen" workaround
+  sleep 1
+  rm -f $Tmp
+
+  return $RetVal
+}
+
+# Start/stop permission fixer
+#function DsPerm() {
+#
+#  local DsPath RetVal Action
+#  Action="$1"
+#
+#  if [ "$Action" == 'start' ]; then
+#    MsgBegin 'Starting afdsiperm'
+#    DsPath=`cat "$AFDSMGRD_CONF" | grep -v '^[ \t]*#' | \
+#      grep 'xpd.datasetsrc' | \
+#      perl -ne '/[ \t]url:([^ \t]*)/ and print "$1\n"'`
+#    if [ "$DsPath" == '' ]; then
+#      MsgEnd 1 'cannot find dataset path'
+#      return 1
+#    fi
+#
+#    ( cd /tmp ; \
+#      nohup "$AFDSMGRD_LIBEXEC"/afdsiperm.sh \
+#        "$DsPath" "$AFDSMGRD_GROUP" > /dev/null 2>&1 & )
+#
+#    # Are we running?
+#    sleep 1
+#    pgrep afdsiperm.sh > /dev/null
+#    RetVal=$?
+#
+#    MsgEnd $RetVal
+#    return $RetVal
+#  elif [ "$Action" == 'stop' ]; then
+#    MsgBegin 'Stopping afdsiperm'
+#    "$AFDSMGRD_LIBEXEC"/afdsiperm.sh --kill > /dev/null 2>&1
+#    MsgEnd $?
+#  fi
+#
+#}
+
+# Starts the daemon (if not running)
+function Start() {
+  local PID RETVAL
+
+  # Failure in afdsiperm does not inhibit afdsmgrd (for now)
+  #[ `whoami` == 'root' ] && DsPerm start
+
+  MsgBegin "Starting $BASEPROG"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    LaunchDaemon
+    RETVAL=$?
+    MsgEnd $RETVAL
+  else
+    MsgEnd 1 "already running with PID=$PID"
+    RETVAL=1
+  fi
+  return $RETVAL
+
+}
+
+# Stops the daemon
+function Stop() {
+  local PID RETVAL
+  MsgBegin "Stopping $BASEPROG (waiting max ${GRACEKILL_SEC}s)"
+  PID=`GetPid`
+  if [ "$PID" == "" ]; then
+    MsgEnd 0 "not running"
+    RETVAL=0
+  else
+    StopKill $PID
+    RETVAL=$?
+    if [ $RETVAL == 0 ]; then
+      rm -f "$AFDSMGRD_PIDFILE"
+      Cleanup
+    fi
+    MsgEnd $RETVAL
+  fi
+
+  #[ `whoami` == 'root' ] && DsPerm stop
+
+  return $RETVAL
+}
+
+# Status of the daemon; returns 0 if running, nonzero otherwise
+function Status() {
+  local Pid NFiles
+  Pid=`GetPid`
+  if [ "$Pid" == "" ]; then
+    Msg "$BASEPROG is not running"
+    return 1
+  else
+    NFiles=`lsof -p $Pid 2> /dev/null | grep -c $Pid`
+    Msg "$BASEPROG is running with PID $Pid ($NFiles files open)"
+    return 0
+  fi
+}
+
+# Last lines of log
+function ShowLog() {
+  Status
+  if [ $? == 0 ]; then
+    echo "Showing last lines of $AFDSMGRD_LOGFILE (abort with Ctrl+C):"
+    if [ "$1" == 'bw' ]; then
+      # Uncolored output 
+      tail -f "$AFDSMGRD_LOGFILE"
+    else
+
+      #
+      # Colored output
+      #
+
+      local SedTmpl='s#^\(!LETTER!-\(.*\)\)$#\x1b[!COLOR!m\1\x1b[m#'
+      local Subst=( 'O=32' 'W=33' 'F=35' 'E=31' ) # <MsgType>=<AsciiColorCode>
+      local SedCmd ThisSed S Letter Color
+      for S in "${Subst[@]}" ; do
+        Letter=${S%%=*}
+        Color=${S#*=}
+        ThisSed=$( echo "$SedTmpl" | sed -e "s/!LETTER!/$Letter/ ; s/!COLOR!/$Color/" )
+        SedCmd="$SedCmd ; $ThisSed"
+      done
+
+      tail -f "$AFDSMGRD_LOGFILE" | sed -e "$SedCmd"
+
+    fi
+  fi
+}
+
+#
+# Entry point
+#
+
+case "$1" in
+  start)
+    Start
+    exit $?
+  ;;
+  stop)
+    Stop
+    exit $?
+  ;;
+  status)
+    Status
+    exit 0
+  ;;
+  bwlog)
+    ShowLog bw
+    exit 0
+  ;;
+  log)
+    ShowLog
+    exit 0
+  ;;
+  restart|condrestart|reload)
+    Stop && Start
+    exit $?
+  ;;
+  sysconfig)
+    echo "Using startup configuration file: $CF"
+    exit 0
+  ;;
+  dsiperm-start)
+    DsPerm start
+    exit $?
+  ;;
+  dsiperm-stop)
+    DsPerm stop
+    exit $?
+  ;;
+  #drain)
+  # to be implemented
+  #;;
+  *)
+    echo  "Usage: `basename $0`" \
+      "{start|stop|restart|condrestart|dsiperm-start|dsiperm-stop|reload|status|sysconfig|log}"
+    exit 1
+  ;;
+esac
