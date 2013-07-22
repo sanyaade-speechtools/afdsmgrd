@@ -849,6 +849,8 @@ void main_loop(af::config &config) {
 
       // Select the one to consider: stgreq has priority
       if (!dsm_stgreq_path.empty()) {
+        if (strncmp("dir:", dsm_stgreq_path.c_str(), 4) == 0)
+          dsm_stgreq_path.erase(0, 4);
         dsm_new_path = &dsm_stgreq_path;
         dsm_from_stgreq = true;
       }
