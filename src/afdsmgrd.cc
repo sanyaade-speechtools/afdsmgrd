@@ -684,8 +684,6 @@ void process_datasets(af::opQueue &opq, af::dataSetList &dsm,
       }
     }
 
-    dsm.free_files();
-
     if (nothing_done) {
       af::log::info(af::log_level_low,
         "Dataset %s not modified: %d entries were considered",
