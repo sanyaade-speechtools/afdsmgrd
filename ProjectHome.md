@@ -1,0 +1,1 @@
+afdsmgrd, which stands for Analysis Facility Dataset Manager Daemon, is a ROOT-based daemon that scans the stored datasets in order to issue the actual data staging.
